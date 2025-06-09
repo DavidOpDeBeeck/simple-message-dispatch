@@ -1,0 +1,78 @@
+package app.dodb.smd.api.utils;
+
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.Optional;
+
+import static app.dodb.smd.api.utils.TypeUtils.resolveGenericType;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class TypeUtilsTest {
+
+    @Test
+    void resolveGenericType_multipleScenarios() {
+        assertThat(resolveGenericType(Root.class, Root.class)).isEqualTo(null);
+        assertThat(resolveGenericType(SubType.class, Root.class)).isEqualTo(String.class);
+        assertThat(resolveGenericType(SubSubType.class, Root.class)).isEqualTo(String.class);
+        assertThat(resolveGenericType(OptionalSubType.class, Root.class)).isEqualTo(parameterizedType(Optional.class, String.class));
+        assertThat(resolveGenericType(OptionalGenericSubSubType.class, Root.class)).isEqualTo(parameterizedType(Optional.class, String.class));
+        assertThatThrownBy(() -> resolveGenericType(OtherRoot.class, Root.class))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Class (app.dodb.smd.api.utils.TypeUtilsTest$OtherRoot) must implement or extend type (app.dodb.smd.api.utils.TypeUtilsTest$Root)");
+        assertThatThrownBy(() -> resolveGenericType(RootWithoutGeneric.class, RootWithoutGeneric.class))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("One type parameter must be present on (app.dodb.smd.api.utils.TypeUtilsTest$RootWithoutGeneric)");
+        assertThatThrownBy(() -> resolveGenericType(RootWithMultipleGenerics.class, RootWithMultipleGenerics.class))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("One type parameter must be present on (app.dodb.smd.api.utils.TypeUtilsTest$RootWithMultipleGenerics)");
+    }
+
+    interface Root<T> {
+    }
+
+    interface SubType extends Root<String> {
+    }
+
+    record SubSubType() implements SubType {
+    }
+
+    record OptionalSubType() implements Root<Optional<String>> {
+    }
+
+    interface OptionalGenericSubType<T> extends Root<Optional<T>> {
+    }
+
+    record OptionalGenericSubSubType() implements OptionalGenericSubType<String> {
+    }
+
+    interface OtherRoot<T> {
+    }
+
+    interface RootWithoutGeneric {
+    }
+
+    interface RootWithMultipleGenerics<T, R> {
+    }
+
+    private static ParameterizedType parameterizedType(Type rawType, Type actualType) {
+        return new ParameterizedType() {
+            @Override
+            public Type[] getActualTypeArguments() {
+                return new Type[]{actualType};
+            }
+
+            @Override
+            public Type getRawType() {
+                return rawType;
+            }
+
+            @Override
+            public Type getOwnerType() {
+                return null;
+            }
+        };
+    }
+}
