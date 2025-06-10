@@ -2,11 +2,17 @@ package app.dodb.smd.api.utils;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.Optional;
 
+import static app.dodb.smd.api.utils.TypeUtils.getAnnotationOnMethodOrClass;
 import static app.dodb.smd.api.utils.TypeUtils.resolveGenericType;
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.TYPE;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -28,6 +34,29 @@ class TypeUtilsTest {
         assertThatThrownBy(() -> resolveGenericType(RootWithMultipleGenerics.class, RootWithMultipleGenerics.class))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageStartingWith("One type parameter must be present on (app.dodb.smd.api.utils.TypeUtilsTest$RootWithMultipleGenerics)");
+    }
+
+    @Test
+    void getAnnotationOnMethodOrClass_withAnnotationOnClass() throws NoSuchMethodException {
+        var method = ClassWithAnnotationOnClass.class.getMethod("method");
+        var expected = ClassWithAnnotationOnClass.class.getAnnotation(MarkerAnnotation.class);
+
+        assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).contains(expected);
+    }
+
+    @Test
+    void getAnnotationOnMethodOrClass_withAnnotationOnMethod() throws NoSuchMethodException {
+        var method = ClassWithAnnotationOnMethod.class.getMethod("method");
+        var expected = method.getAnnotation(MarkerAnnotation.class);
+
+        assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).contains(expected);
+    }
+
+    @Test
+    void getAnnotationOnMethodOrClass_withoutAnnotation() throws NoSuchMethodException {
+        var method = ClassWithoutAnnotation.class.getMethod("method");
+
+        assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).isEmpty();
     }
 
     interface Root<T> {
@@ -55,6 +84,31 @@ class TypeUtilsTest {
     }
 
     interface RootWithMultipleGenerics<T, R> {
+    }
+
+    @MarkerAnnotation
+    private static class ClassWithAnnotationOnClass {
+
+        public void method() {
+        }
+    }
+
+    private static class ClassWithAnnotationOnMethod {
+
+        @MarkerAnnotation
+        public void method() {
+        }
+    }
+
+    private static class ClassWithoutAnnotation {
+
+        public void method() {
+        }
+    }
+
+    @Retention(RUNTIME)
+    @Target({TYPE, METHOD})
+    @interface MarkerAnnotation {
     }
 
     private static ParameterizedType parameterizedType(Type rawType, Type actualType) {

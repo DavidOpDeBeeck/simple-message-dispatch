@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static app.dodb.smd.api.utils.LoggingUtils.logClass;
+import static java.util.Optional.ofNullable;
 
 public class TypeUtils {
 
@@ -34,9 +35,8 @@ public class TypeUtils {
 
     public static <T extends Annotation> Optional<T> getAnnotationOnMethodOrClass(Method method, Class<T> annotationClass) {
         T annotationOnMethod = method.getAnnotation(annotationClass);
-        if (annotationOnMethod != null) {
-            return Optional.of(annotationOnMethod);
-        }
-        return Optional.ofNullable(method.getDeclaringClass().getAnnotation(annotationClass));
+        T annotationOnClass = method.getDeclaringClass().getAnnotation(annotationClass);
+
+        return ofNullable(annotationOnMethod).or(() -> ofNullable(annotationOnClass));
     }
 }
