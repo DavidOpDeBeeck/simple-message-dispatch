@@ -19,18 +19,48 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TypeUtilsTest {
 
     @Test
-    void resolveGenericType_multipleScenarios() {
-        assertThat(resolveGenericType(Root.class, Root.class)).isEqualTo(null);
+    void resolveGenericType_withInheritance() {
         assertThat(resolveGenericType(SubType.class, Root.class)).isEqualTo(String.class);
         assertThat(resolveGenericType(SubSubType.class, Root.class)).isEqualTo(String.class);
+    }
+
+    @Test
+    void resolveGenericType_withParameterizedTypes() {
         assertThat(resolveGenericType(OptionalSubType.class, Root.class)).isEqualTo(parameterizedType(Optional.class, String.class));
         assertThat(resolveGenericType(OptionalGenericSubSubType.class, Root.class)).isEqualTo(parameterizedType(Optional.class, String.class));
+    }
+
+    @Test
+    void resolveGenericType_withVoidGenericType() {
+        assertThat(resolveGenericType(VoidSubType.class, Root.class)).isEqualTo(Void.TYPE);
+    }
+
+    @Test
+    void resolveGenericType_withUnboundGenericType() {
+        assertThatThrownBy(() -> resolveGenericType(Root.class, Root.class))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Type parameter (T) on (app.dodb.smd.api.utils.TypeUtilsTest$Root) must be bound to a concrete type");
+        assertThatThrownBy(() -> resolveGenericType(UnboundSubType.class, Root.class))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Type parameter (T) on (app.dodb.smd.api.utils.TypeUtilsTest$UnboundSubType) must be bound to a concrete type");
+    }
+
+    @Test
+    void resolveGenericType_withoutInheritance() {
         assertThatThrownBy(() -> resolveGenericType(OtherRoot.class, Root.class))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("Class (app.dodb.smd.api.utils.TypeUtilsTest$OtherRoot) must implement or extend type (app.dodb.smd.api.utils.TypeUtilsTest$Root)");
+    }
+
+    @Test
+    void resolveGenericType_withoutGenerics() {
         assertThatThrownBy(() -> resolveGenericType(RootWithoutGeneric.class, RootWithoutGeneric.class))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageStartingWith("One type parameter must be present on (app.dodb.smd.api.utils.TypeUtilsTest$RootWithoutGeneric)");
+    }
+
+    @Test
+    void resolveGenericType_withMultipleGenerics() {
         assertThatThrownBy(() -> resolveGenericType(RootWithMultipleGenerics.class, RootWithMultipleGenerics.class))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageStartingWith("One type parameter must be present on (app.dodb.smd.api.utils.TypeUtilsTest$RootWithMultipleGenerics)");
@@ -66,6 +96,12 @@ class TypeUtilsTest {
     }
 
     record SubSubType() implements SubType {
+    }
+
+    interface VoidSubType extends Root<Void> {
+    }
+
+    interface UnboundSubType<T> extends Root<T> {
     }
 
     record OptionalSubType() implements Root<Optional<String>> {
