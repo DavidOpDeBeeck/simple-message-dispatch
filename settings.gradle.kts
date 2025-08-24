@@ -29,6 +29,7 @@ dependencyResolutionManagement {
             library("spring.dependencies", "org.springframework.boot", "spring-boot-dependencies").versionRef("spring")
             library("spring.context", "org.springframework", "spring-context").withoutVersion()
             library("spring.autoconfigure", "org.springframework.boot", "spring-boot-autoconfigure").withoutVersion()
+            library("spring.test", "org.springframework.boot", "spring-boot-starter-test").withoutVersion()
         }
     }
 }

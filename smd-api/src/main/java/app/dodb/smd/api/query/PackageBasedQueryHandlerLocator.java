@@ -4,6 +4,7 @@ import app.dodb.smd.api.framework.ObjectCreator;
 import com.google.common.base.Stopwatch;
 import org.reflections.Reflections;
 import org.reflections.util.ConfigurationBuilder;
+import org.reflections.util.FilterBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,10 +30,14 @@ public class PackageBasedQueryHandlerLocator implements QueryHandlerLocator {
     public QueryHandlerRegistry locate() {
         Stopwatch stopwatch = Stopwatch.createStarted();
 
+        FilterBuilder inputsFilter = new FilterBuilder();
+        packageNames.forEach(inputsFilter::includePackage);
+
         ConfigurationBuilder configuration = new ConfigurationBuilder()
             .forPackages(packageNames.toArray(new String[0]))
             .setScanners(MethodsAnnotated)
-            .setParallel(true);
+            .setParallel(true)
+            .filterInputsBy(inputsFilter);
 
         QueryHandlerRegistry registry = new Reflections(configuration)
             .getMethodsAnnotatedWith(QueryHandler.class).parallelStream()
@@ -42,7 +47,7 @@ public class PackageBasedQueryHandlerLocator implements QueryHandlerLocator {
             .map(AnnotatedQueryHandler::from)
             .reduce(QueryHandlerRegistry.empty(), QueryHandlerRegistry::and);
 
-        LOGGER.info("Registered {} query handlers in {}", registry.queryHandlers().size(), stopwatch.stop());
+        LOGGER.info("Located {} query handlers in {}. Packages scanned: {}", registry.queryHandlers().size(), stopwatch.stop(), packageNames);
         return registry;
     }
 }

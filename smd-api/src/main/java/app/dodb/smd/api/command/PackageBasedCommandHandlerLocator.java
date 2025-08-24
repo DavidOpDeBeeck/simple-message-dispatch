@@ -4,6 +4,7 @@ import app.dodb.smd.api.framework.ObjectCreator;
 import com.google.common.base.Stopwatch;
 import org.reflections.Reflections;
 import org.reflections.util.ConfigurationBuilder;
+import org.reflections.util.FilterBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,10 +30,14 @@ public class PackageBasedCommandHandlerLocator implements CommandHandlerLocator 
     public CommandHandlerRegistry locate() {
         Stopwatch stopwatch = Stopwatch.createStarted();
 
+        FilterBuilder inputsFilter = new FilterBuilder();
+        packageNames.forEach(inputsFilter::includePackage);
+
         ConfigurationBuilder configuration = new ConfigurationBuilder()
             .forPackages(packageNames.toArray(new String[0]))
             .setScanners(MethodsAnnotated)
-            .setParallel(true);
+            .setParallel(true)
+            .filterInputsBy(inputsFilter);
 
         CommandHandlerRegistry registry = new Reflections(configuration)
             .getMethodsAnnotatedWith(CommandHandler.class).parallelStream()
@@ -42,7 +47,7 @@ public class PackageBasedCommandHandlerLocator implements CommandHandlerLocator 
             .map(AnnotatedCommandHandler::from)
             .reduce(CommandHandlerRegistry.empty(), CommandHandlerRegistry::and);
 
-        LOGGER.info("Registered {} command handlers in {}", registry.commandHandlers().size(), stopwatch.stop());
+        LOGGER.info("Located {} command handlers in {}. Packages scanned: {}", registry.commandHandlers().size(), stopwatch.stop(), packageNames);
         return registry;
     }
 }

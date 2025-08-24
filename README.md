@@ -32,3 +32,7 @@ dependencies {
 ## Example Usage
 
 Code examples will follow soon...
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for details.

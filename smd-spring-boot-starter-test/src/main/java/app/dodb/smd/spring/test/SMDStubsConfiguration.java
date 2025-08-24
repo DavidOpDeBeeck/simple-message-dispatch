@@ -40,7 +40,7 @@ public class SMDStubsConfiguration {
 
     @Bean
     @SMDTestScope
-    public SMDTestExtension simpleMessageDispatchTestFixture(
+    public SMDTestExtension smdTestExtension(
         CommandHandlerDispatcher commandHandlerDispatcher,
         QueryHandlerDispatcher queryHandlerDispatcher,
         EventHandlerDispatcher eventHandlerDispatcher,

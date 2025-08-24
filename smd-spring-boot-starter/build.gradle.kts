@@ -5,4 +5,6 @@ dependencies {
 
     implementation(libs.spring.context)
     implementation(libs.spring.autoconfigure)
+
+    integrationTestImplementation(libs.spring.test)
 }

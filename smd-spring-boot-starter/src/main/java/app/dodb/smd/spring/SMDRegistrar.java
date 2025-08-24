@@ -8,6 +8,7 @@ import org.springframework.core.type.AnnotationMetadata;
 import java.util.Map;
 
 import static java.util.Arrays.asList;
+import static org.springframework.util.ClassUtils.getPackageName;
 
 public class SMDRegistrar implements ImportBeanDefinitionRegistrar {
 
@@ -23,11 +24,16 @@ public class SMDRegistrar implements ImportBeanDefinitionRegistrar {
         }
 
         String[] packages = (String[]) attributes.get("packages");
+        if (packages == null || packages.length == 0) {
+            packages = new String[]{
+                getPackageName(annotationMetadata.getClassName())
+            };
+        }
 
         BeanDefinitionBuilder builder = BeanDefinitionBuilder
             .genericBeanDefinition(SMDProperties.class)
             .addConstructorArgValue(asList(packages));
 
-        registry.registerBeanDefinition(BEAN_NAME, builder.getBeanDefinition());
+        registry.registerBeanDefinition("%s#%s".formatted(BEAN_NAME, annotationMetadata.getClassName()), builder.getBeanDefinition());
     }
 }

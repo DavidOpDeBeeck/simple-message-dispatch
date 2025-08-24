@@ -26,6 +26,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
+import java.util.List;
+
 @AutoConfiguration
 public class SMDConfiguration {
 
@@ -50,18 +52,21 @@ public class SMDConfiguration {
     }
 
     @Bean
-    public CommandHandlerLocator commandHandlerLocator(SMDProperties properties, ObjectCreator objectCreator) {
-        return new PackageBasedCommandHandlerLocator(properties.packages(), objectCreator);
+    public CommandHandlerLocator commandHandlerLocator(List<SMDProperties> properties, ObjectCreator objectCreator) {
+        List<String> packages = combinePackages(properties);
+        return new PackageBasedCommandHandlerLocator(packages, objectCreator);
     }
 
     @Bean
-    public EventHandlerLocator eventHandlerLocator(SMDProperties properties, ObjectCreator objectCreator) {
-        return new PackageBasedEventHandlerLocator(properties.packages(), objectCreator);
+    public EventHandlerLocator eventHandlerLocator(List<SMDProperties> properties, ObjectCreator objectCreator) {
+        List<String> packages = combinePackages(properties);
+        return new PackageBasedEventHandlerLocator(packages, objectCreator);
     }
 
     @Bean
-    public QueryHandlerLocator queryHandlerLocator(SMDProperties properties, ObjectCreator objectCreator) {
-        return new PackageBasedQueryHandlerLocator(properties.packages(), objectCreator);
+    public QueryHandlerLocator queryHandlerLocator(List<SMDProperties> properties, ObjectCreator objectCreator) {
+        List<String> packages = combinePackages(properties);
+        return new PackageBasedQueryHandlerLocator(packages, objectCreator);
     }
 
     @Bean
@@ -95,5 +100,12 @@ public class SMDConfiguration {
     @ConditionalOnMissingBean
     public QueryGateway queryGateway(MetadataFactory metadataFactory, QueryHandlerDispatcher dispatcher) {
         return new QueryBus(metadataFactory, dispatcher);
+    }
+
+    private static List<String> combinePackages(List<SMDProperties> properties) {
+        return properties.stream()
+            .map(SMDProperties::packages)
+            .flatMap(List::stream)
+            .toList();
     }
 }

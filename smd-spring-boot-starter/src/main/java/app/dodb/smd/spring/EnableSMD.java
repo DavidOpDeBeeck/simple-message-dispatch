@@ -15,5 +15,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @ImportAutoConfiguration(SMDConfiguration.class)
 public @interface EnableSMD {
 
-    String[] packages();
+    String[] packages() default {};
 }

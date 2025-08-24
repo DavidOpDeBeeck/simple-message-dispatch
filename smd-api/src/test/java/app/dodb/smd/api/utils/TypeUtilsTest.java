@@ -19,6 +19,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TypeUtilsTest {
 
     @Test
+    void resolveGenericType_withWrappedType() {
+        assertThat(resolveGenericType(BooleanSubType.class, Root.class)).isEqualTo(Boolean.TYPE);
+        assertThat(resolveGenericType(ByteSubType.class, Root.class)).isEqualTo(Byte.TYPE);
+        assertThat(resolveGenericType(ShortSubType.class, Root.class)).isEqualTo(Short.TYPE);
+        assertThat(resolveGenericType(IntegerSubType.class, Root.class)).isEqualTo(Integer.TYPE);
+        assertThat(resolveGenericType(LongSubType.class, Root.class)).isEqualTo(Long.TYPE);
+        assertThat(resolveGenericType(FloatSubType.class, Root.class)).isEqualTo(Float.TYPE);
+        assertThat(resolveGenericType(DoubleSubType.class, Root.class)).isEqualTo(Double.TYPE);
+        assertThat(resolveGenericType(CharacterSubType.class, Root.class)).isEqualTo(Character.TYPE);
+        assertThat(resolveGenericType(VoidSubType.class, Root.class)).isEqualTo(Void.TYPE);
+    }
+
+    @Test
     void resolveGenericType_withInheritance() {
         assertThat(resolveGenericType(SubType.class, Root.class)).isEqualTo(String.class);
         assertThat(resolveGenericType(SubSubType.class, Root.class)).isEqualTo(String.class);
@@ -28,11 +41,6 @@ class TypeUtilsTest {
     void resolveGenericType_withParameterizedTypes() {
         assertThat(resolveGenericType(OptionalSubType.class, Root.class)).isEqualTo(parameterizedType(Optional.class, String.class));
         assertThat(resolveGenericType(OptionalGenericSubSubType.class, Root.class)).isEqualTo(parameterizedType(Optional.class, String.class));
-    }
-
-    @Test
-    void resolveGenericType_withVoidGenericType() {
-        assertThat(resolveGenericType(VoidSubType.class, Root.class)).isEqualTo(Void.TYPE);
     }
 
     @Test
@@ -96,6 +104,30 @@ class TypeUtilsTest {
     }
 
     record SubSubType() implements SubType {
+    }
+
+    interface BooleanSubType extends Root<Boolean> {
+    }
+
+    interface ByteSubType extends Root<Byte> {
+    }
+
+    interface ShortSubType extends Root<Short> {
+    }
+
+    interface IntegerSubType extends Root<Integer> {
+    }
+
+    interface LongSubType extends Root<Long> {
+    }
+
+    interface FloatSubType extends Root<Float> {
+    }
+
+    interface DoubleSubType extends Root<Double> {
+    }
+
+    interface CharacterSubType extends Root<Character> {
     }
 
     interface VoidSubType extends Root<Void> {

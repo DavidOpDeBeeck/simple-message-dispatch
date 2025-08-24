@@ -9,4 +9,6 @@ dependencies {
     implementation(libs.spring.context)
     implementation(libs.spring.autoconfigure)
     implementation(libs.junit.jupiter)
+
+    integrationTestImplementation(libs.spring.test)
 }

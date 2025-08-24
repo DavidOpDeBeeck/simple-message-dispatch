@@ -4,8 +4,6 @@ import java.lang.reflect.InvocationTargetException;
 
 public class ConstructorBasedObjectCreator implements ObjectCreator {
 
-    public static final ConstructorBasedObjectCreator INSTANCE = new ConstructorBasedObjectCreator();
-
     @Override
     public <T> Provider<T> create(Class<T> clazz) {
         try {

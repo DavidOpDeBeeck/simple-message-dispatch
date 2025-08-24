@@ -4,11 +4,11 @@ import app.dodb.smd.api.framework.ObjectCreator;
 import com.google.common.base.Stopwatch;
 import org.reflections.Reflections;
 import org.reflections.util.ConfigurationBuilder;
+import org.reflections.util.FilterBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
-import java.util.Collection;
 import java.util.List;
 
 import static java.util.Objects.requireNonNull;
@@ -30,10 +30,14 @@ public class PackageBasedEventHandlerLocator implements EventHandlerLocator {
     public EventHandlerRegistry locate() {
         Stopwatch stopwatch = Stopwatch.createStarted();
 
+        FilterBuilder inputsFilter = new FilterBuilder();
+        packageNames.forEach(inputsFilter::includePackage);
+
         ConfigurationBuilder configuration = new ConfigurationBuilder()
             .forPackages(packageNames.toArray(new String[0]))
             .setScanners(MethodsAnnotated)
-            .setParallel(true);
+            .setParallel(true)
+            .filterInputsBy(inputsFilter);
 
         EventHandlerRegistry registry = new Reflections(configuration)
             .getMethodsAnnotatedWith(EventHandler.class).parallelStream()
@@ -43,8 +47,12 @@ public class PackageBasedEventHandlerLocator implements EventHandlerLocator {
             .map(AnnotatedEventHandler::from)
             .reduce(EventHandlerRegistry.empty(), EventHandlerRegistry::and);
 
-        LOGGER.info("Registered {} event handlers in {}", registry.eventHandlersByProcessingGroup().values().stream()
-            .mapToLong(Collection::size).sum(), stopwatch.stop());
+        registry.eventHandlersByProcessingGroup().forEach((processingGroup, handlers) ->
+            LOGGER.info("Located {} event handlers for processing group '{}' in {}. Packages scanned: {}", handlers.size(), processingGroup, stopwatch.stop(), packageNames));
+
+        if (registry.eventHandlersByProcessingGroup().isEmpty()) {
+            LOGGER.info("Located 0 event handlers in {}. Packages scanned: {}", stopwatch.stop(), packageNames);
+        }
         return registry;
     }
 }
