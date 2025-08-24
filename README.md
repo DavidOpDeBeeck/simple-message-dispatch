@@ -22,10 +22,10 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-api:0.0.1")
-    testImplementation("app.dodb:smd-test:0.0.1")
-    implementation("app.dodb:smd-spring-boot-starter:0.0.1")
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.1")
+    implementation("app.dodb:smd-api:0.0.x")
+    testImplementation("app.dodb:smd-test:0.0.x")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.x")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.x")
 }
 ```
 
