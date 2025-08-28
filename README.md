@@ -2,8 +2,7 @@
 
 > **EXPERIMENTAL**: This library is in early development and **subject to breaking changes**. The version will remain **non-final (v0.0.x)** until it is stable.
 
-**Simple Message Dispatch (SMD)** is a lightweight Java library designed to support **CQRS** and **event-driven** applications. It is **framework agnostic** by design, with dedicated support for *
-*Spring Boot** provided via an integration module.
+**Simple Message Dispatch (SMD)** is a lightweight Java library designed to support **CQRS** and **event-driven** applications. It is **framework agnostic** by design, with dedicated support for **Spring Boot** provided via an integration module.
 
 ## Artifacts
 
