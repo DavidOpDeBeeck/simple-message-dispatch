@@ -1,6 +1,6 @@
 package app.dodb.smd.spring.command;
 
-import app.dodb.smd.api.command.CommandBus;
+import app.dodb.smd.api.command.bus.CommandBus;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.builder.SpringApplicationBuilder;

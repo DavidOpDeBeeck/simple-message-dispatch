@@ -1,6 +1,6 @@
 package app.dodb.smd.spring.query;
 
-import app.dodb.smd.api.query.QueryBus;
+import app.dodb.smd.api.query.bus.QueryBus;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.builder.SpringApplicationBuilder;

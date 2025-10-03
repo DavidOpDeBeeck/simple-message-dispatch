@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "app.dodb"
-version = "0.0.2"
+version = "0.0.3"
 
 subprojects {
     apply(plugin = "java-library")
@@ -13,7 +13,7 @@ subprojects {
     apply(plugin = "signing")
 
     java {
-        sourceCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_25
         withSourcesJar()
         withJavadocJar()
     }

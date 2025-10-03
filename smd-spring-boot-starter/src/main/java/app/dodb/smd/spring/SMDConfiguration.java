@@ -1,26 +1,29 @@
 package app.dodb.smd.spring;
 
-import app.dodb.smd.api.command.CommandBus;
 import app.dodb.smd.api.command.CommandGateway;
 import app.dodb.smd.api.command.CommandHandlerDispatcher;
 import app.dodb.smd.api.command.CommandHandlerLocator;
 import app.dodb.smd.api.command.PackageBasedCommandHandlerLocator;
-import app.dodb.smd.api.event.EventBus;
+import app.dodb.smd.api.command.bus.CommandBus;
+import app.dodb.smd.api.command.bus.CommandBusInterceptor;
 import app.dodb.smd.api.event.EventHandlerDispatcher;
 import app.dodb.smd.api.event.EventHandlerLocator;
 import app.dodb.smd.api.event.EventPublisher;
 import app.dodb.smd.api.event.PackageBasedEventHandlerLocator;
+import app.dodb.smd.api.event.bus.EventBus;
+import app.dodb.smd.api.event.bus.EventBusInterceptor;
 import app.dodb.smd.api.framework.ObjectCreator;
-import app.dodb.smd.api.metadata.DatetimeProvider;
-import app.dodb.smd.api.metadata.LocalDatetimeProvider;
 import app.dodb.smd.api.metadata.MetadataFactory;
-import app.dodb.smd.api.metadata.PrincipalProvider;
-import app.dodb.smd.api.metadata.PrincipalProviderImpl;
+import app.dodb.smd.api.metadata.datetime.DatetimeProvider;
+import app.dodb.smd.api.metadata.datetime.LocalDatetimeProvider;
+import app.dodb.smd.api.metadata.principal.PrincipalProvider;
+import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 import app.dodb.smd.api.query.PackageBasedQueryHandlerLocator;
-import app.dodb.smd.api.query.QueryBus;
 import app.dodb.smd.api.query.QueryGateway;
 import app.dodb.smd.api.query.QueryHandlerDispatcher;
 import app.dodb.smd.api.query.QueryHandlerLocator;
+import app.dodb.smd.api.query.bus.QueryBus;
+import app.dodb.smd.api.query.bus.QueryBusInterceptor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
@@ -32,17 +35,20 @@ import java.util.List;
 public class SMDConfiguration {
 
     @Bean
+    @ConditionalOnMissingBean
     public ObjectCreator objectCreator(ApplicationContext applicationContext) {
         return new SpringObjectCreator(applicationContext);
     }
 
     @Bean
-    public PrincipalProvider principalProvider() {
-        return new PrincipalProviderImpl();
+    @ConditionalOnMissingBean
+    public PrincipalProvider simplePrincipalProvider() {
+        return new SimplePrincipalProvider();
     }
 
     @Bean
-    public DatetimeProvider datetimeProvider() {
+    @ConditionalOnMissingBean
+    public DatetimeProvider localDatetimeProvider() {
         return new LocalDatetimeProvider();
     }
 
@@ -86,20 +92,20 @@ public class SMDConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public CommandGateway commandGateway(MetadataFactory metadataFactory, CommandHandlerDispatcher dispatcher) {
-        return new CommandBus(metadataFactory, dispatcher);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(EventPublisher.class)
-    public EventPublisher eventPublisher(MetadataFactory metadataFactory, EventHandlerDispatcher dispatcher) {
-        return new EventBus(metadataFactory, dispatcher);
+    public CommandGateway commandGateway(MetadataFactory metadataFactory, CommandHandlerDispatcher dispatcher, List<CommandBusInterceptor> interceptors) {
+        return new CommandBus(metadataFactory, dispatcher, interceptors);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public QueryGateway queryGateway(MetadataFactory metadataFactory, QueryHandlerDispatcher dispatcher) {
-        return new QueryBus(metadataFactory, dispatcher);
+    public EventPublisher eventPublisher(MetadataFactory metadataFactory, EventHandlerDispatcher dispatcher, List<EventBusInterceptor> interceptors) {
+        return new EventBus(metadataFactory, dispatcher, interceptors);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public QueryGateway queryGateway(MetadataFactory metadataFactory, QueryHandlerDispatcher dispatcher, List<QueryBusInterceptor> interceptors) {
+        return new QueryBus(metadataFactory, dispatcher, interceptors);
     }
 
     private static List<String> combinePackages(List<SMDProperties> properties) {

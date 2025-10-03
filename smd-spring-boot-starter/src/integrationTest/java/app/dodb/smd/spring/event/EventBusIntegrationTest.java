@@ -1,6 +1,6 @@
 package app.dodb.smd.spring.event;
 
-import app.dodb.smd.api.event.EventBus;
+import app.dodb.smd.api.event.bus.EventBus;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.builder.SpringApplicationBuilder;

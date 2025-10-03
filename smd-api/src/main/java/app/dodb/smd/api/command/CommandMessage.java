@@ -6,7 +6,7 @@ import app.dodb.smd.api.metadata.Metadata;
 
 import static java.util.Objects.requireNonNull;
 
-public record CommandMessage<R, C extends Command<R>>(MessageId messageId, C payload, Metadata metadata) implements Message<C> {
+public record CommandMessage<R, C extends Command<R>>(MessageId messageId, C payload, Metadata metadata) implements Message<C, CommandMessage<R, C>> {
 
     public static <R, C extends Command<R>> CommandMessage<R, C> from(C payload, Metadata metadata) {
         return new CommandMessage<>(MessageId.generate(), payload, metadata);
@@ -31,5 +31,10 @@ public record CommandMessage<R, C extends Command<R>>(MessageId messageId, C pay
     @Override
     public Metadata getMetadata() {
         return metadata;
+    }
+
+    @Override
+    public CommandMessage<R, C> withMetadata(Metadata metadata) {
+        return new CommandMessage<>(messageId, payload, metadata);
     }
 }
