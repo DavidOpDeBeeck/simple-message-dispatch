@@ -23,9 +23,11 @@ class EventBusIntegrationTest {
         );
 
         var event = new TestEvent();
+        var anotherEvent = new AnotherTestEvent();
         eventBus.publish(event);
+        eventBus.publish(anotherEvent);
 
-        assertThat(TestEventHandler.handledEvents).containsExactly(event);
+        assertThat(TestEventHandler.handledEvents).containsExactly(event, anotherEvent);
     }
 
     @Test
@@ -38,8 +40,10 @@ class EventBusIntegrationTest {
         );
 
         var event = new TestEvent();
+        var anotherEvent = new AnotherTestEvent();
         eventBus.publish(event);
+        eventBus.publish(anotherEvent);
 
-        assertThat(interceptor.getInterceptedEvents()).containsExactly(event);
+        assertThat(interceptor.getInterceptedEvents()).containsExactly(event, anotherEvent);
     }
 }

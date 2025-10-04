@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.4]
+
+- Fixed a bug where the logging for multiple processing groups would fail.
+
 ## [0.0.3]
 
 - Compile with Java 25 due to usage of `ScopedValue`.

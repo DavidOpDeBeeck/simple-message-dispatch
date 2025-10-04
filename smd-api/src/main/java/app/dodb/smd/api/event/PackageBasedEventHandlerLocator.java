@@ -47,11 +47,13 @@ public class PackageBasedEventHandlerLocator implements EventHandlerLocator {
             .map(AnnotatedEventHandler::from)
             .reduce(EventHandlerRegistry.empty(), EventHandlerRegistry::and);
 
+        stopwatch.stop();
+
         registry.eventHandlersByProcessingGroup().forEach((processingGroup, handlers) ->
-            LOGGER.info("Located {} event handlers for processing group '{}' in {}. Packages scanned: {}", handlers.size(), processingGroup, stopwatch.stop(), packageNames));
+            LOGGER.info("Located {} event handlers for processing group '{}' in {}. Packages scanned: {}", handlers.size(), processingGroup, stopwatch, packageNames));
 
         if (registry.eventHandlersByProcessingGroup().isEmpty()) {
-            LOGGER.info("Located 0 event handlers in {}. Packages scanned: {}", stopwatch.stop(), packageNames);
+            LOGGER.info("Located 0 event handlers in {}. Packages scanned: {}", stopwatch, packageNames);
         }
         return registry;
     }
