@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "app.dodb"
-version = "0.0.4"
+version = "0.0.5"
 
 subprojects {
     apply(plugin = "java-library")
@@ -22,6 +22,7 @@ subprojects {
         testImplementation(platform(rootProject.libs.junit.bom))
         testImplementation(rootProject.libs.junit.jupiter)
         testImplementation(rootProject.libs.assertj)
+        testImplementation(rootProject.libs.awaitility)
         testRuntimeOnly(rootProject.libs.junit.platform.launcher)
     }
 

@@ -15,8 +15,8 @@ class AnnotatedEventHandlerTest {
     void handle_withEventParameter() {
         var registry = AnnotatedEventHandler.from(new EventHandlerWithEventParameter());
 
-        assertThat(registry.eventHandlersByProcessingGroup().values())
-            .flatExtracting(list -> list)
+        assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
+            .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
             .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
             .containsExactly(tuple(EventForTest.class, MIN_VALUE, "default"));
     }
@@ -25,20 +25,30 @@ class AnnotatedEventHandlerTest {
     void handle_withProcessingGroupOnClass() {
         var registry = AnnotatedEventHandler.from(new EventHandlerWithProcessingGroupOnClass());
 
-        assertThat(registry.eventHandlersByProcessingGroup().values())
-            .flatExtracting(list -> list)
+        assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
+            .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
             .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
-            .containsExactly(tuple(EventForTest.class, MIN_VALUE, "processingGroup1"));
+            .containsExactly(tuple(EventForTest.class, MIN_VALUE, "processingGroupOnClass"));
     }
 
     @Test
     void handle_withProcessingGroupOnMethod() {
         var registry = AnnotatedEventHandler.from(new EventHandlerWithProcessingGroupOnMethod());
 
-        assertThat(registry.eventHandlersByProcessingGroup().values())
-            .flatExtracting(list -> list)
+        assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
+            .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
             .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
-            .containsExactly(tuple(EventForTest.class, MIN_VALUE, "processingGroup1"));
+            .containsExactly(tuple(EventForTest.class, MIN_VALUE, "processingGroupOnMethod"));
+    }
+
+    @Test
+    void handle_withProcessingGroupOnClassAndMethod() {
+        var registry = AnnotatedEventHandler.from(new EventHandlerWithProcessingGroupOnClassAndMethod());
+
+        assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
+            .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
+            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
+            .containsExactly(tuple(EventForTest.class, MIN_VALUE, "processingGroupOnMethod"));
     }
 
     @Test
@@ -59,7 +69,7 @@ class AnnotatedEventHandlerTest {
     void handle_withEventAndMetadataParameter() {
         var registry = AnnotatedEventHandler.from(new EventHandlerWithEventAndMetadataParameter());
 
-        assertThat(registry.eventHandlersByProcessingGroup()).hasSize(1);
+        assertThat(registry.eventHandlerRegistryByProcessingGroup()).hasSize(1);
     }
 
     @Test
@@ -87,8 +97,8 @@ class AnnotatedEventHandlerTest {
     void handle_withMultipleHandlersForSameEventAndOrder_butDifferentProcessingGroup() {
         var registry = AnnotatedEventHandler.from(new MultipleEventHandlersForSameEventAndOrderButDifferentProcessingGroup());
 
-        assertThat(registry.eventHandlersByProcessingGroup().values())
-            .flatExtracting(list -> list)
+        assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
+            .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
             .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
             .containsExactlyInAnyOrder(
                 tuple(EventForTest.class, MIN_VALUE, "processingGroup1"),
@@ -102,6 +112,7 @@ class AnnotatedEventHandlerTest {
     public record AnotherEventForTest() implements Event {
     }
 
+    @ProcessingGroup
     public static class EventHandlerWithEventParameter {
 
         @EventHandler
@@ -109,6 +120,7 @@ class AnnotatedEventHandlerTest {
         }
     }
 
+    @ProcessingGroup
     public static class EventHandlerWithEventAndMetadataParameter {
 
         @EventHandler
@@ -116,7 +128,7 @@ class AnnotatedEventHandlerTest {
         }
     }
 
-    @ProcessingGroup("processingGroup1")
+    @ProcessingGroup("processingGroupOnClass")
     public static class EventHandlerWithProcessingGroupOnClass {
 
         @EventHandler
@@ -127,7 +139,16 @@ class AnnotatedEventHandlerTest {
     public static class EventHandlerWithProcessingGroupOnMethod {
 
         @EventHandler
-        @ProcessingGroup("processingGroup1")
+        @ProcessingGroup("processingGroupOnMethod")
+        public void handle(EventForTest event) {
+        }
+    }
+
+    @ProcessingGroup("processingGroupOnClass")
+    public static class EventHandlerWithProcessingGroupOnClassAndMethod {
+
+        @EventHandler
+        @ProcessingGroup("processingGroupOnMethod")
         public void handle(EventForTest event) {
         }
     }
@@ -140,6 +161,7 @@ class AnnotatedEventHandlerTest {
         }
     }
 
+    @ProcessingGroup
     public static class MultipleEventHandlersForSameEventAndOrder {
 
         @EventHandler

@@ -16,9 +16,9 @@ public class CommandBus implements CommandGateway {
     private final CommandHandlerDispatcher dispatcher;
     private final List<CommandBusInterceptor> interceptors;
 
-    public CommandBus(MetadataFactory metadataFactory,
-                      CommandHandlerDispatcher dispatcher,
-                      List<CommandBusInterceptor> interceptors) {
+    CommandBus(MetadataFactory metadataFactory,
+               List<CommandBusInterceptor> interceptors,
+               CommandHandlerDispatcher dispatcher) {
         this.metadataFactory = requireNonNull(metadataFactory);
         this.dispatcher = requireNonNull(dispatcher);
         this.interceptors = requireNonNull(interceptors);

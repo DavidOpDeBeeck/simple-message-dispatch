@@ -17,6 +17,7 @@ dependencyResolutionManagement {
             version("reflections", "0.10.2")
             version("junit", "5.12.2")
             version("assertj", "3.27.3")
+            version("awaitility", "4.3.0")
             version("spring", "3.5.0")
 
             library("guava", "com.google.guava", "guava").versionRef("guava")
@@ -26,6 +27,7 @@ dependencyResolutionManagement {
             library("junit.jupiter", "org.junit.jupiter", "junit-jupiter").withoutVersion()
             library("junit.platform.launcher", "org.junit.platform", "junit-platform-launcher").withoutVersion()
             library("assertj", "org.assertj", "assertj-core").versionRef("assertj")
+            library("awaitility", "org.awaitility", "awaitility").versionRef("awaitility")
             library("spring.dependencies", "org.springframework.boot", "spring-boot-dependencies").versionRef("spring")
             library("spring.context", "org.springframework", "spring-context").withoutVersion()
             library("spring.autoconfigure", "org.springframework.boot", "spring-boot-autoconfigure").withoutVersion()

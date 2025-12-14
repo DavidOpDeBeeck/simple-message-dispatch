@@ -2,12 +2,14 @@ package app.dodb.smd.test;
 
 import app.dodb.smd.api.command.Command;
 import app.dodb.smd.api.command.bus.CommandBus;
+import app.dodb.smd.api.command.bus.CommandBusSpec;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.bus.EventBus;
-import app.dodb.smd.api.metadata.MetadataFactory;
+import app.dodb.smd.api.event.bus.EventBusSpec;
 import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.api.query.Query;
 import app.dodb.smd.api.query.bus.QueryBus;
+import app.dodb.smd.api.query.bus.QueryBusSpec;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,26 +18,26 @@ import static java.util.Objects.requireNonNull;
 
 public class SMDTestExtension {
 
-    private final CommandBusConfigurer commandBusConfigurer;
-    private final QueryBusConfigurer queryBusConfigurer;
-    private final EventBusConfigurer eventBusConfigurer;
+    private final CommandBusTestConfigurer commandBusTestConfigurer;
+    private final QueryBusTestConfigurer queryBusTestConfigurer;
+    private final EventBusTestConfigurer eventBusTestConfigurer;
     private final PrincipalProviderStub principalProviderStub;
     private final DatetimeProviderStub datetimeProviderStub;
     private final CommandGatewayStub commandGatewayStub;
     private final QueryGatewayStub queryGatewayStub;
     private final EventPublisherStub eventPublisherStub;
 
-    public SMDTestExtension(CommandBusConfigurer commandBusConfigurer,
-                            QueryBusConfigurer queryBusConfigurer,
-                            EventBusConfigurer eventBusConfigurer,
+    public SMDTestExtension(CommandBusTestConfigurer commandBusTestConfigurer,
+                            QueryBusTestConfigurer queryBusTestConfigurer,
+                            EventBusTestConfigurer eventBusTestConfigurer,
                             PrincipalProviderStub principalProviderStub,
                             DatetimeProviderStub datetimeProviderStub,
                             CommandGatewayStub commandGatewayStub,
                             QueryGatewayStub queryGatewayStub,
                             EventPublisherStub eventPublisherStub) {
-        this.commandBusConfigurer = requireNonNull(commandBusConfigurer);
-        this.queryBusConfigurer = requireNonNull(queryBusConfigurer);
-        this.eventBusConfigurer = requireNonNull(eventBusConfigurer);
+        this.commandBusTestConfigurer = requireNonNull(commandBusTestConfigurer);
+        this.queryBusTestConfigurer = requireNonNull(queryBusTestConfigurer);
+        this.eventBusTestConfigurer = requireNonNull(eventBusTestConfigurer);
         this.principalProviderStub = requireNonNull(principalProviderStub);
         this.datetimeProviderStub = requireNonNull(datetimeProviderStub);
         this.commandGatewayStub = requireNonNull(commandGatewayStub);
@@ -91,14 +93,23 @@ public class SMDTestExtension {
     }
 
     private CommandBus configureCommandBus() {
-        return commandBusConfigurer.configure(new MetadataFactory(principalProviderStub, datetimeProviderStub));
+        var spec = CommandBusSpec.withoutDefaults()
+            .datetime(datetimeProviderStub)
+            .principal(principalProviderStub);
+        return commandBusTestConfigurer.configure(spec);
     }
 
     private QueryBus configureQueryBus() {
-        return queryBusConfigurer.configure(new MetadataFactory(principalProviderStub, datetimeProviderStub));
+        var spec = QueryBusSpec.withoutDefaults()
+            .datetime(datetimeProviderStub)
+            .principal(principalProviderStub);
+        return queryBusTestConfigurer.configure(spec);
     }
 
     private EventBus configureEventBus() {
-        return eventBusConfigurer.configure(new MetadataFactory(principalProviderStub, datetimeProviderStub));
+        var spec = EventBusSpec.withoutDefaults()
+            .datetime(datetimeProviderStub)
+            .principal(principalProviderStub);
+        return eventBusTestConfigurer.configure(spec);
     }
 }

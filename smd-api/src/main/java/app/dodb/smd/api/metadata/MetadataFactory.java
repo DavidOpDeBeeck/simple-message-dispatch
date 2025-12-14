@@ -16,8 +16,7 @@ public class MetadataFactory {
     private final PrincipalProvider principalProvider;
     private final DatetimeProvider datetimeProvider;
 
-    public MetadataFactory(PrincipalProvider principalProvider,
-                           DatetimeProvider datetimeProvider) {
+    public MetadataFactory(PrincipalProvider principalProvider, DatetimeProvider datetimeProvider) {
         this.principalProvider = requireNonNull(principalProvider);
         this.datetimeProvider = requireNonNull(datetimeProvider);
     }

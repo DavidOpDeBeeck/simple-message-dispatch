@@ -16,9 +16,9 @@ public class QueryBus implements QueryGateway {
     private final QueryHandlerDispatcher dispatcher;
     private final List<QueryBusInterceptor> interceptors;
 
-    public QueryBus(MetadataFactory metadataFactory,
-                    QueryHandlerDispatcher dispatcher,
-                    List<QueryBusInterceptor> interceptors) {
+    QueryBus(MetadataFactory metadataFactory,
+             List<QueryBusInterceptor> interceptors,
+             QueryHandlerDispatcher dispatcher) {
         this.metadataFactory = requireNonNull(metadataFactory);
         this.dispatcher = requireNonNull(dispatcher);
         this.interceptors = requireNonNull(interceptors);

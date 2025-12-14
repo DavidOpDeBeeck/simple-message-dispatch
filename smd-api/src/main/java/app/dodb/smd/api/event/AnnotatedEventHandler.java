@@ -9,6 +9,7 @@ import com.google.common.collect.Sets;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
@@ -21,11 +22,11 @@ import static java.util.stream.Collectors.toSet;
 
 public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Method method, Class<E> eventType, int order, String processingGroup) implements EventHandlerBehaviour<E> {
 
-    public static EventHandlerRegistry from(Object object) {
+    public static ProcessingGroupRegistry from(Object object) {
         return from(new SingletonProvider<>(object));
     }
 
-    public static EventHandlerRegistry from(Provider<?> provider) {
+    public static ProcessingGroupRegistry from(Provider<?> provider) {
         Set<AnnotatedEventHandler<?>> handlers = new HashSet<>();
         Class<?> clazz = provider.getType();
 
@@ -36,7 +37,7 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
             }
         }
 
-        return EventHandlerRegistry.from(handlers);
+        return ProcessingGroupRegistry.from(handlers);
     }
 
     @SuppressWarnings("unchecked")
@@ -105,12 +106,19 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
                 """.formatted(logMethod(method), logClass(Void.TYPE), logClass(methodReturnType)));
         }
 
-        var eventType = eventParameterTypes.iterator().next();
-        int order = method.getAnnotation(EventHandler.class).order();
-        String processingGroup = getAnnotationOnMethodOrClass(method, ProcessingGroup.class)
-            .map(ProcessingGroup::value)
-            .orElse(ProcessingGroup.DEFAULT);
+        Optional<String> processingGroupOpt = getAnnotationOnMethodOrClass(method, ProcessingGroup.class).map(ProcessingGroup::value);
+        if (processingGroupOpt.isEmpty()) {
+            throw new IllegalArgumentException("""
+                Invalid event handler: no processing group found. Add @ProcessingGroup() annotation on the method or class.
+                
+                    Method:
+                    %s
+                """.formatted(logMethod(method)));
+        }
 
+        var eventType = eventParameterTypes.iterator().next();
+        var order = method.getAnnotation(EventHandler.class).order();
+        var processingGroup = processingGroupOpt.orElseThrow();
         return new AnnotatedEventHandler<>(provider, method, (Class<E>) eventType, order, processingGroup);
     }
 

@@ -1,23 +1,34 @@
-package app.dodb.smd.api.event;
+package app.dodb.smd.api.event.channel;
 
+import app.dodb.smd.api.event.AnnotatedEventHandler;
+import app.dodb.smd.api.event.Event;
+import app.dodb.smd.api.event.EventHandler;
+import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.ProcessingGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import static app.dodb.smd.api.event.ProcessingGroup.DEFAULT;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.METADATA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class EventHandlerDispatcherTest {
+class BlockingEventChannelTest {
 
     @Test
     void dispatch_withDifferentProcessingGroup() {
         var eventHandler = new EventHandlerWithDifferentProcessingGroup();
-        var dispatcher = new EventHandlerDispatcher(() -> AnnotatedEventHandler.from(eventHandler));
+        var processingGroupOne = AnnotatedEventHandler.from(eventHandler).findBy("1");
+        var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
+
+        var channel = BlockingEventChannel.usingVirtualThreads();
+        channel.subscribe(processingGroupOne);
+        channel.subscribe(processingGroupTwo);
 
         EventForTest event = new EventForTest("Hello world");
-        dispatcher.dispatch(EventMessage.from(event, METADATA));
+        channel.send(EventMessage.from(event, METADATA));
 
         assertThat(eventHandler.getMethodCalled())
             .containsOnly(1, 2);
@@ -26,10 +37,13 @@ class EventHandlerDispatcherTest {
     @Test
     void dispatch_withDifferentOrders() {
         var eventHandler = new EventHandlerWithDifferentOrders();
-        var dispatcher = new EventHandlerDispatcher(() -> AnnotatedEventHandler.from(eventHandler));
+        var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
+
+        var channel = BlockingEventChannel.usingVirtualThreads();
+        channel.subscribe(registry);
 
         EventForTest event = new EventForTest("Hello world");
-        dispatcher.dispatch(EventMessage.from(event, METADATA));
+        channel.send(EventMessage.from(event, METADATA));
 
         assertThat(eventHandler.getMethodCalled())
             .containsExactly(1, 2, 3);
@@ -37,11 +51,15 @@ class EventHandlerDispatcherTest {
 
     @Test
     void dispatch_whenEventHandlerThrowsException_thenRethrow() {
-        var dispatcher = new EventHandlerDispatcher(() -> AnnotatedEventHandler.from(new EventHandlerThatThrowsException()));
+        var eventHandler = new EventHandlerThatThrowsException();
+        var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
+
+        var channel = BlockingEventChannel.usingVirtualThreads();
+        channel.subscribe(registry);
 
         EventForTest event = new EventForTest("Hello world");
 
-        assertThatThrownBy(() -> dispatcher.dispatch(EventMessage.from(event, METADATA)))
+        assertThatThrownBy(() -> channel.send(EventMessage.from(event, METADATA)))
             .isInstanceOf(RuntimeException.class)
             .hasMessage("this is an exception");
     }
@@ -70,6 +88,7 @@ class EventHandlerDispatcherTest {
         }
     }
 
+    @ProcessingGroup
     public static class EventHandlerWithDifferentOrders {
 
         private final List<Integer> methodCalled = new ArrayList<>();
@@ -94,6 +113,7 @@ class EventHandlerDispatcherTest {
         }
     }
 
+    @ProcessingGroup
     public static class EventHandlerThatThrowsException {
 
         @EventHandler
