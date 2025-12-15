@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.5]
+
+- Command-, Event-, and QueryBus are now configured via `XXXBusSpec`.
+- Introduced `EventChannel` to support blocking and non-blocking execution.
+- `@ProcessingGroup` is now mandatory for all event handlers.
+
 ## [0.0.4]
 
 - Fixed a bug where the logging for multiple processing groups would fail.
