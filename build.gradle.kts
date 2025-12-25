@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "app.dodb"
-version = "0.0.5"
+version = "0.0.6"
 
 subprojects {
     apply(plugin = "java-library")

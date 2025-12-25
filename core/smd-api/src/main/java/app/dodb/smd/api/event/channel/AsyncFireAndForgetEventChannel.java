@@ -10,20 +10,20 @@ import java.util.concurrent.ExecutorService;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor;
 
-public class NonBlockingEventChannel implements EventChannel {
+public class AsyncFireAndForgetEventChannel implements EventChannel {
 
-    public static NonBlockingEventChannel usingVirtualThreads() {
-        return new NonBlockingEventChannel(newVirtualThreadPerTaskExecutor());
+    public static AsyncFireAndForgetEventChannel usingVirtualThreads() {
+        return new AsyncFireAndForgetEventChannel(newVirtualThreadPerTaskExecutor());
     }
 
-    public static NonBlockingEventChannel using(ExecutorService executorService) {
-        return new NonBlockingEventChannel(executorService);
+    public static AsyncFireAndForgetEventChannel using(ExecutorService executorService) {
+        return new AsyncFireAndForgetEventChannel(executorService);
     }
 
     private final ExecutorService executorService;
     private final List<EventChannelListener> listeners = new ArrayList<>();
 
-    private NonBlockingEventChannel(ExecutorService executorService) {
+    private AsyncFireAndForgetEventChannel(ExecutorService executorService) {
         this.executorService = requireNonNull(executorService);
     }
 

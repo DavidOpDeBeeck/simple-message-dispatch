@@ -10,7 +10,7 @@ public interface ProcessingGroupsConfigurer {
         return spec -> configurers.forEach(configurer -> configurer.configure(spec));
     }
 
-    static ProcessingGroupsConfigurer defaultBlocking() {
-        return spec -> spec.anyProcessingGroup().blocking();
+    static ProcessingGroupsConfigurer defaultSynchronous() {
+        return spec -> spec.anyProcessingGroup().sync();
     }
 }

@@ -13,20 +13,20 @@ import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor;
 
-public class BlockingEventChannel implements EventChannel {
+public class AsyncAwaitingEventChannel implements EventChannel {
 
-    public static BlockingEventChannel usingVirtualThreads() {
-        return new BlockingEventChannel(newVirtualThreadPerTaskExecutor());
+    public static AsyncAwaitingEventChannel usingVirtualThreads() {
+        return new AsyncAwaitingEventChannel(newVirtualThreadPerTaskExecutor());
     }
 
-    public static BlockingEventChannel using(ExecutorService executorService) {
-        return new BlockingEventChannel(executorService);
+    public static AsyncAwaitingEventChannel using(ExecutorService executorService) {
+        return new AsyncAwaitingEventChannel(executorService);
     }
 
     private final ExecutorService executorService;
     private final List<EventChannelListener> listeners = new ArrayList<>();
 
-    private BlockingEventChannel(ExecutorService executorService) {
+    private AsyncAwaitingEventChannel(ExecutorService executorService) {
         this.executorService = requireNonNull(executorService);
     }
 

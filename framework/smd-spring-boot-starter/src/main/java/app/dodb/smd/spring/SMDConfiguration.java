@@ -28,6 +28,7 @@ import org.springframework.context.annotation.Bean;
 
 import java.util.List;
 
+import static app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer.defaultSynchronous;
 import static app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer.multi;
 
 @AutoConfiguration
@@ -72,7 +73,7 @@ public class SMDConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ProcessingGroupsConfigurer defaultProcessingGroupsConfigurer() {
-        return spec -> spec.anyProcessingGroup().blocking();
+        return defaultSynchronous();
     }
 
     @Bean

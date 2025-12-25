@@ -13,9 +13,9 @@ import java.util.List;
 import static app.dodb.smd.api.event.ProcessingGroup.DEFAULT;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.METADATA;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class NonBlockingEventChannelTest {
+class AsyncAwaitingEventChannelTest {
 
     @Test
     void dispatch_withDifferentProcessingGroup() {
@@ -23,16 +23,15 @@ class NonBlockingEventChannelTest {
         var processingGroupOne = AnnotatedEventHandler.from(eventHandler).findBy("1");
         var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
 
-        var channel = NonBlockingEventChannel.usingVirtualThreads();
+        var channel = AsyncAwaitingEventChannel.usingVirtualThreads();
         channel.subscribe(processingGroupOne);
         channel.subscribe(processingGroupTwo);
 
         EventForTest event = new EventForTest("Hello world");
         channel.send(EventMessage.from(event, METADATA));
 
-        await().untilAsserted(() ->
-            assertThat(eventHandler.getMethodCalled())
-                .containsOnly(1, 2));
+        assertThat(eventHandler.getMethodCalled())
+            .containsOnly(1, 2);
     }
 
     @Test
@@ -40,49 +39,29 @@ class NonBlockingEventChannelTest {
         var eventHandler = new EventHandlerWithDifferentOrders();
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
-        var channel = NonBlockingEventChannel.usingVirtualThreads();
+        var channel = AsyncAwaitingEventChannel.usingVirtualThreads();
         channel.subscribe(registry);
 
         EventForTest event = new EventForTest("Hello world");
         channel.send(EventMessage.from(event, METADATA));
 
-        await().untilAsserted(() ->
-            assertThat(eventHandler.getMethodCalled())
-                .containsOnly(1, 2, 3));
+        assertThat(eventHandler.getMethodCalled())
+            .containsExactly(1, 2, 3);
     }
 
     @Test
-    void dispatch_whenEventHandlerThrowsExceptionInSameProcessingGroup_thenStopProcessingGroupExecution() {
-        var eventHandler = new EventHandlerThatThrowsExceptionInSameProcessingGroup();
+    void dispatch_whenEventHandlerThrowsException_thenRethrow() {
+        var eventHandler = new EventHandlerThatThrowsException();
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
-        var channel = NonBlockingEventChannel.usingVirtualThreads();
+        var channel = AsyncAwaitingEventChannel.usingVirtualThreads();
         channel.subscribe(registry);
 
         EventForTest event = new EventForTest("Hello world");
-        channel.send(EventMessage.from(event, METADATA));
 
-        await().untilAsserted(() ->
-            assertThat(eventHandler.getMethodCalled())
-                .containsOnly(1));
-    }
-
-    @Test
-    void dispatch_whenEventHandlerThrowsExceptionInDifferentProcessingGroup_thenStopProcessingGroupExecution() {
-        var eventHandler = new EventHandlerThatThrowsExceptionInDifferentProcessingGroup();
-        var processingGroupOne = AnnotatedEventHandler.from(eventHandler).findBy("1");
-        var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
-
-        var channel = NonBlockingEventChannel.usingVirtualThreads();
-        channel.subscribe(processingGroupOne);
-        channel.subscribe(processingGroupTwo);
-
-        EventForTest event = new EventForTest("Hello world");
-        channel.send(EventMessage.from(event, METADATA));
-
-        await().untilAsserted(() ->
-            assertThat(eventHandler.getMethodCalled())
-                .containsOnly(1, 2));
+        assertThatThrownBy(() -> channel.send(EventMessage.from(event, METADATA)))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessage("this is an exception");
     }
 
     public record EventForTest(String value) implements Event {
@@ -135,45 +114,11 @@ class NonBlockingEventChannelTest {
     }
 
     @ProcessingGroup
-    public static class EventHandlerThatThrowsExceptionInSameProcessingGroup {
+    public static class EventHandlerThatThrowsException {
 
-        private final List<Integer> methodCalled = new ArrayList<>();
-
-        @EventHandler(order = 1)
+        @EventHandler
         public void handle(EventForTest event) {
-            methodCalled.add(1);
             throw new RuntimeException("this is an exception");
-        }
-
-        @EventHandler(order = 2)
-        public void handle2(EventForTest event) {
-            methodCalled.add(2);
-        }
-
-        public List<Integer> getMethodCalled() {
-            return methodCalled;
-        }
-    }
-
-    public static class EventHandlerThatThrowsExceptionInDifferentProcessingGroup {
-
-        private final List<Integer> methodCalled = new ArrayList<>();
-
-        @ProcessingGroup("1")
-        @EventHandler(order = 1)
-        public void handle(EventForTest event) {
-            methodCalled.add(1);
-            throw new RuntimeException("this is an exception");
-        }
-
-        @ProcessingGroup("2")
-        @EventHandler(order = 2)
-        public void handle2(EventForTest event) {
-            methodCalled.add(2);
-        }
-
-        public List<Integer> getMethodCalled() {
-            return methodCalled;
         }
     }
 }

@@ -15,7 +15,7 @@ import static app.dodb.smd.api.metadata.MetadataTestConstants.METADATA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class BlockingEventChannelTest {
+class SynchronousEventChannelTest {
 
     @Test
     void dispatch_withDifferentProcessingGroup() {
@@ -23,7 +23,7 @@ class BlockingEventChannelTest {
         var processingGroupOne = AnnotatedEventHandler.from(eventHandler).findBy("1");
         var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
 
-        var channel = BlockingEventChannel.usingVirtualThreads();
+        var channel = new SynchronousEventChannel();
         channel.subscribe(processingGroupOne);
         channel.subscribe(processingGroupTwo);
 
@@ -39,7 +39,7 @@ class BlockingEventChannelTest {
         var eventHandler = new EventHandlerWithDifferentOrders();
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
-        var channel = BlockingEventChannel.usingVirtualThreads();
+        var channel = new SynchronousEventChannel();
         channel.subscribe(registry);
 
         EventForTest event = new EventForTest("Hello world");
@@ -54,7 +54,7 @@ class BlockingEventChannelTest {
         var eventHandler = new EventHandlerThatThrowsException();
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
-        var channel = BlockingEventChannel.usingVirtualThreads();
+        var channel = new SynchronousEventChannel();
         channel.subscribe(registry);
 
         EventForTest event = new EventForTest("Hello world");

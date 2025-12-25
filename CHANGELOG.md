@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.6]
+
+- Rework EventChannel to support synchronous (same-thread), asynchronous (awaiting and fire-and-forget) behavior
+
 ## [0.0.5]
 
 - Command-, Event-, and QueryBus are now configured via `XXXBusSpec`.

@@ -1,14 +1,17 @@
 package app.dodb.smd.api.event.bus;
 
 import app.dodb.smd.api.event.ProcessingGroupLocator;
-import app.dodb.smd.api.event.channel.BlockingEventChannel;
+import app.dodb.smd.api.event.channel.AsyncAwaitingEventChannel;
+import app.dodb.smd.api.event.channel.AsyncFireAndForgetEventChannel;
 import app.dodb.smd.api.event.channel.EventChannel;
-import app.dodb.smd.api.event.channel.NonBlockingEventChannel;
+import app.dodb.smd.api.event.channel.SynchronousEventChannel;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.api.metadata.datetime.DatetimeProvider;
 import app.dodb.smd.api.metadata.datetime.LocalDatetimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,11 +19,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 
-import static app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer.defaultBlocking;
+import static app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer.defaultSynchronous;
 import static java.util.Objects.requireNonNull;
 
 public class EventBusSpec {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventBusSpec.class);
 
     public static EventBusSpec withDefaults() {
         return new EventBusSpec()
@@ -61,7 +67,7 @@ public class EventBusSpec {
     }
 
     public EventBusSpec processingGroups(ProcessingGroupLocator locator) {
-        return processingGroups(locator, defaultBlocking());
+        return processingGroups(locator, defaultSynchronous());
     }
 
     public EventBusSpec processingGroups(ProcessingGroupLocator locator, ProcessingGroupsConfigurer processingGroupsConfigurer) {
@@ -93,6 +99,9 @@ public class EventBusSpec {
                 var processingGroupSpec = processingGroupSpecByName.getOrDefault(processingGroup, defaultProcessingGroupSpec);
                 var eventChannel = processingGroupSpec.channel;
                 if (eventChannel == null) {
+                    LOGGER.warn("Processing group '{}' has no configuration. Event handlers in this group will not be executed. " +
+                        "Please register an EventChannel for this processing group, or define a default configuration using " +
+                        "ProcessingGroupsSpec.anyProcessingGroup().", processingGroup);
                     return;
                 }
 
@@ -122,31 +131,55 @@ public class EventBusSpec {
 
     public static class ProcessingGroupSpec {
 
-        private final BlockingEventChannel blockingEventChannel = BlockingEventChannel.usingVirtualThreads();
-        private final NonBlockingEventChannel nonBlockingEventChannel = NonBlockingEventChannel.usingVirtualThreads();
-
         private final ProcessingGroupsSpec parent;
+        private final SynchronousEventChannel synchronousEventChannel;
         private EventChannel channel;
 
         private ProcessingGroupSpec(ProcessingGroupsSpec parent) {
             this.parent = requireNonNull(parent);
+            this.synchronousEventChannel = new SynchronousEventChannel();
         }
 
         public ProcessingGroupsSpec disabled() {
             return parent;
         }
 
-        public ProcessingGroupsSpec blocking() {
-            return channel(blockingEventChannel);
+        public ProcessingGroupsSpec sync() {
+            return channel(synchronousEventChannel);
         }
 
-        public ProcessingGroupsSpec nonBlocking() {
-            return this.channel(nonBlockingEventChannel);
+        public ProcessingGroupAsyncChannelSpec async() {
+            return new ProcessingGroupAsyncChannelSpec(this);
         }
 
         public ProcessingGroupsSpec channel(EventChannel channel) {
             this.channel = channel;
             return parent;
+        }
+    }
+
+    public static class ProcessingGroupAsyncChannelSpec {
+
+        private final ProcessingGroupSpec parent;
+
+        private ProcessingGroupAsyncChannelSpec(ProcessingGroupSpec parent) {
+            this.parent = requireNonNull(parent);
+        }
+
+        public ProcessingGroupsSpec await() {
+            return parent.channel(AsyncAwaitingEventChannel.usingVirtualThreads());
+        }
+
+        public ProcessingGroupsSpec await(ExecutorService executorService) {
+            return parent.channel(AsyncAwaitingEventChannel.using(executorService));
+        }
+
+        public ProcessingGroupsSpec fireAndForget() {
+            return parent.channel(AsyncFireAndForgetEventChannel.usingVirtualThreads());
+        }
+
+        public ProcessingGroupsSpec fireAndForget(ExecutorService executorService) {
+            return parent.channel(AsyncFireAndForgetEventChannel.using(executorService));
         }
     }
 }
