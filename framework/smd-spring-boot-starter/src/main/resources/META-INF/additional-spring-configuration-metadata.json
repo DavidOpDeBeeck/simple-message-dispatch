@@ -1,0 +1,99 @@
+{
+  "properties": [
+    {
+      "name": "smd.event-store.scheduling.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether event store polling is enabled.",
+      "defaultValue": true
+    },
+    {
+      "name": "smd.event-store.scheduling.initial-delay",
+      "type": "java.time.Duration",
+      "description": "Delay before the first poll after startup.",
+      "defaultValue": "10s"
+    },
+    {
+      "name": "smd.event-store.scheduling.polling-delay",
+      "type": "java.time.Duration",
+      "description": "Fixed delay between successive polls.",
+      "defaultValue": "5s"
+    },
+    {
+      "name": "smd.event-store.scheduling.thread-pool-size",
+      "type": "java.lang.Integer",
+      "description": "Number of threads in the polling scheduler thread pool.",
+      "defaultValue": 1
+    },
+    {
+      "name": "smd.event-store.processing.max-retries",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of retries before a failed event is abandoned.",
+      "defaultValue": 3
+    },
+    {
+      "name": "smd.event-store.processing.batch-size",
+      "type": "java.lang.Integer",
+      "description": "Number of events fetched per poll cycle.",
+      "defaultValue": 100
+    },
+    {
+      "name": "smd.event-store.processing.gap-timeout",
+      "type": "java.time.Duration",
+      "description": "How long to wait for a gap in sequence numbers to fill before skipping.",
+      "defaultValue": "5m"
+    },
+    {
+      "name": "smd.event-store.processing.retry-backoff.strategy",
+      "type": "app.dodb.smd.spring.SMDEventStoreProperties$ProcessingProperties$Strategy",
+      "description": "Backoff strategy for failed event retries.",
+      "defaultValue": "EXPONENTIAL"
+    },
+    {
+      "name": "smd.event-store.processing.retry-backoff.fixed-delay",
+      "type": "java.time.Duration",
+      "description": "Delay between retries when using the FIXED strategy."
+    },
+    {
+      "name": "smd.event-store.processing.retry-backoff.initial-delay",
+      "type": "java.time.Duration",
+      "description": "Initial delay for LINEAR and EXPONENTIAL strategies.",
+      "defaultValue": "1s"
+    },
+    {
+      "name": "smd.event-store.processing.retry-backoff.multiplier",
+      "type": "java.lang.Double",
+      "description": "Multiplier applied per retry for the EXPONENTIAL strategy.",
+      "defaultValue": 5.0
+    },
+    {
+      "name": "smd.event-store.processing.retry-backoff.increment",
+      "type": "java.time.Duration",
+      "description": "Delay increment per retry for the LINEAR strategy."
+    },
+    {
+      "name": "smd.event-store.processing.retry-backoff.max-delay",
+      "type": "java.time.Duration",
+      "description": "Upper bound on retry delay for LINEAR and EXPONENTIAL strategies.",
+      "defaultValue": "5m"
+    }
+  ],
+  "hints": [
+    {
+      "name": "smd.event-store.processing.retry-backoff.strategy",
+      "values": [
+        {
+          "value": "FIXED",
+          "description": "Constant delay between retries."
+        },
+        {
+          "value": "LINEAR",
+          "description": "Delay increases by a fixed increment per retry."
+        },
+        {
+          "value": "EXPONENTIAL",
+          "description": "Delay increases by a multiplier per retry."
+        }
+      ]
+    }
+  ]
+}

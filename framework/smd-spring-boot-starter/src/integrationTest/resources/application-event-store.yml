@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    name: smd
+    url: jdbc:tc:postgresql:///smd?TC_INITSCRIPT=db/smd/event-store-schema.sql
+    username: test_user
+    password: test_password
+
+smd:
+  event-store:
+    enabled: true
+
+logging:
+  level:
+    app.dodb: DEBUG

@@ -3,6 +3,7 @@ package app.dodb.smd.spring.metadata.example;
 import app.dodb.smd.api.command.CommandHandler;
 import app.dodb.smd.api.event.EventPublisher;
 import app.dodb.smd.api.metadata.Metadata;
+import app.dodb.smd.api.metadata.MetadataValue;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import static java.lang.Thread.sleep;
 public class CreateAccountCommandHandler {
 
     public static final List<Metadata> handledMetadata = new ArrayList<>();
+    public static final List<String> metadataValues = new ArrayList<>();
 
     private final EventPublisher eventPublisher;
 
@@ -23,10 +25,11 @@ public class CreateAccountCommandHandler {
     }
 
     @CommandHandler
-    public UUID handle(CreateAccountCommand command, Metadata metadata) throws InterruptedException {
+    public UUID handle(CreateAccountCommand command, Metadata metadata, @MetadataValue("key") String value) throws InterruptedException {
         // We sleep to force a different timestamp for the AccountCreatedEvent
         sleep(100);
         handledMetadata.add(metadata);
+        metadataValues.add(value);
         eventPublisher.publish(new AccountCreatedEvent(command.name()));
         return UUID.randomUUID();
     }

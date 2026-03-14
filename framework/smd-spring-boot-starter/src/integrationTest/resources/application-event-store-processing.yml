@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    name: smd
+    url: jdbc:tc:postgresql:///smd?TC_INITSCRIPT=db/smd/event-store-schema.sql
+    username: test_user
+    password: test_password
+
+smd:
+  event-store:
+    enabled: true
+    scheduling:
+      enabled: true
+      initial-delay: 500ms
+      polling-delay: 200ms
+    processing:
+      max-retries: 2
+      batch-size: 10
+      gap-timeout: 2s
+      retry-backoff:
+        strategy: FIXED
+        fixed-delay: 200ms
+
+logging:
+  level:
+    app.dodb: DEBUG
