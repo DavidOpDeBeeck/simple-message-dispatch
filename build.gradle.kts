@@ -18,6 +18,11 @@ subprojects {
         withJavadocJar()
     }
 
+    repositories {
+        mavenCentral()
+        mavenLocal()
+    }
+
     dependencies {
         testImplementation(platform(rootProject.libs.junit.bom))
         testImplementation(rootProject.libs.junit.jupiter)
