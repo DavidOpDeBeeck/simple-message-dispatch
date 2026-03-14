@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.7]
+
+- Rework Metadata to use `Instant` timestamp, add `parentMessageId` and custom properties.
+- Rename `DatetimeProvider` to `TimeProvider`.
+- Rework Message API: `getXxx()` to `xxx()`.
+- Add `@MetadataValue` annotation for handler parameter injection.
+- Add `MessageArgumentBinder` for flexible handler argument resolution.
+- Add `TransactionProvider` and transactional bus interceptors.
+- Add `smd-event-store` module with JDBC event storage, polling, token tracking, gap detection, and configurable retry/backoff.
+- Add Spring Boot autoconfiguration for event store and transactions.
+- Migrate to Gradle version catalog.
+- Upgrade Gradle wrapper 9.1.0 to 9.4.0, Spring Boot 3.5.0 to 4.0.3.
+
 ## [0.0.6]
 
 - Rework EventChannel to support synchronous (same-thread), asynchronous (awaiting and fire-and-forget) behavior
