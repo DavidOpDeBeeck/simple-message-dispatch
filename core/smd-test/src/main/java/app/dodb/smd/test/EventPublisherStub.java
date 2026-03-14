@@ -18,7 +18,7 @@ public class EventPublisherStub implements EventPublisher {
 
     @Override
     public <E extends Event> void publish(EventMessage<E> eventMessage) {
-        events.add(eventMessage.getPayload());
+        events.add(eventMessage.payload());
     }
 
     public List<Event> getEvents() {

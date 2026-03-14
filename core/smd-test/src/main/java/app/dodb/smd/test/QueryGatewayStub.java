@@ -19,7 +19,7 @@ public class QueryGatewayStub implements QueryGateway {
 
     @Override
     public <R, Q extends Query<R>> R send(QueryMessage<R, Q> queryMessage) {
-        return send(queryMessage.getPayload());
+        return send(queryMessage.payload());
     }
 
     public <R, Q extends Query<R>> void stubQuery(Q query, R response) {

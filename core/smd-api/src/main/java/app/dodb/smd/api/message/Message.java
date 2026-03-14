@@ -4,11 +4,13 @@ import app.dodb.smd.api.metadata.Metadata;
 
 public interface Message<P, M extends Message<P, M>> {
 
-    MessageId getMessageId();
+    MessageId messageId();
 
-    P getPayload();
+    P payload();
 
-    Metadata getMetadata();
+    Metadata metadata();
 
-    M withMetadata(Metadata metadata);
+    M withMetadata(Metadata newMetadata);
+
+    M andMetadata(Metadata newMetadata);
 }

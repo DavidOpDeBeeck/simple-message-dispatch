@@ -12,13 +12,13 @@ import app.dodb.smd.spring.test.scope.SMDTestScopeConfiguration;
 import app.dodb.smd.spring.test.scope.annotation.SMDTestScope;
 import app.dodb.smd.test.CommandBusTestConfigurer;
 import app.dodb.smd.test.CommandGatewayStub;
-import app.dodb.smd.test.DatetimeProviderStub;
 import app.dodb.smd.test.EventBusTestConfigurer;
 import app.dodb.smd.test.EventPublisherStub;
 import app.dodb.smd.test.PrincipalProviderStub;
 import app.dodb.smd.test.QueryBusTestConfigurer;
 import app.dodb.smd.test.QueryGatewayStub;
 import app.dodb.smd.test.SMDTestExtension;
+import app.dodb.smd.test.TimeProviderStub;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
 import org.springframework.context.annotation.Bean;
@@ -85,7 +85,7 @@ public class SMDStubsConfiguration {
         QueryBusTestConfigurer queryBusTestConfigurer,
         EventBusTestConfigurer eventBusTestConfigurer,
         PrincipalProviderStub principalProviderStub,
-        DatetimeProviderStub datetimeProviderStub,
+        TimeProviderStub datetimeProviderStub,
         CommandGatewayStub commandGatewayStub,
         QueryGatewayStub queryGatewayStub,
         EventPublisherStub eventPublisherStub

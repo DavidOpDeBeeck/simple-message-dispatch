@@ -7,19 +7,86 @@ import java.lang.annotation.Target;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.Optional;
+import java.util.Set;
 
 import static app.dodb.smd.api.utils.TypeUtils.getAnnotationOnMethodOrClass;
+import static app.dodb.smd.api.utils.TypeUtils.haveSameBounds;
 import static app.dodb.smd.api.utils.TypeUtils.resolveGenericType;
+import static app.dodb.smd.api.utils.TypeUtils.unrelatedTypes;
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
+import static java.util.Collections.emptySet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TypeUtilsTest {
 
     @Test
-    void resolveGenericType_withWrappedType() {
+    void haveSameBounds_whenBothTypeVariablesHaveSameBounds_returnsTrue() {
+        var type = resolveGenericType(UnboundSubType.class, Root.class);
+        var anotherType = resolveGenericType(AnotherUnboundSubType.class, Root.class);
+        assertThat(haveSameBounds(type, anotherType)).isTrue();
+    }
+
+    @Test
+    void haveSameBounds_whenBothTypeVariablesHaveDifferentBounds_returnsFalse() {
+        var type = resolveGenericType(UnboundSubType.class, Root.class);
+        var anotherType = resolveGenericType(BoundSubType.class, Root.class);
+        assertThat(haveSameBounds(type, anotherType)).isFalse();
+    }
+
+    @Test
+    void haveSameBounds_whenBothAreParameterizedTypesWithSameBounds_returnsTrue() {
+        var type = resolveGenericType(ParameterizedUnboundSubType.class, Root.class);
+        var anotherType = resolveGenericType(AnotherParameterizedUnboundSubType.class, Root.class);
+        assertThat(haveSameBounds(type, anotherType)).isTrue();
+    }
+
+    @Test
+    void haveSameBounds_whenBothAreParameterizedTypesWithDifferentRawTypes_returnsFalse() {
+        var type = resolveGenericType(ParameterizedUnboundSubType.class, Root.class);
+        var anotherType = resolveGenericType(DifferentlyParameterizedUnboundSubType.class, Root.class);
+        assertThat(haveSameBounds(type, anotherType)).isFalse();
+    }
+
+    @Test
+    void haveSameBounds_whenBothAreParameterizedTypesWithDifferentTypeArgumentBounds_returnsFalse() {
+        var type = resolveGenericType(ParameterizedUnboundSubType.class, Root.class);
+        var anotherType = resolveGenericType(ParameterizedBoundSubType.class, Root.class);
+        assertThat(haveSameBounds(type, anotherType)).isFalse();
+    }
+
+    @Test
+    void haveSameBounds_whenBothAreSameClass_returnsTrue() {
+        assertThat(haveSameBounds(Object.class, Object.class)).isTrue();
+    }
+
+    @Test
+    void haveSameBounds_whenBothAreDifferentClasses_returnsFalse() {
+        assertThat(haveSameBounds(String.class, Object.class)).isFalse();
+    }
+
+    @Test
+    void haveSameBounds_whenOneIsTypeVariableAndOtherIsClass_returnsFalse() {
+        var typeVariable = resolveGenericType(UnboundSubType.class, Root.class);
+        assertThat(haveSameBounds(typeVariable, String.class)).isFalse();
+        assertThat(haveSameBounds(String.class, typeVariable)).isFalse();
+    }
+
+    @Test
+    void haveSameBounds_whenBothNull_returnsTrue() {
+        assertThat(haveSameBounds(null, null)).isTrue();
+    }
+
+    @Test
+    void haveSameBounds_whenOneIsNull_returnsFalse() {
+        assertThat(haveSameBounds(String.class, null)).isFalse();
+        assertThat(haveSameBounds(null, String.class)).isFalse();
+    }
+
+    @Test
+    void resolveGenericType_whenTypeIsWrapperClass_returnsPrimitiveType() {
         assertThat(resolveGenericType(BooleanSubType.class, Root.class)).isEqualTo(Boolean.TYPE);
         assertThat(resolveGenericType(ByteSubType.class, Root.class)).isEqualTo(Byte.TYPE);
         assertThat(resolveGenericType(ShortSubType.class, Root.class)).isEqualTo(Short.TYPE);
@@ -32,69 +99,124 @@ class TypeUtilsTest {
     }
 
     @Test
-    void resolveGenericType_withInheritance() {
+    void resolveGenericType_whenTypeIsInherited_returnsResolvedType() {
         assertThat(resolveGenericType(SubType.class, Root.class)).isEqualTo(String.class);
         assertThat(resolveGenericType(SubSubType.class, Root.class)).isEqualTo(String.class);
     }
 
     @Test
-    void resolveGenericType_withParameterizedTypes() {
+    void resolveGenericType_whenTypeIsParameterized_returnsResolvedType() {
         assertThat(resolveGenericType(OptionalSubType.class, Root.class)).isEqualTo(parameterizedType(Optional.class, String.class));
         assertThat(resolveGenericType(OptionalGenericSubSubType.class, Root.class)).isEqualTo(parameterizedType(Optional.class, String.class));
     }
 
     @Test
-    void resolveGenericType_withUnboundGenericType() {
-        assertThatThrownBy(() -> resolveGenericType(Root.class, Root.class))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Type parameter (T) on (app.dodb.smd.api.utils.TypeUtilsTest$Root) must be bound to a concrete type");
-        assertThatThrownBy(() -> resolveGenericType(UnboundSubType.class, Root.class))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessage("Type parameter (T) on (app.dodb.smd.api.utils.TypeUtilsTest$UnboundSubType) must be bound to a concrete type");
-    }
-
-    @Test
-    void resolveGenericType_withoutInheritance() {
+    void resolveGenericType_whenClassDoesNotImplementGenericType_throwsIllegalArgumentException() {
         assertThatThrownBy(() -> resolveGenericType(OtherRoot.class, Root.class))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("Class (app.dodb.smd.api.utils.TypeUtilsTest$OtherRoot) must implement or extend type (app.dodb.smd.api.utils.TypeUtilsTest$Root)");
     }
 
     @Test
-    void resolveGenericType_withoutGenerics() {
+    void resolveGenericType_whenGenericTypeHasNoTypeParameters_throwsIllegalArgumentException() {
         assertThatThrownBy(() -> resolveGenericType(RootWithoutGeneric.class, RootWithoutGeneric.class))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageStartingWith("One type parameter must be present on (app.dodb.smd.api.utils.TypeUtilsTest$RootWithoutGeneric)");
     }
 
     @Test
-    void resolveGenericType_withMultipleGenerics() {
+    void resolveGenericType_whenGenericTypeHasMultipleTypeParameters_throwsIllegalArgumentException() {
         assertThatThrownBy(() -> resolveGenericType(RootWithMultipleGenerics.class, RootWithMultipleGenerics.class))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageStartingWith("One type parameter must be present on (app.dodb.smd.api.utils.TypeUtilsTest$RootWithMultipleGenerics)");
     }
 
     @Test
-    void getAnnotationOnMethodOrClass_withAnnotationOnClass() throws NoSuchMethodException {
+    void getAnnotationOnMethodOrClass_whenAnnotationIsOnClass_returnsClassAnnotation() throws NoSuchMethodException {
         var method = ClassWithAnnotationOnClass.class.getMethod("method");
-        var expected = ClassWithAnnotationOnClass.class.getAnnotation(MarkerAnnotation.class);
+        var classAnnotation = ClassWithAnnotationOnClass.class.getAnnotation(MarkerAnnotation.class);
 
-        assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).contains(expected);
+        assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).contains(classAnnotation);
     }
 
     @Test
-    void getAnnotationOnMethodOrClass_withAnnotationOnMethod() throws NoSuchMethodException {
+    void getAnnotationOnMethodOrClass_whenAnnotationIsOnMethod_returnsMethodAnnotation() throws NoSuchMethodException {
         var method = ClassWithAnnotationOnMethod.class.getMethod("method");
-        var expected = method.getAnnotation(MarkerAnnotation.class);
+        var methodAnnotation = method.getAnnotation(MarkerAnnotation.class);
 
-        assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).contains(expected);
+        assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).contains(methodAnnotation);
     }
 
     @Test
-    void getAnnotationOnMethodOrClass_withoutAnnotation() throws NoSuchMethodException {
+    void getAnnotationOnMethodOrClass_whenAnnotationIsOnBothClassAndMethod_returnsMethodAnnotation() throws NoSuchMethodException {
+        var method = ClassWithAnnotationOnClassAndMethod.class.getMethod("method");
+        var methodAnnotation = method.getAnnotation(MarkerAnnotation.class);
+
+        assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).contains(methodAnnotation);
+    }
+
+    @Test
+    void getAnnotationOnMethodOrClass_whenNoAnnotationPresent_returnsEmpty() throws NoSuchMethodException {
         var method = ClassWithoutAnnotation.class.getMethod("method");
 
         assertThat(getAnnotationOnMethodOrClass(method, MarkerAnnotation.class)).isEmpty();
+    }
+
+    @Test
+    void unrelatedTypes_whenNoRelationshipExists_returnsAllOfLeft() {
+        var left = Set.<Class<?>>of(String.class, Integer.class);
+        var right = Set.of(Runnable.class, CharSequence.class);
+
+        assertThat(unrelatedTypes(left, right)).containsExactlyInAnyOrder(Integer.class);
+    }
+
+    @Test
+    void unrelatedTypes_whenLeftIsSupertype_removesLeftEntry() {
+        var left = Set.<Class<?>>of(Number.class, String.class);
+        var right = Set.<Class<?>>of(Integer.class);
+
+        assertThat(unrelatedTypes(left, right)).containsExactly(String.class);
+    }
+
+    @Test
+    void unrelatedTypes_whenLeftIsSubtype_removesLeftEntry() {
+        var left = Set.<Class<?>>of(Integer.class, String.class);
+        var right = Set.<Class<?>>of(Number.class);
+
+        assertThat(unrelatedTypes(left, right)).containsExactly(String.class);
+    }
+
+    @Test
+    void unrelatedTypes_whenLeftIsSameType_removesLeftEntry() {
+        var left = Set.<Class<?>>of(String.class, Integer.class);
+        var right = Set.<Class<?>>of(String.class);
+
+        assertThat(unrelatedTypes(left, right)).containsExactly(Integer.class);
+    }
+
+    @Test
+    void unrelatedTypes_whenAllLeftEntriesAreRelated_returnsEmptySet() {
+        var left = Set.<Class<?>>of(Number.class, Integer.class);
+        var right = Set.<Class<?>>of(Integer.class, Number.class);
+
+        assertThat(unrelatedTypes(left, right)).isEmpty();
+    }
+
+    @Test
+    void unrelatedTypes_whenLeftIsEmpty_returnsEmptySet() {
+        assertThat(unrelatedTypes(emptySet(), Set.of(String.class))).isEmpty();
+    }
+
+    @Test
+    void unrelatedTypes_whenRightIsEmpty_returnsAllOfLeft() {
+        var left = Set.<Class<?>>of(String.class, Integer.class);
+
+        assertThat(unrelatedTypes(left, emptySet())).containsExactlyInAnyOrder(String.class, Integer.class);
+    }
+
+    @Test
+    void unrelatedTypes_whenBothEmpty_returnsEmptySet() {
+        assertThat(unrelatedTypes(emptySet(), emptySet())).isEmpty();
     }
 
     interface Root<T> {
@@ -136,6 +258,24 @@ class TypeUtilsTest {
     interface UnboundSubType<T> extends Root<T> {
     }
 
+    interface ParameterizedUnboundSubType<T> extends Root<UnboundSubType<T>> {
+    }
+
+    interface AnotherUnboundSubType<T> extends Root<T> {
+    }
+
+    interface AnotherParameterizedUnboundSubType<T> extends Root<UnboundSubType<T>> {
+    }
+
+    interface DifferentlyParameterizedUnboundSubType<T> extends Root<AnotherUnboundSubType<T>> {
+    }
+
+    interface BoundSubType<T extends String> extends Root<T> {
+    }
+
+    interface ParameterizedBoundSubType<T extends String> extends Root<UnboundSubType<T>> {
+    }
+
     record OptionalSubType() implements Root<Optional<String>> {
     }
 
@@ -162,6 +302,14 @@ class TypeUtilsTest {
     }
 
     private static class ClassWithAnnotationOnMethod {
+
+        @MarkerAnnotation
+        public void method() {
+        }
+    }
+
+    @MarkerAnnotation
+    private static class ClassWithAnnotationOnClassAndMethod {
 
         @MarkerAnnotation
         public void method() {

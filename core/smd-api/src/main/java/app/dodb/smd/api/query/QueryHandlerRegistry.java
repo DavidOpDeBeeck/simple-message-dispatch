@@ -23,7 +23,7 @@ public record QueryHandlerRegistry(Set<AnnotatedQueryHandler<?, ?>> queryHandler
 
     @SuppressWarnings("unchecked")
     public <R, C extends Query<R>> QueryHandlerBehaviour<R, C> findBy(QueryMessage<R, C> queryMessage) {
-        Object payload = queryMessage.getPayload();
+        Object payload = queryMessage.payload();
         return queryHandlers.stream()
             .filter(queryHandler -> queryHandler.queryType().isAssignableFrom(payload.getClass()))
             .map(queryHandler -> (QueryHandlerBehaviour<R, C>) queryHandler)

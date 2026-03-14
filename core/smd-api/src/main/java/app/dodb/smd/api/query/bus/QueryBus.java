@@ -35,7 +35,7 @@ public class QueryBus implements QueryGateway {
     @Override
     public <R, Q extends Query<R>> R send(QueryMessage<R, Q> queryMessage) {
         var chain = QueryBusInterceptorChain.<R, Q>create(dispatcher::dispatch, interceptors);
-        return metadataFactory.createScope(queryMessage.getMetadata()).run(metadata -> {
+        return metadataFactory.createScope(queryMessage.metadata()).run(metadata -> {
             return chain.proceed(queryMessage.withMetadata(metadata));
         });
     }

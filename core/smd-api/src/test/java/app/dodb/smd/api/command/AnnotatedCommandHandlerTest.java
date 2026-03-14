@@ -2,7 +2,11 @@ package app.dodb.smd.api.command;
 
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
+import app.dodb.smd.api.metadata.MetadataValue;
+import app.dodb.smd.api.metadata.principal.SimplePrincipal;
 import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -12,6 +16,13 @@ class AnnotatedCommandHandlerTest {
     @Test
     void handle_withCommandParameter() {
         var registry = AnnotatedCommandHandler.from(new CommandHandlerWithCommandParameter());
+
+        assertThat(registry.commandHandlers()).hasSize(1);
+    }
+
+    @Test
+    void handle_withGenericCommandParameter() {
+        var registry = AnnotatedCommandHandler.from(new CommandHandlerWithGenericCommandParameter());
 
         assertThat(registry.commandHandlers()).hasSize(1);
     }
@@ -28,6 +39,27 @@ class AnnotatedCommandHandlerTest {
         var registry = AnnotatedCommandHandler.from(new CommandHandlerWithCommandAndMetadataParameter());
 
         assertThat(registry.commandHandlers()).hasSize(1);
+    }
+
+    @Test
+    void handle_withCommandAndMetadataValueParameter() {
+        var registry = AnnotatedCommandHandler.from(new CommandHandlerWithCommandAndMetadataValueParameter());
+
+        assertThat(registry.commandHandlers()).hasSize(1);
+    }
+
+    @Test
+    void handle_withoutMetadataValueAnnotation() {
+        assertThatThrownBy(() -> AnnotatedCommandHandler.from(new CommandHandlerWithoutMetadataValueAnnotation()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid command handler: metadata value parameter must be annotated with @MetadataValue.");
+    }
+
+    @Test
+    void handle_withIncorrectMetadataValueAnnotation() {
+        assertThatThrownBy(() -> AnnotatedCommandHandler.from(new CommandHandlerWithIncorrectMetadataValueAnnotation()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid command handler: only parameters of type String can be annotated with @MetadataValue.");
     }
 
     @Test
@@ -68,6 +100,9 @@ class AnnotatedCommandHandlerTest {
     public record CommandForTest() implements Command<String> {
     }
 
+    public record GenericCommandForTest<T>() implements Command<T> {
+    }
+
     public record AnotherCommandForTest() implements Command<Integer> {
     }
 
@@ -82,10 +117,42 @@ class AnnotatedCommandHandlerTest {
         }
     }
 
+    public static class CommandHandlerWithGenericCommandParameter {
+
+        @CommandHandler
+        public <R> R handle(Command<R> command) {
+            return null;
+        }
+    }
+
     public static class CommandHandlerWithCommandAndMetadataParameter {
 
         @CommandHandler
-        public String handle(CommandForTest command, Metadata metadata, MessageId messageId) {
+        public String handle(CommandForTest command, Metadata metadata, MessageId messageId, SimplePrincipal principal, Instant timestamp) {
+            return "";
+        }
+    }
+
+    public static class CommandHandlerWithCommandAndMetadataValueParameter {
+
+        @CommandHandler
+        public String handle(CommandForTest command, @MetadataValue("value") String value) {
+            return "";
+        }
+    }
+
+    public static class CommandHandlerWithoutMetadataValueAnnotation {
+
+        @CommandHandler
+        public String handle(CommandForTest command, String value) {
+            return "";
+        }
+    }
+
+    public static class CommandHandlerWithIncorrectMetadataValueAnnotation {
+
+        @CommandHandler
+        public String handle(CommandForTest command, @MetadataValue("property") Metadata metadata) {
             return "";
         }
     }

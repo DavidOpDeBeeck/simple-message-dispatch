@@ -2,7 +2,11 @@ package app.dodb.smd.api.event;
 
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
+import app.dodb.smd.api.metadata.MetadataValue;
+import app.dodb.smd.api.metadata.principal.SimplePrincipal;
 import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
 
 import static java.lang.Integer.MIN_VALUE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,6 +77,27 @@ class AnnotatedEventHandlerTest {
     }
 
     @Test
+    void handle_withEventAndMetadataValueParameter() {
+        var registry = AnnotatedEventHandler.from(new EventHandlerWithEventAndMetadataValueParameter());
+
+        assertThat(registry.eventHandlerRegistryByProcessingGroup()).hasSize(1);
+    }
+
+    @Test
+    void handle_withoutMetadataValueAnnotation() {
+        assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithoutMetadataValueAnnotation()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid event handler: metadata value parameter must be annotated with @MetadataValue.");
+    }
+
+    @Test
+    void handle_withIncorrectMetadataValueAnnotation() {
+        assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithIncorrectMetadataValueAnnotation()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid event handler: only parameters of type String can be annotated with @MetadataValue.");
+    }
+
+    @Test
     void handle_withoutParameters() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithoutParameters()))
             .isInstanceOf(IllegalArgumentException.class)
@@ -124,7 +149,31 @@ class AnnotatedEventHandlerTest {
     public static class EventHandlerWithEventAndMetadataParameter {
 
         @EventHandler
-        public void handle(EventForTest event, Metadata metadata, MessageId messageId) {
+        public void handle(EventForTest event, Metadata metadata, MessageId messageId, SimplePrincipal principal, Instant timestamp) {
+        }
+    }
+
+    @ProcessingGroup
+    public static class EventHandlerWithEventAndMetadataValueParameter {
+
+        @EventHandler
+        public void handle(EventForTest event, @MetadataValue("value") String value) {
+        }
+    }
+
+    @ProcessingGroup
+    public static class EventHandlerWithoutMetadataValueAnnotation {
+
+        @EventHandler
+        public void handle(EventForTest event, String value) {
+        }
+    }
+
+    @ProcessingGroup
+    public static class EventHandlerWithIncorrectMetadataValueAnnotation {
+
+        @EventHandler
+        public void handle(EventForTest event, @MetadataValue("property") Metadata metadata) {
         }
     }
 

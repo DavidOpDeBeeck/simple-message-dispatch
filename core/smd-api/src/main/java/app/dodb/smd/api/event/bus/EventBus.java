@@ -28,17 +28,21 @@ public class EventBus implements EventPublisher {
     @Override
     public <E extends Event> void publish(E event) {
         var chain = EventBusInterceptorChain.<E>create(this::dispatch, interceptors);
-        metadataFactory.createScope().run(metadata -> {
-            chain.proceed(EventMessage.from(event, metadata));
-        });
+
+        metadataFactory.createScope().run(
+            metadata -> EventMessage.from(event, metadata),
+            chain::proceed
+        );
     }
 
     @Override
     public <E extends Event> void publish(EventMessage<E> eventMessage) {
         var chain = EventBusInterceptorChain.<E>create(this::dispatch, interceptors);
-        metadataFactory.createScope(eventMessage.getMetadata()).run(metadata -> {
-            chain.proceed(eventMessage.withMetadata(metadata));
-        });
+
+        metadataFactory.createScope(eventMessage.metadata()).run(
+            eventMessage::withMetadata,
+            chain::proceed
+        );
     }
 
     private <E extends Event> void dispatch(EventMessage<E> eventMessage) {

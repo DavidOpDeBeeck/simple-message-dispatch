@@ -1,9 +1,9 @@
 package app.dodb.smd.spring.test;
 
-import app.dodb.smd.api.metadata.datetime.DatetimeProvider;
+import app.dodb.smd.api.metadata.datetime.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
-import app.dodb.smd.test.DatetimeProviderStub;
 import app.dodb.smd.test.PrincipalProviderStub;
+import app.dodb.smd.test.TimeProviderStub;
 import org.springframework.aop.scope.ScopedProxyUtils;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanDefinitionHolder;
@@ -39,10 +39,10 @@ public class SMDStubsPostProcessor implements BeanFactoryPostProcessor {
     }
 
     private static void registerDatetimeProviderStub(BeanDefinitionRegistry registry, ConfigurableListableBeanFactory beanFactory) {
-        RootBeanDefinition beanDefinition = new RootBeanDefinition(DatetimeProviderStub.class);
+        RootBeanDefinition beanDefinition = new RootBeanDefinition(TimeProviderStub.class);
         beanDefinition.setPrimary(true);
         beanDefinition.setScope(SCOPE_SMD_TEST);
-        beanDefinition.getConstructorArgumentValues().addIndexedArgumentValue(0, beanFactory.getBean(DatetimeProvider.class));
+        beanDefinition.getConstructorArgumentValues().addIndexedArgumentValue(0, beanFactory.getBean(TimeProvider.class));
 
         BeanDefinitionHolder beanDefinitionHolder = new BeanDefinitionHolder(beanDefinition, "scopedTarget.datetimeProviderStub");
         BeanDefinition scopedBeanDefinition = ScopedProxyUtils.createScopedProxy(beanDefinitionHolder, registry, true).getBeanDefinition();

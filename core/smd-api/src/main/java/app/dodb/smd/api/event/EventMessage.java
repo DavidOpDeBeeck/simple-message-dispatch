@@ -19,22 +19,12 @@ public record EventMessage<E extends Event>(MessageId messageId, E payload, Meta
     }
 
     @Override
-    public MessageId getMessageId() {
-        return messageId;
+    public EventMessage<E> withMetadata(Metadata newMetadata) {
+        return new EventMessage<>(messageId, payload, newMetadata);
     }
 
     @Override
-    public E getPayload() {
-        return payload;
-    }
-
-    @Override
-    public Metadata getMetadata() {
-        return metadata;
-    }
-
-    @Override
-    public EventMessage<E> withMetadata(Metadata metadata) {
-        return new EventMessage<>(messageId, payload, metadata);
+    public EventMessage<E> andMetadata(Metadata newMetadata) {
+        return new EventMessage<>(messageId, payload, metadata.and(newMetadata));
     }
 }

@@ -10,8 +10,10 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toMap;
 import static org.reflections.scanners.Scanners.MethodsAnnotated;
 
 public class PackageBasedProcessingGroupLocator implements ProcessingGroupLocator {
@@ -49,12 +51,15 @@ public class PackageBasedProcessingGroupLocator implements ProcessingGroupLocato
 
         stopwatch.stop();
 
-        registry.eventHandlerRegistryByProcessingGroup().forEach((processingGroup, handlerRegistry) ->
-            LOGGER.info("Located {} event handlers for processing group '{}' in {}. Packages scanned: {}", handlerRegistry.eventHandlers().size(), processingGroup, stopwatch, packageNames));
-
         if (registry.eventHandlerRegistryByProcessingGroup().isEmpty()) {
             LOGGER.info("Located 0 event handlers in {}. Packages scanned: {}", stopwatch, packageNames);
+        } else {
+            var handlerCountByProcessingGroup = registry.eventHandlerRegistryByProcessingGroup().entrySet().stream()
+                .collect(toMap(Map.Entry::getKey, entry -> entry.getValue().eventHandlers().size()));
+            var totalHandlerCount = handlerCountByProcessingGroup.values().stream().mapToInt(Integer::intValue).sum();
+            LOGGER.info("Located {} event handlers in {}. Processing groups: {}. Packages scanned: {}", totalHandlerCount, stopwatch, handlerCountByProcessingGroup, packageNames);
         }
+
         return registry;
     }
 }

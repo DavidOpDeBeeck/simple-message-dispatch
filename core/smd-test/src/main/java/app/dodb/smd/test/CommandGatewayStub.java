@@ -19,7 +19,7 @@ public class CommandGatewayStub implements CommandGateway {
 
     @Override
     public <R, C extends Command<R>> R send(CommandMessage<R, C> commandMessage) {
-        return send(commandMessage.getPayload());
+        return send(commandMessage.payload());
     }
 
     public <R, C extends Command<R>> void stubCommand(C command, R response) {

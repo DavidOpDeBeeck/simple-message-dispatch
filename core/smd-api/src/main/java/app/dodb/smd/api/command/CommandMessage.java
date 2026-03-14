@@ -19,22 +19,12 @@ public record CommandMessage<R, C extends Command<R>>(MessageId messageId, C pay
     }
 
     @Override
-    public MessageId getMessageId() {
-        return messageId;
+    public CommandMessage<R, C> withMetadata(Metadata newMetadata) {
+        return new CommandMessage<>(messageId, payload, newMetadata);
     }
 
     @Override
-    public C getPayload() {
-        return payload;
-    }
-
-    @Override
-    public Metadata getMetadata() {
-        return metadata;
-    }
-
-    @Override
-    public CommandMessage<R, C> withMetadata(Metadata metadata) {
-        return new CommandMessage<>(messageId, payload, metadata);
+    public CommandMessage<R, C> andMetadata(Metadata newMetadata) {
+        return new CommandMessage<>(messageId, payload, metadata.and(newMetadata));
     }
 }

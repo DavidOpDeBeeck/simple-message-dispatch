@@ -11,7 +11,7 @@ import app.dodb.smd.api.query.Query;
 import app.dodb.smd.api.query.bus.QueryBus;
 import app.dodb.smd.api.query.bus.QueryBusSpec;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 import static java.util.Objects.requireNonNull;
@@ -22,7 +22,7 @@ public class SMDTestExtension {
     private final QueryBusTestConfigurer queryBusTestConfigurer;
     private final EventBusTestConfigurer eventBusTestConfigurer;
     private final PrincipalProviderStub principalProviderStub;
-    private final DatetimeProviderStub datetimeProviderStub;
+    private final TimeProviderStub datetimeProviderStub;
     private final CommandGatewayStub commandGatewayStub;
     private final QueryGatewayStub queryGatewayStub;
     private final EventPublisherStub eventPublisherStub;
@@ -31,7 +31,7 @@ public class SMDTestExtension {
                             QueryBusTestConfigurer queryBusTestConfigurer,
                             EventBusTestConfigurer eventBusTestConfigurer,
                             PrincipalProviderStub principalProviderStub,
-                            DatetimeProviderStub datetimeProviderStub,
+                            TimeProviderStub datetimeProviderStub,
                             CommandGatewayStub commandGatewayStub,
                             QueryGatewayStub queryGatewayStub,
                             EventPublisherStub eventPublisherStub) {
@@ -58,8 +58,8 @@ public class SMDTestExtension {
         return this;
     }
 
-    public SMDTestExtension stubTimestamp(LocalDateTime timestamp) {
-        this.datetimeProviderStub.stubLocalDateTime(timestamp);
+    public SMDTestExtension stubTimestamp(Instant timestamp) {
+        this.datetimeProviderStub.stubTime(timestamp);
         return this;
     }
 

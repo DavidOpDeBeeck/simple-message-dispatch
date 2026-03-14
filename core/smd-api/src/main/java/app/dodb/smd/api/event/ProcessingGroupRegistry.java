@@ -13,7 +13,6 @@ import java.util.stream.Stream;
 
 import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.collectingAndThen;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
@@ -27,7 +26,12 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
 
     public static ProcessingGroupRegistry from(Set<AnnotatedEventHandler<?>> eventHandlers) {
         var eventHandlerRegistryByProcessingGroup = eventHandlers.stream()
-            .collect(groupingBy(EventHandlerBehaviour::processingGroup, collectingAndThen(toList(), EventHandlerRegistry::new)));
+            .collect(groupingBy(EventHandlerBehaviour::processingGroup, toList()))
+            .entrySet().stream()
+            .collect(toMap(
+                Map.Entry::getKey,
+                entry -> new EventHandlerRegistry(entry.getKey(), entry.getValue())
+            ));
         return new ProcessingGroupRegistry(eventHandlerRegistryByProcessingGroup);
     }
 
@@ -37,7 +41,7 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
     }
 
     public EventHandlerRegistry findBy(String processingGroup) {
-        return eventHandlerRegistryByProcessingGroup.getOrDefault(processingGroup, EventHandlerRegistry.empty());
+        return eventHandlerRegistryByProcessingGroup.getOrDefault(processingGroup, EventHandlerRegistry.empty(processingGroup));
     }
 
     public ProcessingGroupRegistry combine(ProcessingGroupRegistry other) {
@@ -80,16 +84,16 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
         });
     }
 
-    public record EventHandlerRegistry(List<AnnotatedEventHandler<?>> eventHandlers) implements EventChannelListener {
+    public record EventHandlerRegistry(String processingGroup, List<AnnotatedEventHandler<?>> eventHandlers) implements EventChannelListener {
 
-        public static EventHandlerRegistry empty() {
-            return new EventHandlerRegistry(emptyList());
+        public static EventHandlerRegistry empty(String processingGroup) {
+            return new EventHandlerRegistry(processingGroup, emptyList());
         }
 
         @Override
         @SuppressWarnings("unchecked")
         public <E extends Event> void on(EventMessage<E> eventMessage) {
-            var payload = eventMessage.getPayload();
+            var payload = eventMessage.payload();
 
             eventHandlers.stream()
                 .filter(eventHandler -> eventHandler.eventType().isAssignableFrom(payload.getClass()))
@@ -100,7 +104,7 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
 
         public EventHandlerRegistry combine(EventHandlerRegistry registry) {
             var combined = CollectionUtils.combine(eventHandlers, registry.eventHandlers);
-            return new EventHandlerRegistry(combined);
+            return new EventHandlerRegistry(processingGroup, combined);
         }
     }
 }

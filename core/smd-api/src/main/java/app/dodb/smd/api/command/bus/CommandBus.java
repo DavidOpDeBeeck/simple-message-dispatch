@@ -35,7 +35,7 @@ public class CommandBus implements CommandGateway {
     @Override
     public <R, C extends Command<R>> R send(CommandMessage<R, C> commandMessage) {
         var chain = CommandBusInterceptorChain.<R, C>create(dispatcher::dispatch, interceptors);
-        return metadataFactory.createScope(commandMessage.getMetadata()).run(metadata -> {
+        return metadataFactory.createScope(commandMessage.metadata()).run(metadata -> {
             return chain.proceed(commandMessage.withMetadata(metadata));
         });
     }

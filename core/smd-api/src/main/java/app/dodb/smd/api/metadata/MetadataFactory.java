@@ -1,6 +1,8 @@
 package app.dodb.smd.api.metadata;
 
-import app.dodb.smd.api.metadata.datetime.DatetimeProvider;
+import app.dodb.smd.api.message.Message;
+import app.dodb.smd.api.message.MessageId;
+import app.dodb.smd.api.metadata.datetime.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 
 import java.util.function.Consumer;
@@ -11,14 +13,15 @@ import static java.util.Objects.requireNonNull;
 
 public class MetadataFactory {
 
-    private static final ScopedValue<Metadata> SCOPED_METADATA = ScopedValue.newInstance();
+    private static final ScopedValue<Metadata> PARENT_METADATA = ScopedValue.newInstance();
+    private static final ScopedValue<MessageId> PARENT_MESSAGE_ID = ScopedValue.newInstance();
 
     private final PrincipalProvider principalProvider;
-    private final DatetimeProvider datetimeProvider;
+    private final TimeProvider timeProvider;
 
-    public MetadataFactory(PrincipalProvider principalProvider, DatetimeProvider datetimeProvider) {
+    public MetadataFactory(PrincipalProvider principalProvider, TimeProvider timeProvider) {
         this.principalProvider = requireNonNull(principalProvider);
-        this.datetimeProvider = requireNonNull(datetimeProvider);
+        this.timeProvider = requireNonNull(timeProvider);
     }
 
     public MetadataScope createScope() {
@@ -30,9 +33,11 @@ public class MetadataFactory {
     }
 
     private Metadata determineMetadata() {
-        return SCOPED_METADATA.isBound()
-            ? new Metadata(SCOPED_METADATA.get().principal(), datetimeProvider.now())
-            : new Metadata(principalProvider.get(), datetimeProvider.now());
+        var parentMessageId = PARENT_MESSAGE_ID.isBound() ? PARENT_MESSAGE_ID.get() : null;
+        var parentMetadata = PARENT_METADATA.isBound() ? PARENT_METADATA.get() : null;
+        return parentMetadata == null
+            ? new Metadata(principalProvider.get(), timeProvider.now(), parentMessageId)
+            : new Metadata(parentMetadata.principal(), timeProvider.now(), parentMessageId, parentMetadata.properties());
     }
 
     public record MetadataScope(Supplier<Metadata> metadataSupplier) {
@@ -41,15 +46,18 @@ public class MetadataFactory {
             requireNonNull(metadataSupplier);
         }
 
-        public void run(Consumer<Metadata> consumer) {
+        public <P, M extends Message<P, M>> void run(Function<Metadata, M> messageCreator, Consumer<M> consumer) {
             Metadata metadata = metadataSupplier.get();
-            ScopedValue.where(SCOPED_METADATA, metadata)
-                .run(() -> consumer.accept(metadata));
+            ScopedValue.where(PARENT_METADATA, metadata)
+                .run(() -> {
+                    var message = messageCreator.apply(metadata);
+                    ScopedValue.where(PARENT_MESSAGE_ID, message.messageId()).run(() -> consumer.accept(message));
+                });
         }
 
         public <T> T run(Function<Metadata, T> function) {
             Metadata metadata = metadataSupplier.get();
-            return ScopedValue.where(SCOPED_METADATA, metadata)
+            return ScopedValue.where(PARENT_METADATA, metadata)
                 .call(() -> function.apply(metadata));
         }
     }

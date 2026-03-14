@@ -6,8 +6,8 @@ import app.dodb.smd.api.event.channel.AsyncFireAndForgetEventChannel;
 import app.dodb.smd.api.event.channel.EventChannel;
 import app.dodb.smd.api.event.channel.SynchronousEventChannel;
 import app.dodb.smd.api.metadata.MetadataFactory;
-import app.dodb.smd.api.metadata.datetime.DatetimeProvider;
-import app.dodb.smd.api.metadata.datetime.LocalDatetimeProvider;
+import app.dodb.smd.api.metadata.datetime.SystemTimeProvider;
+import app.dodb.smd.api.metadata.datetime.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 import org.slf4j.Logger;
@@ -30,7 +30,7 @@ public class EventBusSpec {
 
     public static EventBusSpec withDefaults() {
         return new EventBusSpec()
-            .datetime(new LocalDatetimeProvider())
+            .datetime(new SystemTimeProvider())
             .principal(new SimplePrincipalProvider());
     }
 
@@ -41,14 +41,14 @@ public class EventBusSpec {
     private EventBusSpec() {
     }
 
-    private DatetimeProvider datetimeProvider;
+    private TimeProvider timeProvider;
     private PrincipalProvider principalProvider;
     private final List<EventBusInterceptor> interceptors = new ArrayList<>();
     private final Set<EventChannel> eventChannels = new LinkedHashSet<>();
     private ProcessingGroupsSpec processingGroupsSpec;
 
-    public EventBusSpec datetime(DatetimeProvider datetimeProvider) {
-        this.datetimeProvider = requireNonNull(datetimeProvider);
+    public EventBusSpec datetime(TimeProvider timeProvider) {
+        this.timeProvider = requireNonNull(timeProvider);
         return this;
     }
 
@@ -78,7 +78,7 @@ public class EventBusSpec {
 
     public EventBus create() {
         processingGroupsSpec.configure(this);
-        return new EventBus(new MetadataFactory(principalProvider, datetimeProvider), interceptors, eventChannels);
+        return new EventBus(new MetadataFactory(principalProvider, timeProvider), interceptors, eventChannels);
     }
 
     public static class ProcessingGroupsSpec {
@@ -102,7 +102,7 @@ public class EventBusSpec {
                     LOGGER.warn("Processing group '{}' has no configuration. Event handlers in this group will not be executed. " +
                         "Please register an EventChannel for this processing group, or define a default configuration using " +
                         "ProcessingGroupsSpec.anyProcessingGroup().", processingGroup);
-                    return;
+                    continue;
                 }
 
                 var listener = processingGroupRegistry.findBy(processingGroup);

@@ -23,7 +23,7 @@ public record CommandHandlerRegistry(Set<AnnotatedCommandHandler<?, ?>> commandH
 
     @SuppressWarnings("unchecked")
     public <R, C extends Command<R>> CommandHandlerBehaviour<R, C> findBy(CommandMessage<R, C> commandMessage) {
-        Object payload = commandMessage.getPayload();
+        Object payload = commandMessage.payload();
         return commandHandlers.stream()
             .filter(commandHandler -> commandHandler.commandType().isAssignableFrom(payload.getClass()))
             .map(commandHandler -> (CommandHandlerBehaviour<R, C>) commandHandler)
