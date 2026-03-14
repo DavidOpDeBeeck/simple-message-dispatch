@@ -3,8 +3,8 @@ package app.dodb.smd.api.command.bus;
 import app.dodb.smd.api.command.CommandHandlerDispatcher;
 import app.dodb.smd.api.command.CommandHandlerLocator;
 import app.dodb.smd.api.metadata.MetadataFactory;
-import app.dodb.smd.api.metadata.datetime.DatetimeProvider;
-import app.dodb.smd.api.metadata.datetime.LocalDatetimeProvider;
+import app.dodb.smd.api.metadata.datetime.SystemTimeProvider;
+import app.dodb.smd.api.metadata.datetime.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 
@@ -17,7 +17,7 @@ public class CommandBusSpec {
 
     public static CommandBusSpec withDefaults() {
         return new CommandBusSpec()
-            .datetime(new LocalDatetimeProvider())
+            .datetime(new SystemTimeProvider())
             .principal(new SimplePrincipalProvider());
     }
 
@@ -28,13 +28,13 @@ public class CommandBusSpec {
     private CommandBusSpec() {
     }
 
-    private DatetimeProvider datetimeProvider;
+    private TimeProvider timeProvider;
     private PrincipalProvider principalProvider;
     private CommandHandlerDispatcher dispatcher;
     private final List<CommandBusInterceptor> interceptors = new ArrayList<>();
 
-    public CommandBusSpec datetime(DatetimeProvider datetimeProvider) {
-        this.datetimeProvider = requireNonNull(datetimeProvider);
+    public CommandBusSpec datetime(TimeProvider timeProvider) {
+        this.timeProvider = requireNonNull(timeProvider);
         return this;
     }
 
@@ -58,6 +58,6 @@ public class CommandBusSpec {
     }
 
     public CommandBus create() {
-        return new CommandBus(new MetadataFactory(principalProvider, datetimeProvider), interceptors, dispatcher);
+        return new CommandBus(new MetadataFactory(principalProvider, timeProvider), interceptors, dispatcher);
     }
 }
