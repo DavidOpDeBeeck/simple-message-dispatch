@@ -5,17 +5,37 @@
 **Simple Message Dispatch (SMD)** is a lightweight Java library designed to support **CQRS** and **event-driven** applications. It is **framework agnostic** by design, with dedicated support for *
 *Spring Boot** provided via an integration module.
 
-## Artifacts
+## Table of Contents
 
-| Artifact                       | Description                                |
-|--------------------------------|--------------------------------------------|
-| `smd-api`                      | Framework agnostic building blocks         |
-| `smd-event-store`              | Event store with JDBC storage and polling  |
-| `smd-test`                     | Utilities for unit tests                   |
-| `smd-spring-boot-starter`      | Spring Boot integration                    |
-| `smd-spring-boot-starter-test` | Spring Boot test support                   |
+- [Installation](#installation)
+- [Modules](#modules)
+- [Core Concepts](#core-concepts)
+    - [Messages](#messages)
+    - [Handlers](#handlers)
+    - [Handler Method Parameters](#handler-method-parameters)
+    - [Bus Interceptors](#bus-interceptors)
+- [Framework-Agnostic Usage](#framework-agnostic-usage)
+    - [Wiring the Buses](#wiring-the-buses)
+    - [Registering Interceptors](#registering-interceptors)
+    - [Configuring Event Channels](#configuring-event-channels)
+    - [Dispatching Messages](#dispatching-messages)
+- [Spring Boot Integration](#spring-boot-integration)
+    - [Enabling Autoconfiguration](#enabling-autoconfiguration)
+    - [Registering Handlers as Beans](#registering-handlers-as-beans)
+    - [Registering Interceptors (Spring Boot)](#registering-interceptors-spring-boot)
+    - [Dispatching Messages (Spring Boot)](#dispatching-messages-spring-boot)
+    - [Configuring Event Channels (Spring Boot)](#configuring-event-channels-spring-boot)
+- [Event Store](#event-store)
+    - [Framework-Agnostic Setup](#framework-agnostic-setup)
+    - [Spring Boot Setup](#spring-boot-setup)
+    - [Schema Migration](#schema-migration)
+- [Testing](#testing)
+    - [Unit Tests with Stubs](#unit-tests-with-stubs)
+    - [Spring Boot Integration Tests](#spring-boot-integration-tests)
+- [Changelog](#changelog)
+- [License](#license)
 
-## Gradle Setup
+## Installation
 
 ```kotlin
 repositories {
@@ -36,26 +56,19 @@ dependencies {
 }
 ```
 
-## Example Usage
+## Modules
 
-The examples below walk through building a simple account service. Each section builds on the previous one.
+| Module                         | Description                               |
+|--------------------------------|-------------------------------------------|
+| `smd-api`                      | Framework agnostic building blocks        |
+| `smd-event-store`              | Event store with JDBC storage and polling |
+| `smd-test`                     | Utilities for unit tests                  |
+| `smd-spring-boot-starter`      | Spring Boot integration                   |
+| `smd-spring-boot-starter-test` | Spring Boot test support                  |
 
-| #  | Topic                                                                            | Section     |
-|----|----------------------------------------------------------------------------------|-------------|
-| 1  | [Define your messages](#1-define-your-messages)                                  | Core        |
-| 2  | [Write handlers](#2-write-handlers)                                              | Core        |
-| 3  | [Wire the buses (framework-agnostic)](#3-wire-the-buses-framework-agnostic)      | Core        |
-| 4  | [Bus interceptors](#4-bus-interceptors)                                          | Core        |
-| 5  | [Enable autoconfiguration](#5-spring-boot--enable-autoconfiguration)             | Spring Boot |
-| 6  | [Register handlers as beans](#6-spring-boot--register-handlers-as-beans)         | Spring Boot |
-| 7  | [Dispatch messages](#7-spring-boot--dispatch-messages)                           | Spring Boot |
-| 8  | [Configure event channels](#8-spring-boot--configure-event-channels)             | Spring Boot |
-| 9  | [Framework-agnostic setup](#9-event-store--framework-agnostic-setup)             | Event Store |
-| 10 | [Spring Boot setup](#10-event-store--spring-boot-setup)                          | Event Store |
-| 11 | [Unit tests with stubs](#11-testing--unit-tests-with-stubs)                      | Testing     |
-| 12 | [Spring Boot integration tests](#12-testing--spring-boot-integration-tests)      | Testing     |
+## Core Concepts
 
-### 1. Define your messages
+### Messages
 
 SMD has three message types. Commands and queries declare their return type via a generic parameter. Events have no return type.
 
@@ -73,7 +86,7 @@ public record AccountCreated(UUID accountId, String name) implements Event {
 }
 ```
 
-### 2. Write handlers
+### Handlers
 
 Each handler is a plain class with an annotated method. SMD resolves the message type from the method parameter.
 
@@ -123,7 +136,7 @@ public class GetAccountBalanceHandler {
 }
 ```
 
-#### Handler method parameters
+### Handler Method Parameters
 
 Besides the payload (the `Command`, `Query`, or `Event` itself), handler methods can declare additional parameters to receive context from the message. SMD resolves each parameter by type:
 
@@ -149,7 +162,27 @@ public void on(AccountCreated event, Principal principal, Instant timestamp) { .
 public int handle(GetAccountBalance query, @MetadataValue("tenantId") String tenantId) { ... }
 ```
 
-### 3. Wire the buses (framework-agnostic)
+### Bus Interceptors
+
+Each bus supports an interceptor chain that wraps message handling. Interceptors receive the message and a chain to call `proceed()` on:
+
+```java
+public class LoggingCommandInterceptor implements CommandBusInterceptor {
+
+    @Override
+    public <R, C extends Command<R>> R intercept(CommandMessage<R, C> message, CommandBusInterceptorChain<R, C> chain) {
+        System.out.println("Handling " + message.payload().getClass().getSimpleName());
+        return chain.proceed(message);
+    }
+}
+```
+
+The same pattern applies to `QueryBusInterceptor` and `EventBusInterceptor`. See [Registering Interceptors](#registering-interceptors) for framework-agnostic usage
+and [Registering Interceptors (Spring Boot)](#registering-interceptors-spring-boot) for Spring Boot.
+
+## Framework-Agnostic Usage
+
+### Wiring the Buses
 
 Without Spring Boot, you assemble buses yourself using the spec builders. SMD discovers handler classes via package scanning and uses an `ObjectCreator` to instantiate them. The built-in
 `ConstructorBasedObjectCreator` works for handlers with a no-arg constructor. For handlers that need dependencies, provide your own implementation.
@@ -170,6 +203,31 @@ var queryBus = QueryBusSpec.withDefaults()
     .queryHandlers(new PackageBasedQueryHandlerLocator(packages, objectCreator))
     .create();
 ```
+
+### Registering Interceptors
+
+Pass interceptors when building the bus:
+
+```java
+var commandBus = CommandBusSpec.withDefaults()
+        .commandHandlers(locator)
+        .interceptors(new LoggingCommandInterceptor())
+        .create();
+```
+
+SMD also provides transactional interceptors (`TransactionalCommandBusInterceptor`, `TransactionalQueryBusInterceptor`, `TransactionalEventBusInterceptor`) that wrap handler execution in a
+transaction. They require a `TransactionProvider`:
+
+```java
+var transactionProvider = new MyTransactionProvider();
+
+var commandBus = CommandBusSpec.withDefaults()
+        .commandHandlers(locator)
+        .interceptors(new TransactionalCommandBusInterceptor(transactionProvider), new LoggingCommandInterceptor())
+        .create();
+```
+
+### Configuring Event Channels
 
 By default, all processing groups use synchronous dispatch (handlers run on the publishing thread). You can configure this per group or set a default for all groups:
 
@@ -193,52 +251,18 @@ var eventBus = EventBusSpec.withDefaults()
 
 You can also provide a fully custom `EventChannel` implementation via `.channel(myChannel)`.
 
-Then send messages through the bus:
+### Dispatching Messages
+
+Send messages directly through the bus:
 
 ```java
 UUID id = commandBus.send(new CreateAccount("Alice"));
 int balance = queryBus.send(new GetAccountBalance(id));
 ```
 
-### 4. Bus interceptors
+## Spring Boot Integration
 
-Each bus supports an interceptor chain that wraps message handling. Interceptors receive the message and a chain to call `proceed()` on:
-
-```java
-public class LoggingCommandInterceptor implements CommandBusInterceptor {
-
-    @Override
-    public <R, C extends Command<R>> R intercept(CommandMessage<R, C> message, CommandBusInterceptorChain<R, C> chain) {
-        System.out.println("Handling " + message.payload().getClass().getSimpleName());
-        return chain.proceed(message);
-    }
-}
-```
-
-The same pattern applies to `QueryBusInterceptor` and `EventBusInterceptor`.
-
-**Framework-agnostic** — pass interceptors when building the bus:
-
-```java
-var commandBus = CommandBusSpec.withDefaults()
-    .commandHandlers(locator)
-    .interceptors(new LoggingCommandInterceptor())
-    .create();
-```
-
-**Spring Boot** — register interceptors as beans and they are picked up automatically:
-
-```java
-@Bean
-@Order(10)
-public CommandBusInterceptor loggingInterceptor() {
-    return new LoggingCommandInterceptor();
-}
-```
-
-The transactional interceptors (`TransactionalCommandBusInterceptor`, `TransactionalQueryBusInterceptor`, `TransactionalEventBusInterceptor`) are registered at `HIGHEST_PRECEDENCE` by default, so custom interceptors run inside the transaction.
-
-### 5. Spring Boot — Enable autoconfiguration
+### Enabling Autoconfiguration
 
 With the Spring Boot starter, a single annotation replaces all manual wiring:
 
@@ -252,7 +276,7 @@ public class Application {
 }
 ```
 
-### 6. Spring Boot — Register handlers as beans
+### Registering Handlers as Beans
 
 Annotate handler classes with `@Component` (or any Spring stereotype) and inject dependencies as usual:
 
@@ -275,7 +299,22 @@ public class CreateAccountHandler {
 }
 ```
 
-### 7. Spring Boot — Dispatch messages
+### Registering Interceptors (Spring Boot)
+
+Register interceptors as beans and they are picked up automatically:
+
+```java
+@Bean
+@Order(10)
+public CommandBusInterceptor loggingInterceptor() {
+    return new LoggingCommandInterceptor();
+}
+```
+
+The transactional interceptors (`TransactionalCommandBusInterceptor`, `TransactionalQueryBusInterceptor`, `TransactionalEventBusInterceptor`) are registered at `HIGHEST_PRECEDENCE` by default, so
+custom interceptors run inside the transaction.
+
+### Dispatching Messages (Spring Boot)
 
 Inject `CommandGateway`, `QueryGateway`, or `EventPublisher` wherever you need to send messages:
 
@@ -303,9 +342,9 @@ public class AccountController {
 }
 ```
 
-### 8. Spring Boot — Configure event channels
+### Configuring Event Channels (Spring Boot)
 
-Section [3](#3-wire-the-buses-framework-agnostic) shows how to configure processing group channels in framework-agnostic mode. In Spring Boot, define a `ProcessingGroupsConfigurer` bean:
+Define a `ProcessingGroupsConfigurer` bean to configure processing group channels:
 
 ```java
 @Bean
@@ -328,22 +367,12 @@ public ProcessingGroupsConfigurer processingGroupsConfigurer() {
 
 Multiple `ProcessingGroupsConfigurer` beans are supported — they are applied in order. If no `ProcessingGroupsConfigurer` bean is defined, all processing groups default to synchronous dispatch.
 
-When using the event store ([Section 10](#10-event-store--spring-boot-setup)), you must explicitly route processing groups to the `EventStoreChannel`:
-
-```java
-@Bean
-public ProcessingGroupsConfigurer processingGroupsConfigurer(EventStoreChannel eventStoreChannel) {
-    return spec -> spec
-        .anyProcessingGroup().channel(eventStoreChannel);
-}
-```
-
-### 9. Event Store — Framework-agnostic setup
-
-This section covers manual setup — for Spring Boot, see [Section 10](#10-event-store--spring-boot-setup).
+## Event Store
 
 The `EventStoreChannel` persists events to a database within the current transaction, then polls and delivers them to `@ProcessingGroup` handlers. Each processing group tracks its own position via a
 token, with gap detection and configurable retry backoff.
+
+### Framework-Agnostic Setup
 
 You need a `ConnectionProvider` (provides JDBC connections), a `TransactionProvider` (manages transactions), and an `ObjectMapper` (for serialization):
 
@@ -393,9 +422,55 @@ EventStoreChannelConfig.withDefaults()
     .build();
 ```
 
-The DB schema is at `core/smd-event-store/src/main/resources/db/smd/event-store-schema.sql`.
+### Spring Boot Setup
 
-#### Schema migration with Flyway
+With the Spring Boot starter, the event store is configured entirely via `application.yml`. A `DataSource` bean is required:
+
+```yaml
+smd:
+    event-store:
+        enabled: true
+```
+
+You must explicitly route processing groups to the `EventStoreChannel` via a `ProcessingGroupsConfigurer` bean:
+
+```java
+
+@Bean
+public ProcessingGroupsConfigurer processingGroupsConfigurer(EventStoreChannel eventStoreChannel) {
+    return spec -> spec
+        .processingGroup("accounts").channel(eventStoreChannel);
+}
+```
+
+The `accounts` processing group will then receive events from the store. You can further configure scheduling and processing:
+
+```yaml
+smd:
+  event-store:
+    enabled: true
+    scheduling:
+      enabled: true
+      initial-delay: 10s
+      polling-delay: 5s
+      thread-pool-size: 1
+    processing:
+      max-retries: 3
+      batch-size: 100
+      gap-timeout: 5m
+      retry-backoff:
+        strategy: EXPONENTIAL  # FIXED | LINEAR | EXPONENTIAL
+        initial-delay: 1s
+        multiplier: 5.0
+        max-delay: 5m
+```
+
+### Schema Migration
+
+The DB schema is available [here](core/smd-event-store/src/main/resources/db/smd/event-store-schema.sql). It uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`, so it is safe to
+re-run.
+
+#### Flyway
 
 Copy the schema SQL into your Flyway migrations directory:
 
@@ -423,7 +498,7 @@ spring:
             - classpath:db/smd
 ```
 
-#### Schema migration with Liquibase
+#### Liquibase
 
 Create a changeset that includes the schema SQL using `sqlFile`:
 
@@ -441,41 +516,9 @@ Create a changeset that includes the schema SQL using `sqlFile`:
 </databaseChangeLog>
 ```
 
-The `event-store-schema.sql` uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`, so it is safe to re-run.
+## Testing
 
-### 10. Event Store — Spring Boot setup
-
-With the Spring Boot starter, the event store is configured entirely via `application.yml`. A `DataSource` bean is required:
-
-```yaml
-smd:
-    event-store:
-        enabled: true
-```
-
-All `@ProcessingGroup` handlers will automatically receive events from the store. You can further configure scheduling and processing:
-
-```yaml
-smd:
-    event-store:
-        enabled: true
-        scheduling:
-            enabled: true
-            initial-delay: 10s
-            polling-delay: 5s
-            thread-pool-size: 1
-        processing:
-            max-retries: 3
-            batch-size: 100
-            gap-timeout: 5m
-            retry-backoff:
-                strategy: EXPONENTIAL  # FIXED | LINEAR | EXPONENTIAL
-                initial-delay: 1s
-                multiplier: 5.0
-                max-delay: 5m
-```
-
-### 11. Testing — Unit tests with stubs
+### Unit Tests with Stubs
 
 `smd-test` provides stub implementations of `CommandGateway`, `QueryGateway`, and `EventPublisher` so you can unit test handlers in isolation:
 
@@ -497,7 +540,7 @@ class CreateAccountHandlerTest {
 }
 ```
 
-### 12. Testing — Spring Boot integration tests
+### Spring Boot Integration Tests
 
 Add `@EnableSMDStubs` to your test class to auto-replace all gateways and publishers with stubs. Stubs are reset automatically between tests:
 
@@ -521,3 +564,7 @@ class AccountControllerTest {
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
+
+## License
+
+This project is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.html).
