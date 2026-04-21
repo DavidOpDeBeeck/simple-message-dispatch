@@ -45,18 +45,81 @@ class SpringTransactionProviderTest {
         var steps = new ArrayList<String>();
 
         provider.doInTransaction(() -> {
-            provider.defer(() -> steps.add("outer-commit"));
+            provider.defer(() -> steps.add("root-deferred-work"));
 
             provider.doInTransaction(() -> {
-                provider.defer(() -> steps.add("inner-commit"));
-                steps.add("inner-body");
+                provider.defer(() -> steps.add("joined-deferred-work"));
+                steps.add("joined-transaction-body");
             });
 
-            steps.add("outer-body");
-            assertThat(steps).containsExactly("inner-body", "outer-body");
+            steps.add("root-transaction-body");
+            assertThat(steps).containsExactly("joined-transaction-body", "root-transaction-body");
         });
 
-        assertThat(steps).containsExactly("inner-body", "outer-body", "outer-commit", "inner-commit");
+        assertThat(steps).containsExactly("joined-transaction-body", "root-transaction-body", "root-deferred-work", "joined-deferred-work");
+    }
+
+    @Test
+    void nestedDoInTransactionRunnable_whenNestedFailureIsHandled_keepsDeferredWorkInRootContext() {
+        var provider = new SpringTransactionProvider();
+        var deferredCallbacks = new ArrayList<String>();
+
+        provider.doInTransaction(() -> {
+            provider.defer(() -> deferredCallbacks.add("root deferred callback"));
+
+            handleSimulatedFailure(() -> provider.doInTransaction(() -> {
+                provider.defer(() -> deferredCallbacks.add("joined deferred callback"));
+                throw new IllegalStateException();
+            }));
+
+            assertThat(deferredCallbacks).isEmpty();
+        });
+
+        assertThat(deferredCallbacks).containsExactly("root deferred callback", "joined deferred callback");
+    }
+
+    @Test
+    void nestedDoInNewTransactionSupplier_runsCallbacksAtInnerBoundary() {
+        var provider = new SpringTransactionProvider();
+        var steps = new ArrayList<String>();
+
+        provider.doInTransaction(() -> {
+            provider.defer(() -> steps.add("root-deferred-work"));
+
+            var result = provider.doInNewTransaction(() -> {
+                provider.defer(() -> steps.add("requires-new-deferred-work"));
+                steps.add("requires-new-body");
+                assertThat(steps).containsExactly("requires-new-body");
+                return "requires-new-result";
+            });
+
+            assertThat(result).isEqualTo("requires-new-result");
+            assertThat(steps).containsExactly("requires-new-body", "requires-new-deferred-work");
+
+            steps.add("root-transaction-body");
+            assertThat(steps).containsExactly("requires-new-body", "requires-new-deferred-work", "root-transaction-body");
+        });
+
+        assertThat(steps).containsExactly("requires-new-body", "requires-new-deferred-work", "root-transaction-body", "root-deferred-work");
+    }
+
+    @Test
+    void nestedDoInNewTransactionRunnable_whenNestedFailureIsHandled_discardsDeferredWorkFromFailedContext() {
+        var provider = new SpringTransactionProvider();
+        var deferredCallbacks = new ArrayList<String>();
+
+        provider.doInTransaction(() -> {
+            provider.defer(() -> deferredCallbacks.add("root deferred callback"));
+
+            handleSimulatedFailure(() -> provider.doInNewTransaction(() -> {
+                provider.defer(() -> deferredCallbacks.add("requires-new deferred callback"));
+                throw new IllegalStateException();
+            }));
+
+            assertThat(deferredCallbacks).isEmpty();
+        });
+
+        assertThat(deferredCallbacks).containsExactly("root deferred callback");
     }
 
     @Test
@@ -97,5 +160,14 @@ class SpringTransactionProviderTest {
             .hasMessage("boom");
 
         assertThat(secondCallbackExecuted).isFalse();
+    }
+
+    private static void handleSimulatedFailure(Runnable runnable) {
+        try {
+            runnable.run();
+        } catch (IllegalStateException e) {
+            return;
+        }
+        throw new AssertionError("Expected simulated failure");
     }
 }

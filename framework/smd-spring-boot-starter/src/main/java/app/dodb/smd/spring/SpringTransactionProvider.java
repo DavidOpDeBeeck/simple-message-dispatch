@@ -7,11 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
+import static java.lang.ScopedValue.newInstance;
+import static java.lang.ScopedValue.where;
 import static org.springframework.transaction.annotation.Propagation.REQUIRES_NEW;
 
 public class SpringTransactionProvider implements TransactionProvider {
 
-    private static final ScopedValue<TransactionContext> TRANSACTION_CONTEXT = ScopedValue.newInstance();
+    private static final ScopedValue<TransactionContext> TRANSACTION_CONTEXT = newInstance();
 
     @Override
     public void defer(Runnable runnable) {
@@ -28,12 +30,7 @@ public class SpringTransactionProvider implements TransactionProvider {
             return supplier.get();
         }
 
-        return ScopedValue.where(TRANSACTION_CONTEXT, new TransactionContext())
-            .call(() -> {
-                var result = supplier.get();
-                TRANSACTION_CONTEXT.get().runDeferredWork();
-                return result;
-            });
+        return callInNewContext(supplier);
     }
 
     @Override
@@ -44,47 +41,40 @@ public class SpringTransactionProvider implements TransactionProvider {
             return;
         }
 
-        ScopedValue.where(TRANSACTION_CONTEXT, new TransactionContext())
-            .run(() -> {
-                runnable.run();
-                TRANSACTION_CONTEXT.get().runDeferredWork();
-            });
+        runInNewContext(runnable);
     }
 
     @Override
     @Transactional(propagation = REQUIRES_NEW)
     public <T> T doInNewTransaction(Supplier<T> supplier) {
-        if (TRANSACTION_CONTEXT.isBound()) {
-            return supplier.get();
-        }
-
-        return ScopedValue.where(TRANSACTION_CONTEXT, new TransactionContext())
-            .call(() -> {
-                var result = supplier.get();
-                TRANSACTION_CONTEXT.get().runDeferredWork();
-                return result;
-            });
+        return callInNewContext(supplier);
     }
 
     @Override
     @Transactional(propagation = REQUIRES_NEW)
     public void doInNewTransaction(Runnable runnable) {
-        if (TRANSACTION_CONTEXT.isBound()) {
-            runnable.run();
-            return;
-        }
-
-        ScopedValue.where(TRANSACTION_CONTEXT, new TransactionContext())
-            .run(() -> {
-                runnable.run();
-                TRANSACTION_CONTEXT.get().runDeferredWork();
-            });
+        runInNewContext(runnable);
     }
 
     @Override
     @Transactional(readOnly = true)
     public <T> T doInReadOnlyTransaction(Supplier<T> supplier) {
         return supplier.get();
+    }
+
+    private <T> T callInNewContext(Supplier<T> supplier) {
+        return where(TRANSACTION_CONTEXT, new TransactionContext()).call(() -> {
+            var result = supplier.get();
+            TRANSACTION_CONTEXT.get().runDeferredWork();
+            return result;
+        });
+    }
+
+    private void runInNewContext(Runnable runnable) {
+        where(TRANSACTION_CONTEXT, new TransactionContext()).run(() -> {
+            runnable.run();
+            TRANSACTION_CONTEXT.get().runDeferredWork();
+        });
     }
 
     private static class TransactionContext {
