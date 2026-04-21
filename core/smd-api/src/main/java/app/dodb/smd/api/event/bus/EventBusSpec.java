@@ -97,16 +97,14 @@ public class EventBusSpec {
             var allProcessingGroups = processingGroupRegistry.eventHandlerRegistryByProcessingGroup().keySet();
 
             for (var processingGroup : allProcessingGroups) {
-                var processingGroupSpec = processingGroupSpecByName.getOrDefault(processingGroup, defaultProcessingGroupSpec);
-                var eventChannel = processingGroupSpec.channel;
-                if (eventChannel == null) {
-                    LOGGER.warn("Processing group '{}' has no configuration. Event handlers in this group will not be executed. " +
-                        "Please register an EventChannel for this processing group, or define a default configuration using " +
-                        "ProcessingGroupsSpec.anyProcessingGroup().", processingGroup);
+                var processingGroupSpec = getSpecBy(processingGroup);
+                if (processingGroupSpec.disabled) {
+                    LOGGER.info("Processing group '{}' is disabled. Event handlers in this group will not be executed.", processingGroup);
                     continue;
                 }
-
+                var eventChannel = getChannelBy(processingGroup, processingGroupSpec);
                 var listener = processingGroupRegistry.findBy(processingGroup);
+
                 eventChannel.subscribe(listener);
                 eventBus.eventChannels.add(eventChannel);
             }
@@ -123,6 +121,22 @@ public class EventBusSpec {
             return defaultProcessingGroupSpec;
         }
 
+        private ProcessingGroupSpec getSpecBy(String processingGroup) {
+            return processingGroupSpecByName.getOrDefault(processingGroup, defaultProcessingGroupSpec);
+        }
+
+        private EventChannel getChannelBy(String processingGroup, ProcessingGroupSpec processingGroupSpec) {
+            var eventChannel = processingGroupSpec.channel;
+            if (eventChannel == null) {
+                throw new IllegalArgumentException("""
+                    Processing group '%s' has no configuration. Event handlers in this group will \
+                    not be executed. Please register an EventChannel for this processing group using \
+                    ProcessingGroupsSpec.processingGroup("%s") or ProcessingGroupsSpec.anyProcessingGroup(), \
+                    or disable it explicitly using .disabled().""".formatted(processingGroup, processingGroup));
+            }
+            return eventChannel;
+        }
+
         private void validateProcessingGroupIsNotYetConfigured(String processingGroup) {
             if (processingGroupSpecByName.containsKey(processingGroup)) {
                 throw new IllegalArgumentException("ProcessingGroup " + processingGroup + " is already configured");
@@ -135,6 +149,7 @@ public class EventBusSpec {
         private final ProcessingGroupsSpec parent;
         private final SynchronousEventChannel synchronousEventChannel;
         private EventChannel channel;
+        private boolean disabled;
 
         private ProcessingGroupSpec(ProcessingGroupsSpec parent) {
             this.parent = requireNonNull(parent);
@@ -142,6 +157,8 @@ public class EventBusSpec {
         }
 
         public ProcessingGroupsSpec disabled() {
+            this.disabled = true;
+            this.channel = null;
             return parent;
         }
 
@@ -154,6 +171,7 @@ public class EventBusSpec {
         }
 
         public ProcessingGroupsSpec channel(EventChannel channel) {
+            this.disabled = false;
             this.channel = channel;
             return parent;
         }
