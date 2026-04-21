@@ -1,5 +1,6 @@
 package app.dodb.smd.api.event.bus;
 
+import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.ProcessingGroupLocator;
 import app.dodb.smd.api.event.channel.AsyncAwaitingEventChannel;
 import app.dodb.smd.api.event.channel.AsyncFireAndForgetEventChannel;
@@ -43,7 +44,7 @@ public class EventBusSpec {
 
     private TimeProvider timeProvider;
     private PrincipalProvider principalProvider;
-    private final List<EventBusInterceptor> interceptors = new ArrayList<>();
+    private final List<EventInterceptor> interceptors = new ArrayList<>();
     private final Set<EventChannel> eventChannels = new LinkedHashSet<>();
     private ProcessingGroupsSpec processingGroupsSpec;
 
@@ -57,11 +58,11 @@ public class EventBusSpec {
         return this;
     }
 
-    public EventBusSpec interceptors(EventBusInterceptor... interceptors) {
+    public EventBusSpec interceptors(EventInterceptor... interceptors) {
         return interceptors(List.of(interceptors));
     }
 
-    public EventBusSpec interceptors(List<EventBusInterceptor> interceptors) {
+    public EventBusSpec interceptors(List<EventInterceptor> interceptors) {
         this.interceptors.addAll(requireNonNull(interceptors));
         return this;
     }
@@ -170,16 +171,32 @@ public class EventBusSpec {
             return parent.channel(AsyncAwaitingEventChannel.usingVirtualThreads());
         }
 
+        public ProcessingGroupsSpec await(List<EventInterceptor> interceptors) {
+            return parent.channel(AsyncAwaitingEventChannel.usingVirtualThreads(interceptors));
+        }
+
         public ProcessingGroupsSpec await(ExecutorService executorService) {
             return parent.channel(AsyncAwaitingEventChannel.using(executorService));
+        }
+
+        public ProcessingGroupsSpec await(ExecutorService executorService, List<EventInterceptor> interceptors) {
+            return parent.channel(AsyncAwaitingEventChannel.using(executorService, interceptors));
         }
 
         public ProcessingGroupsSpec fireAndForget() {
             return parent.channel(AsyncFireAndForgetEventChannel.usingVirtualThreads());
         }
 
+        public ProcessingGroupsSpec fireAndForget(List<EventInterceptor> interceptors) {
+            return parent.channel(AsyncFireAndForgetEventChannel.usingVirtualThreads(interceptors));
+        }
+
         public ProcessingGroupsSpec fireAndForget(ExecutorService executorService) {
             return parent.channel(AsyncFireAndForgetEventChannel.using(executorService));
+        }
+
+        public ProcessingGroupsSpec fireAndForget(ExecutorService executorService, List<EventInterceptor> interceptors) {
+            return parent.channel(AsyncFireAndForgetEventChannel.using(executorService, interceptors));
         }
     }
 }

@@ -26,7 +26,7 @@ class EventBusIntegrationTest {
 
     @Test
     void publish_withInterceptor() {
-        var interceptor = new EventBusInterceptorForTest();
+        var interceptor = new EventInterceptorForTest();
         var eventBus = EventBusSpec.withDefaults()
             .processingGroups(new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()))
             .interceptors(interceptor)

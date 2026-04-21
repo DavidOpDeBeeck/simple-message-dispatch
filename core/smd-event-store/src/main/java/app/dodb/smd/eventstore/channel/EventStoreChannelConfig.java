@@ -1,6 +1,6 @@
 package app.dodb.smd.eventstore.channel;
 
-import app.dodb.smd.api.event.bus.EventBusInterceptor;
+import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.store.EventSerializer;
 import app.dodb.smd.eventstore.store.EventStorage;
@@ -19,7 +19,7 @@ import static java.util.concurrent.Executors.newScheduledThreadPool;
 public class EventStoreChannelConfig {
 
     private final TransactionProvider transactionProvider;
-    private final List<EventBusInterceptor> interceptors;
+    private final List<EventInterceptor> interceptors;
     private final EventStorage eventStorage;
     private final EventSerializer eventSerializer;
     private final TokenStore tokenStore;
@@ -40,7 +40,7 @@ public class EventStoreChannelConfig {
         return transactionProvider;
     }
 
-    public List<EventBusInterceptor> getInterceptors() {
+    public List<EventInterceptor> getInterceptors() {
         return interceptors;
     }
 
@@ -78,7 +78,7 @@ public class EventStoreChannelConfig {
     public static class Builder {
 
         private TransactionProvider transactionProvider;
-        private List<EventBusInterceptor> interceptors;
+        private List<EventInterceptor> interceptors;
         private TokenStore tokenStore;
         private EventStorage eventStorage;
         private EventSerializer eventSerializer;
@@ -93,7 +93,7 @@ public class EventStoreChannelConfig {
             return this;
         }
 
-        public Builder interceptors(List<EventBusInterceptor> interceptors) {
+        public Builder interceptors(List<EventInterceptor> interceptors) {
             this.interceptors = requireNonNull(interceptors);
             return this;
         }

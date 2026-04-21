@@ -6,13 +6,13 @@ import app.dodb.smd.api.command.PackageBasedCommandHandlerLocator;
 import app.dodb.smd.api.command.bus.CommandBusInterceptor;
 import app.dodb.smd.api.command.bus.CommandBusSpec;
 import app.dodb.smd.api.command.bus.TransactionalCommandBusInterceptor;
+import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventPublisher;
 import app.dodb.smd.api.event.PackageBasedProcessingGroupLocator;
 import app.dodb.smd.api.event.ProcessingGroupLocator;
-import app.dodb.smd.api.event.bus.EventBusInterceptor;
+import app.dodb.smd.api.event.TransactionalEventInterceptor;
 import app.dodb.smd.api.event.bus.EventBusSpec;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
-import app.dodb.smd.api.event.bus.TransactionalEventBusInterceptor;
 import app.dodb.smd.api.framework.ObjectCreator;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.time.SystemTimeProvider;
@@ -125,8 +125,8 @@ public class SMDConfiguration {
 
     @Bean
     @Order(HIGHEST_PRECEDENCE)
-    public EventBusInterceptor transactionalEventBusInterceptor(TransactionProvider transactionProvider) {
-        return new TransactionalEventBusInterceptor(transactionProvider);
+    public EventInterceptor transactionalEventBusInterceptor(TransactionProvider transactionProvider) {
+        return new TransactionalEventInterceptor(transactionProvider);
     }
 
     @Bean
@@ -155,7 +155,7 @@ public class SMDConfiguration {
                                          PrincipalProvider principalProvider,
                                          ProcessingGroupLocator locator,
                                          List<ProcessingGroupsConfigurer> processingGroupsConfigurers,
-                                         List<EventBusInterceptor> interceptors) {
+                                         List<EventInterceptor> interceptors) {
         return EventBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
@@ -250,7 +250,7 @@ public class SMDConfiguration {
                                                                   EventStorage eventStorage,
                                                                   EventSerializer eventSerializer,
                                                                   TokenStore tokenStore,
-                                                                  List<EventBusInterceptor> interceptors,
+                                                                  List<EventInterceptor> interceptors,
                                                                   @Qualifier("eventStoreScheduler") ScheduledExecutorService scheduler,
                                                                   SMDEventStoreProperties properties) {
             var scheduling = properties.getScheduling();

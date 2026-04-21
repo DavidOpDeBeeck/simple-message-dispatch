@@ -1,9 +1,11 @@
 package app.dodb.smd.api.event.bus;
 
 import app.dodb.smd.api.event.Event;
+import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.EventPublisher;
 import app.dodb.smd.api.event.channel.EventChannel;
+import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.metadata.MetadataFactory;
 
 import java.util.List;
@@ -14,11 +16,11 @@ import static java.util.Objects.requireNonNull;
 public class EventBus implements EventPublisher {
 
     private final MetadataFactory metadataFactory;
-    private final List<EventBusInterceptor> interceptors;
+    private final List<EventInterceptor> interceptors;
     private final Set<EventChannel> eventChannels;
 
     EventBus(MetadataFactory metadataFactory,
-             List<EventBusInterceptor> interceptors,
+             List<EventInterceptor> interceptors,
              Set<EventChannel> eventChannels) {
         this.metadataFactory = requireNonNull(metadataFactory);
         this.interceptors = requireNonNull(interceptors);
@@ -27,7 +29,7 @@ public class EventBus implements EventPublisher {
 
     @Override
     public <E extends Event> void publish(E event) {
-        var chain = EventBusInterceptorChain.<E>create(this::dispatch, interceptors);
+        var chain = EventInterceptorChain.<E>create(this::dispatch, interceptors);
 
         metadataFactory.createScope().run(
             metadata -> EventMessage.from(event, metadata),
@@ -37,7 +39,7 @@ public class EventBus implements EventPublisher {
 
     @Override
     public <E extends Event> void publish(EventMessage<E> eventMessage) {
-        var chain = EventBusInterceptorChain.<E>create(this::dispatch, interceptors);
+        var chain = EventInterceptorChain.<E>create(this::dispatch, interceptors);
 
         metadataFactory.createScope(eventMessage.metadata()).run(
             eventMessage::withMetadata,

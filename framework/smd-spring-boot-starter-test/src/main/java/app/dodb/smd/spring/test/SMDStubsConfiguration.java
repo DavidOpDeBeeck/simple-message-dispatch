@@ -3,7 +3,7 @@ package app.dodb.smd.spring.test;
 import app.dodb.smd.api.command.CommandHandlerLocator;
 import app.dodb.smd.api.command.bus.CommandBusInterceptor;
 import app.dodb.smd.api.event.ProcessingGroupLocator;
-import app.dodb.smd.api.event.bus.EventBusInterceptor;
+import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.query.QueryHandlerLocator;
 import app.dodb.smd.api.query.bus.QueryBusInterceptor;
@@ -71,7 +71,7 @@ public class SMDStubsConfiguration {
 
     @Bean
     @SMDTestScope
-    public EventBusTestConfigurer eventBusTestConfigurer(ProcessingGroupLocator locator, ProcessingGroupsConfigurer processingGroupsConfigurer, List<EventBusInterceptor> interceptors) {
+    public EventBusTestConfigurer eventBusTestConfigurer(ProcessingGroupLocator locator, ProcessingGroupsConfigurer processingGroupsConfigurer, List<EventInterceptor> interceptors) {
         return spec -> spec
             .processingGroups(locator, processingGroupsConfigurer)
             .interceptors(interceptors)

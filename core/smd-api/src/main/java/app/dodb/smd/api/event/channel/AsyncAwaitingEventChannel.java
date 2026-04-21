@@ -1,6 +1,8 @@
 package app.dodb.smd.api.event.channel;
 
 import app.dodb.smd.api.event.Event;
+import app.dodb.smd.api.event.EventInterceptor;
+import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
 
 import java.util.ArrayList;
@@ -16,18 +18,29 @@ import static java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor;
 public class AsyncAwaitingEventChannel implements EventChannel {
 
     public static AsyncAwaitingEventChannel usingVirtualThreads() {
-        return new AsyncAwaitingEventChannel(newVirtualThreadPerTaskExecutor());
+        return new AsyncAwaitingEventChannel(newVirtualThreadPerTaskExecutor(), List.of());
+    }
+
+    public static AsyncAwaitingEventChannel usingVirtualThreads(List<EventInterceptor> interceptors) {
+        return new AsyncAwaitingEventChannel(newVirtualThreadPerTaskExecutor(), interceptors);
     }
 
     public static AsyncAwaitingEventChannel using(ExecutorService executorService) {
-        return new AsyncAwaitingEventChannel(executorService);
+        return new AsyncAwaitingEventChannel(executorService, List.of());
+    }
+
+    public static AsyncAwaitingEventChannel using(ExecutorService executorService, List<EventInterceptor> interceptors) {
+        return new AsyncAwaitingEventChannel(executorService, interceptors);
     }
 
     private final ExecutorService executorService;
-    private final List<EventChannelListener> listeners = new ArrayList<>();
+    private final List<EventInterceptor> interceptors;
+    private final List<EventChannelListener> listeners;
 
-    private AsyncAwaitingEventChannel(ExecutorService executorService) {
+    private AsyncAwaitingEventChannel(ExecutorService executorService, List<EventInterceptor> interceptors) {
         this.executorService = requireNonNull(executorService);
+        this.interceptors = requireNonNull(interceptors);
+        this.listeners = new ArrayList<>();
     }
 
     @Override
@@ -36,7 +49,10 @@ public class AsyncAwaitingEventChannel implements EventChannel {
             var futures = new ArrayList<Future<?>>();
 
             for (EventChannelListener listener : listeners) {
-                futures.add(executorService.submit(() -> listener.on(eventMessage)));
+                futures.add(executorService.submit(() -> {
+                    var chain = EventInterceptorChain.<E>create(listener::on, interceptors);
+                    chain.proceed(eventMessage);
+                }));
             }
 
             for (Future<?> future : futures) {

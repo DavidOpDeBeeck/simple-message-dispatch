@@ -1,9 +1,9 @@
 package app.dodb.smd.eventstore.channel;
 
 import app.dodb.smd.api.event.Event;
+import app.dodb.smd.api.event.EventInterceptor;
+import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
-import app.dodb.smd.api.event.bus.EventBusInterceptor;
-import app.dodb.smd.api.event.bus.EventBusInterceptorChain;
 import app.dodb.smd.api.event.channel.EventChannel;
 import app.dodb.smd.api.event.channel.EventChannelListener;
 import app.dodb.smd.api.framework.TransactionProvider;
@@ -36,7 +36,7 @@ public class EventStoreChannel implements EventChannel, Closeable {
     private final TokenStore tokenStore;
     private final EventStorage eventStorage;
     private final EventSerializer eventSerializer;
-    private final List<EventBusInterceptor> interceptors;
+    private final List<EventInterceptor> interceptors;
     private final SchedulingConfig schedulingConfig;
     private final ProcessingConfig processingConfig;
 
@@ -141,7 +141,6 @@ public class EventStoreChannel implements EventChannel, Closeable {
                 LOGGER.debug("No events to process: processingGroup={}, lastProcessedSequence={}", processingGroup, lastProcessedSeq);
                 return new NothingToProcess();
             }
-            var chain = EventBusInterceptorChain.create(listener::on, interceptors);
             long lastProcessedInBatch = lastProcessedSeq;
             while (cursor.hasNext()) {
                 var eventToProcess = cursor.next();
@@ -181,6 +180,7 @@ public class EventStoreChannel implements EventChannel, Closeable {
                     )));
 
                 try {
+                    var chain = EventInterceptorChain.create(listener::on, interceptors);
                     chain.proceed(eventMessage);
                     lastProcessedInBatch = sequenceToProcess;
                     LOGGER.debug("Event processed: processingGroup={}, sequenceNumber={}, messageId={}",

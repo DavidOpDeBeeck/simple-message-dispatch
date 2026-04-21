@@ -12,9 +12,6 @@ public class SynchronousEventChannel implements EventChannel {
 
     private final List<EventChannelListener> listeners = new ArrayList<>();
 
-    public SynchronousEventChannel() {
-    }
-
     @Override
     public <E extends Event> void send(EventMessage<E> eventMessage) {
         try {
