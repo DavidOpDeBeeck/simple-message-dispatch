@@ -3,8 +3,8 @@ package app.dodb.smd.api.command.bus;
 import app.dodb.smd.api.command.CommandHandlerDispatcher;
 import app.dodb.smd.api.command.CommandHandlerLocator;
 import app.dodb.smd.api.metadata.MetadataFactory;
-import app.dodb.smd.api.metadata.datetime.SystemTimeProvider;
-import app.dodb.smd.api.metadata.datetime.TimeProvider;
+import app.dodb.smd.api.metadata.time.SystemTimeProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 
@@ -17,7 +17,7 @@ public class CommandBusSpec {
 
     public static CommandBusSpec withDefaults() {
         return new CommandBusSpec()
-            .datetime(new SystemTimeProvider())
+            .time(new SystemTimeProvider())
             .principal(new SimplePrincipalProvider());
     }
 
@@ -33,7 +33,7 @@ public class CommandBusSpec {
     private CommandHandlerDispatcher dispatcher;
     private final List<CommandBusInterceptor> interceptors = new ArrayList<>();
 
-    public CommandBusSpec datetime(TimeProvider timeProvider) {
+    public CommandBusSpec time(TimeProvider timeProvider) {
         this.timeProvider = requireNonNull(timeProvider);
         return this;
     }

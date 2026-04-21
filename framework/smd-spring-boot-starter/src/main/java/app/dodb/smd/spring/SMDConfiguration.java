@@ -15,8 +15,8 @@ import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.event.bus.TransactionalEventBusInterceptor;
 import app.dodb.smd.api.framework.ObjectCreator;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.api.metadata.datetime.SystemTimeProvider;
-import app.dodb.smd.api.metadata.datetime.TimeProvider;
+import app.dodb.smd.api.metadata.time.SystemTimeProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
@@ -142,7 +142,7 @@ public class SMDConfiguration {
                                          CommandHandlerLocator locator,
                                          List<CommandBusInterceptor> interceptors) {
         return CommandBusSpec.withoutDefaults()
-            .datetime(timeProvider)
+            .time(timeProvider)
             .principal(principalProvider)
             .commandHandlers(locator)
             .interceptors(interceptors)
@@ -157,7 +157,7 @@ public class SMDConfiguration {
                                          List<ProcessingGroupsConfigurer> processingGroupsConfigurers,
                                          List<EventBusInterceptor> interceptors) {
         return EventBusSpec.withoutDefaults()
-            .datetime(timeProvider)
+            .time(timeProvider)
             .principal(principalProvider)
             .processingGroups(locator, multi(processingGroupsConfigurers))
             .interceptors(interceptors)
@@ -171,7 +171,7 @@ public class SMDConfiguration {
                                      QueryHandlerLocator locator,
                                      List<QueryBusInterceptor> interceptors) {
         return QueryBusSpec.withoutDefaults()
-            .datetime(timeProvider)
+            .time(timeProvider)
             .principal(principalProvider)
             .queryHandlers(locator)
             .interceptors(interceptors)

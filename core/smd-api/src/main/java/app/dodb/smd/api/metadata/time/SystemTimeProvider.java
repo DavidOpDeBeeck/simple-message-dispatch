@@ -1,4 +1,4 @@
-package app.dodb.smd.api.metadata.datetime;
+package app.dodb.smd.api.metadata.time;
 
 import java.time.Instant;
 

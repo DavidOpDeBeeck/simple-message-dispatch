@@ -6,8 +6,8 @@ import app.dodb.smd.api.event.channel.AsyncFireAndForgetEventChannel;
 import app.dodb.smd.api.event.channel.EventChannel;
 import app.dodb.smd.api.event.channel.SynchronousEventChannel;
 import app.dodb.smd.api.metadata.MetadataFactory;
-import app.dodb.smd.api.metadata.datetime.SystemTimeProvider;
-import app.dodb.smd.api.metadata.datetime.TimeProvider;
+import app.dodb.smd.api.metadata.time.SystemTimeProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 import org.slf4j.Logger;
@@ -30,7 +30,7 @@ public class EventBusSpec {
 
     public static EventBusSpec withDefaults() {
         return new EventBusSpec()
-            .datetime(new SystemTimeProvider())
+            .time(new SystemTimeProvider())
             .principal(new SimplePrincipalProvider());
     }
 
@@ -47,7 +47,7 @@ public class EventBusSpec {
     private final Set<EventChannel> eventChannels = new LinkedHashSet<>();
     private ProcessingGroupsSpec processingGroupsSpec;
 
-    public EventBusSpec datetime(TimeProvider timeProvider) {
+    public EventBusSpec time(TimeProvider timeProvider) {
         this.timeProvider = requireNonNull(timeProvider);
         return this;
     }

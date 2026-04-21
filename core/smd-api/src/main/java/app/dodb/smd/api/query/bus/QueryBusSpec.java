@@ -1,8 +1,8 @@
 package app.dodb.smd.api.query.bus;
 
 import app.dodb.smd.api.metadata.MetadataFactory;
-import app.dodb.smd.api.metadata.datetime.SystemTimeProvider;
-import app.dodb.smd.api.metadata.datetime.TimeProvider;
+import app.dodb.smd.api.metadata.time.SystemTimeProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 import app.dodb.smd.api.query.QueryHandlerDispatcher;
@@ -17,7 +17,7 @@ public class QueryBusSpec {
 
     public static QueryBusSpec withDefaults() {
         return new QueryBusSpec()
-            .datetime(new SystemTimeProvider())
+            .time(new SystemTimeProvider())
             .principal(new SimplePrincipalProvider());
     }
 
@@ -33,7 +33,7 @@ public class QueryBusSpec {
     private QueryHandlerDispatcher dispatcher;
     private final List<QueryBusInterceptor> interceptors = new ArrayList<>();
 
-    public QueryBusSpec datetime(TimeProvider timeProvider) {
+    public QueryBusSpec time(TimeProvider timeProvider) {
         this.timeProvider = requireNonNull(timeProvider);
         return this;
     }

@@ -1,6 +1,6 @@
 package app.dodb.smd.test;
 
-import app.dodb.smd.api.metadata.datetime.TimeProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 
 import java.time.Instant;
 

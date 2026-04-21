@@ -22,7 +22,7 @@ public class SMDTestExtension {
     private final QueryBusTestConfigurer queryBusTestConfigurer;
     private final EventBusTestConfigurer eventBusTestConfigurer;
     private final PrincipalProviderStub principalProviderStub;
-    private final TimeProviderStub datetimeProviderStub;
+    private final TimeProviderStub timeProviderStub;
     private final CommandGatewayStub commandGatewayStub;
     private final QueryGatewayStub queryGatewayStub;
     private final EventPublisherStub eventPublisherStub;
@@ -31,7 +31,7 @@ public class SMDTestExtension {
                             QueryBusTestConfigurer queryBusTestConfigurer,
                             EventBusTestConfigurer eventBusTestConfigurer,
                             PrincipalProviderStub principalProviderStub,
-                            TimeProviderStub datetimeProviderStub,
+                            TimeProviderStub timeProviderStub,
                             CommandGatewayStub commandGatewayStub,
                             QueryGatewayStub queryGatewayStub,
                             EventPublisherStub eventPublisherStub) {
@@ -39,7 +39,7 @@ public class SMDTestExtension {
         this.queryBusTestConfigurer = requireNonNull(queryBusTestConfigurer);
         this.eventBusTestConfigurer = requireNonNull(eventBusTestConfigurer);
         this.principalProviderStub = requireNonNull(principalProviderStub);
-        this.datetimeProviderStub = requireNonNull(datetimeProviderStub);
+        this.timeProviderStub = requireNonNull(timeProviderStub);
         this.commandGatewayStub = requireNonNull(commandGatewayStub);
         this.queryGatewayStub = requireNonNull(queryGatewayStub);
         this.eventPublisherStub = requireNonNull(eventPublisherStub);
@@ -47,7 +47,7 @@ public class SMDTestExtension {
 
     public void reset() {
         principalProviderStub.reset();
-        datetimeProviderStub.reset();
+        timeProviderStub.reset();
         commandGatewayStub.reset();
         queryGatewayStub.reset();
         eventPublisherStub.reset();
@@ -59,7 +59,7 @@ public class SMDTestExtension {
     }
 
     public SMDTestExtension stubTimestamp(Instant timestamp) {
-        this.datetimeProviderStub.stubTime(timestamp);
+        this.timeProviderStub.stubTime(timestamp);
         return this;
     }
 
@@ -94,21 +94,21 @@ public class SMDTestExtension {
 
     private CommandBus configureCommandBus() {
         var spec = CommandBusSpec.withoutDefaults()
-            .datetime(datetimeProviderStub)
+            .time(timeProviderStub)
             .principal(principalProviderStub);
         return commandBusTestConfigurer.configure(spec);
     }
 
     private QueryBus configureQueryBus() {
         var spec = QueryBusSpec.withoutDefaults()
-            .datetime(datetimeProviderStub)
+            .time(timeProviderStub)
             .principal(principalProviderStub);
         return queryBusTestConfigurer.configure(spec);
     }
 
     private EventBus configureEventBus() {
         var spec = EventBusSpec.withoutDefaults()
-            .datetime(datetimeProviderStub)
+            .time(timeProviderStub)
             .principal(principalProviderStub);
         return eventBusTestConfigurer.configure(spec);
     }

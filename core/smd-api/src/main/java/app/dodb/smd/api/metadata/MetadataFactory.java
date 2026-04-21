@@ -2,7 +2,7 @@ package app.dodb.smd.api.metadata;
 
 import app.dodb.smd.api.message.Message;
 import app.dodb.smd.api.message.MessageId;
-import app.dodb.smd.api.metadata.datetime.TimeProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 
 import java.util.function.Consumer;

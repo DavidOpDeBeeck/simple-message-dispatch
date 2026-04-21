@@ -1,6 +1,6 @@
 package app.dodb.smd.spring.test;
 
-import app.dodb.smd.api.metadata.datetime.TimeProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.test.PrincipalProviderStub;
 import app.dodb.smd.test.TimeProviderStub;
