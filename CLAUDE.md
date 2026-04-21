@@ -75,8 +75,8 @@ Handler classes are discovered via package scanning (`PackageBasedCommandHandler
 
 ### Bus Interceptors
 
-Each bus supports an interceptor chain (`CommandBusInterceptor`, `QueryBusInterceptor`, `EventBusInterceptor`). Interceptors receive the message and a `proceed()` call to continue the chain. In Spring
-Boot, `TransactionalCommandBusInterceptor`, `TransactionalEventBusInterceptor`, and `TransactionalQueryBusInterceptor` are registered automatically at highest precedence.
+Each bus supports an interceptor chain (`CommandBusInterceptor`, `QueryBusInterceptor`, `EventInterceptor`). Interceptors receive the message and a `proceed()` call to continue the chain. In Spring
+Boot, `TransactionalCommandBusInterceptor`, `TransactionalEventInterceptor`, and `TransactionalQueryBusInterceptor` are registered automatically at highest precedence.
 
 ### Event Channels
 
@@ -100,39 +100,17 @@ Buses are constructed via a spec/builder:
 ```java
 // Framework-agnostic
 CommandBusSpec.withDefaults()
-    .
-
-commandHandlers(new PackageBasedCommandHandlerLocator(packages, objectCreator))
-        .
-
-interceptors(interceptor)
-    .
-
-create();
+    .commandHandlers(new PackageBasedCommandHandlerLocator(packages, objectCreator))
+    .interceptors(interceptor)
+    .create();
 
 // With processing group configuration
-EventBusSpec.
-
-withDefaults()
-    .
-
-processingGroups(locator, spec ->{
-        spec.
-
-processingGroup("notifications").
-
-async().
-
-await();
-        spec.
-
-anyProcessingGroup().
-
-sync();
+EventBusSpec.withDefaults()
+    .processingGroups(locator, spec -> {
+        spec.processingGroup("notifications").async().await();
+        spec.anyProcessingGroup().sync();
     })
-            .
-
-create();
+    .create();
 ```
 
 ### Spring Boot Integration

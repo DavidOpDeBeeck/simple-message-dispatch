@@ -177,7 +177,7 @@ public class LoggingCommandInterceptor implements CommandBusInterceptor {
 }
 ```
 
-The same pattern applies to `QueryBusInterceptor` and `EventBusInterceptor`. See [Registering Interceptors](#registering-interceptors) for framework-agnostic usage
+The same pattern applies to `QueryBusInterceptor` and `EventInterceptor`. See [Registering Interceptors](#registering-interceptors) for framework-agnostic usage
 and [Registering Interceptors (Spring Boot)](#registering-interceptors-spring-boot) for Spring Boot.
 
 ## Framework-Agnostic Usage
@@ -215,7 +215,7 @@ var commandBus = CommandBusSpec.withDefaults()
         .create();
 ```
 
-SMD also provides transactional interceptors (`TransactionalCommandBusInterceptor`, `TransactionalQueryBusInterceptor`, `TransactionalEventBusInterceptor`) that wrap handler execution in a
+SMD also provides transactional interceptors (`TransactionalCommandBusInterceptor`, `TransactionalQueryBusInterceptor`, `TransactionalEventInterceptor`) that wrap handler execution in a
 transaction. They require a `TransactionProvider`:
 
 ```java
@@ -311,7 +311,7 @@ public CommandBusInterceptor loggingInterceptor() {
 }
 ```
 
-The transactional interceptors (`TransactionalCommandBusInterceptor`, `TransactionalQueryBusInterceptor`, `TransactionalEventBusInterceptor`) are registered at `HIGHEST_PRECEDENCE` by default, so
+The transactional interceptors (`TransactionalCommandBusInterceptor`, `TransactionalQueryBusInterceptor`, `TransactionalEventInterceptor`) are registered at `HIGHEST_PRECEDENCE` by default, so
 custom interceptors run inside the transaction.
 
 ### Dispatching Messages (Spring Boot)
@@ -428,8 +428,8 @@ With the Spring Boot starter, the event store is configured entirely via `applic
 
 ```yaml
 smd:
-    event-store:
-        enabled: true
+  event-store:
+    enabled: true
 ```
 
 You must explicitly route processing groups to the `EventStoreChannel` via a `ProcessingGroupsConfigurer` bean:
