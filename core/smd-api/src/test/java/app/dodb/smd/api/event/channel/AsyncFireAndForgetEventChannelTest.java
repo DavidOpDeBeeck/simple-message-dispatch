@@ -7,8 +7,8 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.ProcessingGroup;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static app.dodb.smd.api.event.ProcessingGroup.DEFAULT;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.METADATA;
@@ -90,7 +90,7 @@ class AsyncFireAndForgetEventChannelTest {
 
     public static class EventHandlerWithDifferentProcessingGroup {
 
-        private final List<Integer> methodCalled = new ArrayList<>();
+        private final List<Integer> methodCalled = new CopyOnWriteArrayList<>();
 
         @EventHandler
         @ProcessingGroup("1")
@@ -112,7 +112,7 @@ class AsyncFireAndForgetEventChannelTest {
     @ProcessingGroup
     public static class EventHandlerWithDifferentOrders {
 
-        private final List<Integer> methodCalled = new ArrayList<>();
+        private final List<Integer> methodCalled = new CopyOnWriteArrayList<>();
 
         @EventHandler(order = 1)
         public void handle(EventForTest event) {
@@ -137,7 +137,7 @@ class AsyncFireAndForgetEventChannelTest {
     @ProcessingGroup
     public static class EventHandlerThatThrowsExceptionInSameProcessingGroup {
 
-        private final List<Integer> methodCalled = new ArrayList<>();
+        private final List<Integer> methodCalled = new CopyOnWriteArrayList<>();
 
         @EventHandler(order = 1)
         public void handle(EventForTest event) {
@@ -157,7 +157,7 @@ class AsyncFireAndForgetEventChannelTest {
 
     public static class EventHandlerThatThrowsExceptionInDifferentProcessingGroup {
 
-        private final List<Integer> methodCalled = new ArrayList<>();
+        private final List<Integer> methodCalled = new CopyOnWriteArrayList<>();
 
         @ProcessingGroup("1")
         @EventHandler(order = 1)

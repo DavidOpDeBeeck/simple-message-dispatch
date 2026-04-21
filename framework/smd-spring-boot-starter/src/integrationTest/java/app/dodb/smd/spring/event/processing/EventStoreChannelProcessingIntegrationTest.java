@@ -86,6 +86,21 @@ class EventStoreChannelProcessingIntegrationTest {
     }
 
     @Test
+    void failedHandler_rollsBackDatabaseSideEffects() {
+        try (var context = createContext()) {
+            var eventBus = context.getBean(EventBus.class);
+            createSideEffectsTable(context);
+
+            eventBus.publish(new SideEffectTestEvent());
+
+            await().untilAsserted(() -> {
+                assertThat(tokenErrorCount(context)).hasValueSatisfying(errorCount -> assertThat(errorCount).isGreaterThanOrEqualTo(1));
+                assertThat(sideEffectCount(context)).isZero();
+            });
+        }
+    }
+
+    @Test
     void abandoned_marksAbandonedAfterRetriesExhausted() {
         try (var context = createContext()) {
             var eventBus = context.getBean(EventBus.class);
@@ -108,6 +123,34 @@ class EventStoreChannelProcessingIntegrationTest {
         return new SpringApplicationBuilder(EventStoreChannelProcessingTestConfiguration.class)
             .profiles("event-store-processing").web(NONE)
             .run();
+    }
+
+    private void createSideEffectsTable(ConfigurableApplicationContext context) {
+        var ds = context.getBean(DataSource.class);
+        try (var conn = ds.getConnection(); var stmt = conn.createStatement()) {
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS event_handler_side_effects
+                (
+                    id BIGSERIAL PRIMARY KEY,
+                    description VARCHAR(255) NOT NULL
+                )
+                """);
+            stmt.execute("DELETE FROM event_handler_side_effects");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private int sideEffectCount(ConfigurableApplicationContext context) {
+        var ds = context.getBean(DataSource.class);
+        try (var conn = ds.getConnection(); var stmt = conn.createStatement()) {
+            try (var rs = stmt.executeQuery("SELECT COUNT(*) FROM event_handler_side_effects")) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void insertEventWithSequence(ConfigurableApplicationContext context, long sequenceNumber) {

@@ -15,11 +15,11 @@ import app.dodb.smd.api.event.bus.EventBusSpec;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.framework.ObjectCreator;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.api.metadata.time.SystemTimeProvider;
-import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
+import app.dodb.smd.api.metadata.time.SystemTimeProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.query.PackageBasedQueryHandlerLocator;
 import app.dodb.smd.api.query.QueryGateway;
 import app.dodb.smd.api.query.QueryHandlerLocator;
@@ -49,6 +49,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
+import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -184,7 +186,11 @@ public class SMDConfiguration {
     }
 
     @Configuration
-    @ImportAutoConfiguration(DataSourceAutoConfiguration.class)
+    @ImportAutoConfiguration({
+        DataSourceAutoConfiguration.class,
+        DataSourceTransactionManagerAutoConfiguration.class,
+        TransactionAutoConfiguration.class
+    })
     @ConditionalOnProperty(name = "smd.event-store.enabled", havingValue = "true")
     @EnableConfigurationProperties(SMDEventStoreProperties.class)
     public static class EventStoreConfiguration {

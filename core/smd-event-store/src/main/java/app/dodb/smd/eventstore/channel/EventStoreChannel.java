@@ -25,6 +25,7 @@ import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 import static app.dodb.smd.eventstore.channel.EventStoreChannelConfig.SchedulingConfig;
 import static java.time.Duration.between;
 import static java.time.Instant.now;
+import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -78,35 +79,43 @@ public class EventStoreChannel implements EventChannel, Closeable {
 
             do {
                 int finalNewBatchSize = newBatchSize;
-                newBatchSize = transactionProvider.doInNewTransaction(() ->
-                    switch (processBatch(listener, token, processingConfig, finalNewBatchSize)) {
-                        case NothingToProcess _ -> 0;
-                        // Transaction is not tainted, we can safely mark the items as processed
-                        case GapDetected(var expectedNextSeq) -> {
-                            token.markGapDetected(expectedNextSeq);
-                            yield 0;
-                        }
-                        case Failed(var sequenceNumber, var exception) -> {
-                            transactionProvider.doInNewTransaction(() -> token.markFailed(sequenceNumber, exception));
-                            yield 0;
-                        }
-                        // Transaction is not tainted, we can safely mark the items as processed
-                        case Abandoned(var sequenceNumber, var exception) -> {
-                            token.markAbandoned(sequenceNumber, exception);
-                            yield 0;
-                        }
-                        // Transaction is not tainted, we can safely mark the items as processed
-                        case GapDetectedMidBatch(var sequenceNumber, var retryBatchSize) -> {
-                            token.markProcessed(sequenceNumber);
-                            yield retryBatchSize;
-                        }
-                        // Transaction will be tainted, we cannot safely mark the items as processed
-                        case FailedMidBatch(var sequenceNumber, var retryBatchSize) -> retryBatchSize;
-                        case BatchSucceeded(var sequenceNumber) -> {
-                            token.markProcessed(sequenceNumber);
-                            yield processingConfig.getBatchSize();
-                        }
-                    });
+                try {
+                    newBatchSize = transactionProvider.doInNewTransaction(() ->
+                        switch (processBatch(listener, token, processingConfig, finalNewBatchSize)) {
+                            case NothingToProcess _ -> 0;
+                            // Transaction is not tainted, we can safely mark the items as processed
+                            case GapDetected(var expectedNextSeq) -> {
+                                token.markGapDetected(expectedNextSeq);
+                                yield 0;
+                            }
+                            // Transaction is tainted by handler side effects, roll back before marking failure
+                            case Failed(var sequenceNumber, var exception) -> throw new BatchRolledBackException(
+                                0,
+                                exception,
+                                () -> transactionProvider.doInNewTransaction(() -> token.markFailed(sequenceNumber, exception))
+                            );
+                            // Transaction is tainted by handler side effects, roll back before marking abandoned
+                            case Abandoned(var sequenceNumber, var exception) -> throw new BatchRolledBackException(
+                                0,
+                                exception,
+                                () -> transactionProvider.doInNewTransaction(() -> token.markAbandoned(sequenceNumber, exception))
+                            );
+                            // Transaction is not tainted, we can safely mark the items as processed
+                            case GapDetectedMidBatch(var sequenceNumber, var retryBatchSize) -> {
+                                token.markProcessed(sequenceNumber);
+                                yield retryBatchSize;
+                            }
+                            // Transaction is tainted, retry the successful prefix after rolling back side effects
+                            case FailedMidBatch(var _, var retryBatchSize) -> throw new BatchRolledBackException(retryBatchSize);
+                            case BatchSucceeded(var sequenceNumber) -> {
+                                token.markProcessed(sequenceNumber);
+                                yield processingConfig.getBatchSize();
+                            }
+                        });
+                } catch (BatchRolledBackException e) {
+                    e.afterRollback();
+                    newBatchSize = e.nextBatchSize();
+                }
             } while (newBatchSize != 0);
         } catch (Exception e) {
             LOGGER.error("Polling error: processingGroup={}, error={}", processingGroup, e.getMessage(), e);
@@ -245,5 +254,30 @@ public class EventStoreChannel implements EventChannel, Closeable {
     }
 
     record BatchSucceeded(long sequenceNumber) implements Result {
+    }
+
+    private static class BatchRolledBackException extends RuntimeException {
+
+        private final int nextBatchSize;
+        private final Runnable afterRollback;
+
+        BatchRolledBackException(int nextBatchSize) {
+            this(nextBatchSize, null, () -> {
+            });
+        }
+
+        BatchRolledBackException(int nextBatchSize, Exception cause, Runnable afterRollback) {
+            super(cause);
+            this.nextBatchSize = nextBatchSize;
+            this.afterRollback = requireNonNull(afterRollback);
+        }
+
+        void afterRollback() {
+            afterRollback.run();
+        }
+
+        int nextBatchSize() {
+            return nextBatchSize;
+        }
     }
 }
