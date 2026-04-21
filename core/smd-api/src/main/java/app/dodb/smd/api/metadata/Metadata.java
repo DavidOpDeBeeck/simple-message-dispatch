@@ -9,8 +9,12 @@ import java.util.Map;
 
 public record Metadata(Principal principal, Instant timestamp, MessageId parentMessageId, Map<String, String> properties) {
 
+    public Metadata {
+        properties = Map.copyOf(properties);
+    }
+
     public Metadata(Principal principal, Instant timestamp, MessageId parentMessageId) {
-        this(principal, timestamp, parentMessageId, new HashMap<>());
+        this(principal, timestamp, parentMessageId, Map.of());
     }
 
     public Metadata and(Metadata metadata) {
