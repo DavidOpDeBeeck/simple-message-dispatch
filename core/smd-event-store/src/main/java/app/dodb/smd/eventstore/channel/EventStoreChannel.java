@@ -81,16 +81,18 @@ public class EventStoreChannel implements EventChannel, Closeable {
                 newBatchSize = transactionProvider.doInNewTransaction(() ->
                     switch (processBatch(listener, token, processingConfig, finalNewBatchSize)) {
                         case NothingToProcess _ -> 0;
+                        // Transaction is not tainted, we can safely mark the items as processed
                         case GapDetected(var expectedNextSeq) -> {
-                            transactionProvider.doInNewTransaction(() -> token.markGapDetected(expectedNextSeq));
+                            token.markGapDetected(expectedNextSeq);
                             yield 0;
                         }
                         case Failed(var sequenceNumber, var exception) -> {
                             transactionProvider.doInNewTransaction(() -> token.markFailed(sequenceNumber, exception));
                             yield 0;
                         }
+                        // Transaction is not tainted, we can safely mark the items as processed
                         case Abandoned(var sequenceNumber, var exception) -> {
-                            transactionProvider.doInNewTransaction(() -> token.markAbandoned(sequenceNumber, exception));
+                            token.markAbandoned(sequenceNumber, exception);
                             yield 0;
                         }
                         // Transaction is not tainted, we can safely mark the items as processed

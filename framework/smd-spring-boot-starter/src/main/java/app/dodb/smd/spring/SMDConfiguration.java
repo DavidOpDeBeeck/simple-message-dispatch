@@ -45,7 +45,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -57,13 +56,12 @@ import org.springframework.core.annotation.Order;
 
 import javax.sql.DataSource;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 
 import static app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer.defaultSynchronous;
 import static app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer.multi;
 import static com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping.NON_FINAL;
 import static com.fasterxml.jackson.databind.SerializationFeature.FAIL_ON_EMPTY_BEANS;
+import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static org.springframework.core.Ordered.HIGHEST_PRECEDENCE;
 
 @AutoConfiguration
@@ -237,33 +235,24 @@ public class SMDConfiguration {
             return new JacksonEventSerializer(objectMapper);
         }
 
-        @Bean(destroyMethod = "shutdown")
-        @ConditionalOnMissingBean(name = "eventStoreScheduler")
-        public ScheduledExecutorService eventStoreScheduler(SMDEventStoreProperties properties) {
-            return Executors.newScheduledThreadPool(properties.getScheduling().getThreadPoolSize());
-        }
-
         @Bean
         @ConditionalOnMissingBean
-        @ConditionalOnBean({EventStorage.class, EventSerializer.class, TokenStore.class})
-        public EventStoreChannelConfig eventStoreProcessingConfig(TransactionProvider transactionProvider,
-                                                                  EventStorage eventStorage,
+        public EventStoreChannelConfig eventStoreProcessingConfig(EventStorage eventStorage,
                                                                   EventSerializer eventSerializer,
                                                                   TokenStore tokenStore,
-                                                                  List<EventInterceptor> interceptors,
-                                                                  @Qualifier("eventStoreScheduler") ScheduledExecutorService scheduler,
+                                                                  TransactionProvider transactionProvider,
                                                                   SMDEventStoreProperties properties) {
             var scheduling = properties.getScheduling();
             var processing = properties.getProcessing();
             return EventStoreChannelConfig.withoutDefaults()
-                .transactionProvider(transactionProvider)
-                .interceptors(interceptors)
                 .eventStorage(eventStorage)
                 .eventSerializer(eventSerializer)
                 .tokenStore(tokenStore)
+                .transactionProvider(transactionProvider)
+                .interceptors(List.of())
                 .schedulingConfig(EventStoreChannelConfig.SchedulingConfig.withoutDefaults()
                     .enabled(scheduling.isEnabled())
-                    .scheduler(scheduler)
+                    .scheduler(newScheduledThreadPool(scheduling.getThreadPoolSize()))
                     .initialDelay(scheduling.getInitialDelay())
                     .pollingDelay(scheduling.getPollingDelay())
                     .build())
@@ -278,7 +267,6 @@ public class SMDConfiguration {
 
         @Bean(destroyMethod = "close")
         @ConditionalOnMissingBean
-        @ConditionalOnBean(EventStoreChannelConfig.class)
         public EventStoreChannel eventStoreChannel(EventStoreChannelConfig eventStoreChannelConfig) {
             return new EventStoreChannel(eventStoreChannelConfig);
         }
