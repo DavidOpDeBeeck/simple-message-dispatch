@@ -29,12 +29,14 @@ import app.dodb.smd.api.query.bus.TransactionalQueryBusInterceptor;
 import app.dodb.smd.eventstore.channel.EventStoreChannel;
 import app.dodb.smd.eventstore.channel.EventStoreChannelConfig;
 import app.dodb.smd.eventstore.framework.ConnectionProvider;
-import app.dodb.smd.eventstore.store.EventSerializer;
 import app.dodb.smd.eventstore.store.EventStorage;
-import app.dodb.smd.eventstore.store.JacksonEventSerializer;
 import app.dodb.smd.eventstore.store.JdbcEventStorage;
 import app.dodb.smd.eventstore.store.JdbcTokenStore;
 import app.dodb.smd.eventstore.store.TokenStore;
+import app.dodb.smd.eventstore.store.serialization.ClassNameEventTypeResolver;
+import app.dodb.smd.eventstore.store.serialization.EventSerializer;
+import app.dodb.smd.eventstore.store.serialization.EventTypeResolver;
+import app.dodb.smd.eventstore.store.serialization.JacksonEventSerializer;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -237,8 +239,15 @@ public class SMDConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
-        public EventSerializer eventSerializer(@Qualifier("eventObjectMapper") ObjectMapper objectMapper) {
-            return new JacksonEventSerializer(objectMapper);
+        public EventTypeResolver eventTypeResolver() {
+            return new ClassNameEventTypeResolver();
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        public EventSerializer eventSerializer(@Qualifier("eventObjectMapper") ObjectMapper objectMapper,
+                                               EventTypeResolver eventTypeResolver) {
+            return new JacksonEventSerializer(objectMapper, eventTypeResolver);
         }
 
         @Bean

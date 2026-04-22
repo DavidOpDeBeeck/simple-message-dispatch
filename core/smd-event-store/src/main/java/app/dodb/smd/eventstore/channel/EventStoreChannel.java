@@ -9,10 +9,10 @@ import app.dodb.smd.api.event.channel.EventChannelListener;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
-import app.dodb.smd.eventstore.store.EventSerializer;
 import app.dodb.smd.eventstore.store.EventStorage;
 import app.dodb.smd.eventstore.store.Token;
 import app.dodb.smd.eventstore.store.TokenStore;
+import app.dodb.smd.eventstore.store.serialization.EventSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

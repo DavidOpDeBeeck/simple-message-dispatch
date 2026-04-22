@@ -5,11 +5,11 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.channel.EventChannelListener;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.store.Cursor;
-import app.dodb.smd.eventstore.store.EventSerializer;
 import app.dodb.smd.eventstore.store.EventStorage;
 import app.dodb.smd.eventstore.store.SerializedEvent;
 import app.dodb.smd.eventstore.store.Token;
 import app.dodb.smd.eventstore.store.TokenStore;
+import app.dodb.smd.eventstore.store.serialization.EventSerializer;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

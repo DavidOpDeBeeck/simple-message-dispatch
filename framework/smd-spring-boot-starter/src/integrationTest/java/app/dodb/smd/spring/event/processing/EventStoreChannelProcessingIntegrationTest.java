@@ -4,7 +4,7 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.event.bus.EventBus;
 import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.eventstore.store.EventSerializer;
+import app.dodb.smd.eventstore.store.serialization.EventSerializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -13,6 +13,7 @@ import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static java.util.Optional.ofNullable;
@@ -34,6 +35,7 @@ class EventStoreChannelProcessingIntegrationTest {
                 assertThat(handler.getHandledEvents()).hasSize(1);
                 assertThat(tokenLastProcessedSeq(context)).contains(1L);
                 assertThat(tokenErrorCount(context)).contains(0);
+                assertThat(storedEventTypes(context)).containsExactly(AnotherTestEvent.class.getName());
             });
         }
     }
@@ -204,6 +206,21 @@ class EventStoreChannelProcessingIntegrationTest {
             long val = rs.getLong("gap_sequence_number");
             return ofNullable(val);
         });
+    }
+
+    private List<String> storedEventTypes(ConfigurableApplicationContext context) {
+        var ds = context.getBean(DataSource.class);
+        try (var conn = ds.getConnection();
+             var stmt = conn.prepareStatement("SELECT event_type FROM smd_event_store ORDER BY sequence_number");
+             var rs = stmt.executeQuery()) {
+            var eventTypes = new java.util.ArrayList<String>();
+            while (rs.next()) {
+                eventTypes.add(rs.getString("event_type"));
+            }
+            return eventTypes;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private <T> T queryToken(ConfigurableApplicationContext context, ResultSetExtractor<T> extractor) {

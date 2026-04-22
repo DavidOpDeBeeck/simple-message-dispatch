@@ -2,9 +2,9 @@ package app.dodb.smd.eventstore.channel;
 
 import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.eventstore.store.EventSerializer;
 import app.dodb.smd.eventstore.store.EventStorage;
 import app.dodb.smd.eventstore.store.TokenStore;
+import app.dodb.smd.eventstore.store.serialization.EventSerializer;
 
 import java.time.Duration;
 import java.util.List;

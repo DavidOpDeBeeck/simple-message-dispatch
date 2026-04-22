@@ -1,7 +1,8 @@
-package app.dodb.smd.eventstore.store;
+package app.dodb.smd.eventstore.store.serialization;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.eventstore.store.SerializedEvent;
 
 public interface EventSerializer {
 
