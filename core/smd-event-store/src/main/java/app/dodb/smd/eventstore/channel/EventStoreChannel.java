@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
@@ -74,14 +75,20 @@ public class EventStoreChannel implements EventChannel, Closeable {
     private void pollAndProcess(EventChannelListener listener) {
         var processingGroup = listener.processingGroup();
         try {
-            var token = tokenStore.getToken(processingGroup);
             var newBatchSize = processingConfig.getBatchSize();
 
             do {
                 int finalNewBatchSize = newBatchSize;
                 try {
-                    newBatchSize = transactionProvider.doInNewTransaction(() ->
-                        switch (processBatch(listener, token, processingConfig, finalNewBatchSize)) {
+                    newBatchSize = transactionProvider.doInNewTransaction(() -> {
+                        var claimedToken = tokenStore.claimToken(processingGroup);
+                        if (claimedToken.isEmpty()) {
+                            LOGGER.debug("Token already claimed, skipping poll: processingGroup={}", processingGroup);
+                            return 0;
+                        }
+
+                        var token = claimedToken.get();
+                        return switch (processBatch(listener, token, processingConfig, finalNewBatchSize)) {
                             case NothingToProcess _ -> 0;
                             // Transaction is not tainted, we can safely mark the items as processed
                             case GapDetected(var expectedNextSeq) -> {
@@ -92,13 +99,13 @@ public class EventStoreChannel implements EventChannel, Closeable {
                             case Failed(var sequenceNumber, var exception) -> throw new BatchRolledBackException(
                                 0,
                                 exception,
-                                () -> transactionProvider.doInNewTransaction(() -> token.markFailed(sequenceNumber, exception))
+                                () -> transactionProvider.doInNewTransaction(() -> markFailedIfClaimed(processingGroup, sequenceNumber, exception))
                             );
                             // Transaction is tainted by handler side effects, roll back before marking abandoned
                             case Abandoned(var sequenceNumber, var exception) -> throw new BatchRolledBackException(
                                 0,
                                 exception,
-                                () -> transactionProvider.doInNewTransaction(() -> token.markAbandoned(sequenceNumber, exception))
+                                () -> transactionProvider.doInNewTransaction(() -> markAbandonedIfClaimed(processingGroup, sequenceNumber, exception))
                             );
                             // Transaction is not tainted, we can safely mark the items as processed
                             case GapDetectedMidBatch(var sequenceNumber, var retryBatchSize) -> {
@@ -111,7 +118,8 @@ public class EventStoreChannel implements EventChannel, Closeable {
                                 token.markProcessed(sequenceNumber);
                                 yield processingConfig.getBatchSize();
                             }
-                        });
+                        };
+                    });
                 } catch (BatchRolledBackException e) {
                     e.afterRollback();
                     newBatchSize = e.nextBatchSize();
@@ -122,8 +130,23 @@ public class EventStoreChannel implements EventChannel, Closeable {
         }
     }
 
+    private void markFailedIfClaimed(String processingGroup, long sequenceNumber, Exception exception) {
+        tokenStore.claimToken(processingGroup).ifPresentOrElse(
+            token -> token.markFailed(sequenceNumber, exception),
+            () -> LOGGER.debug("Token already claimed, skipping failure mark: processingGroup={}", processingGroup)
+        );
+    }
+
+    private void markAbandonedIfClaimed(String processingGroup, long sequenceNumber, Exception exception) {
+        tokenStore.claimToken(processingGroup).ifPresentOrElse(
+            token -> token.markAbandoned(sequenceNumber, exception),
+            () -> LOGGER.debug("Token already claimed, skipping abandoned mark: processingGroup={}", processingGroup)
+        );
+    }
+
     private Result processBatch(EventChannelListener listener, Token token, ProcessingConfig processingConfig, int batchSize) {
         var processingGroup = listener.processingGroup();
+        var processingId = UUID.randomUUID().toString();
         var currentErrorCount = token.errorCount();
 
         if (currentErrorCount > processingConfig.getMaxRetries()) {
@@ -186,6 +209,7 @@ public class EventStoreChannel implements EventChannel, Closeable {
 
                 var eventMessage = eventSerializer.deserialize(eventToProcess)
                     .andMetadata(new Metadata(null, null, null, Map.of(
+                        "processingId", processingId,
                         "sequenceNumber", String.valueOf(sequenceToProcess),
                         "errorCount", String.valueOf(currentErrorCount)
                     )));

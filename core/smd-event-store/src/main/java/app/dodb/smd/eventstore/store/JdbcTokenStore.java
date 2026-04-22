@@ -4,6 +4,7 @@ import app.dodb.smd.eventstore.framework.ConnectionProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -27,18 +28,73 @@ public class JdbcTokenStore implements TokenStore {
     }
 
     @Override
-    public Token getToken(String processingGroup) {
-        return new PostgresToken(processingGroup, connectionProvider);
+    public Optional<Token> claimToken(String processingGroup) {
+        return connectionProvider.doWithConnection(connection -> {
+            var claimedToken = claimTokenRow(connection, processingGroup);
+            if (claimedToken.isPresent()) {
+                return claimedToken;
+            }
+
+            if (!tryClaimProcessingGroup(connection, processingGroup)) {
+                return empty();
+            }
+
+            createTokenRow(connection, processingGroup);
+            return claimTokenRow(connection, processingGroup);
+        });
     }
 
-    static class PostgresToken implements Token {
+    private boolean tryClaimProcessingGroup(Connection connection, String processingGroup) {
+        try (PreparedStatement stmt = connection.prepareStatement("""
+            SELECT pg_try_advisory_xact_lock(hashtext('smd_token_store'), hashtext(?))
+            """)) {
+            stmt.setString(1, processingGroup);
 
-        private static final String SELECT_TOKEN = """
+            try (ResultSet rs = stmt.executeQuery()) {
+                rs.next();
+                return rs.getBoolean(1);
+            }
+        } catch (SQLException e) {
+            throw new TokenStoreException("Failed to claim token advisory lock for processing group: " + processingGroup, e);
+        }
+    }
+
+    private void createTokenRow(Connection connection, String processingGroup) {
+        try (PreparedStatement stmt = connection.prepareStatement("""
+            INSERT INTO smd_token_store (processing_group, last_updated_at, error_count)
+            VALUES (?, ?, 0)
+            ON CONFLICT (processing_group) DO NOTHING
+            """)) {
+            stmt.setString(1, processingGroup);
+            stmt.setTimestamp(2, Timestamp.from(Instant.now()));
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new TokenStoreException("Failed to initialize token for processing group: " + processingGroup, e);
+        }
+    }
+
+    private Optional<Token> claimTokenRow(Connection connection, String processingGroup) {
+        try (PreparedStatement stmt = connection.prepareStatement("""
             SELECT last_processed_message_id, last_processed_sequence_number, last_failed_message_id,
                    error_count, last_error_at, last_gap_detected_at, gap_sequence_number
             FROM smd_token_store
             WHERE processing_group = ?
-            """;
+            FOR UPDATE SKIP LOCKED
+            """)) {
+            stmt.setString(1, processingGroup);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return of(PostgresToken.from(processingGroup, connectionProvider, rs));
+                }
+                return empty();
+            }
+        } catch (SQLException e) {
+            throw new TokenStoreException("Failed to claim token row for processing group: " + processingGroup, e);
+        }
+    }
+
+    static class PostgresToken implements Token {
 
         private static final String UPSERT_TOKEN = """
             INSERT INTO smd_token_store
@@ -51,6 +107,8 @@ public class JdbcTokenStore implements TokenStore {
                 error_count = 0,
                 last_gap_detected_at = NULL,
                 gap_sequence_number = NULL
+            WHERE smd_token_store.last_processed_sequence_number IS NULL
+               OR EXCLUDED.last_processed_sequence_number >= smd_token_store.last_processed_sequence_number
             """;
 
         private static final String UPDATE_FAILED = """
@@ -78,92 +136,60 @@ public class JdbcTokenStore implements TokenStore {
 
         private final String processingGroup;
         private final ConnectionProvider connectionProvider;
+        private final Optional<Long> lastProcessedSequenceNumber;
+        private final int errorCount;
+        private final Instant lastErrorAt;
+        private final Instant lastGapDetectedAt;
 
-        PostgresToken(String processingGroup, ConnectionProvider connectionProvider) {
+        PostgresToken(String processingGroup,
+                      ConnectionProvider connectionProvider,
+                      Optional<Long> lastProcessedSequenceNumber,
+                      int errorCount,
+                      Instant lastErrorAt,
+                      Instant lastGapDetectedAt) {
             this.processingGroup = requireNonNull(processingGroup);
             this.connectionProvider = requireNonNull(connectionProvider);
+            this.lastProcessedSequenceNumber = requireNonNull(lastProcessedSequenceNumber);
+            this.errorCount = errorCount;
+            this.lastErrorAt = lastErrorAt;
+            this.lastGapDetectedAt = lastGapDetectedAt;
+        }
+
+        static PostgresToken from(String processingGroup, ConnectionProvider connectionProvider, ResultSet rs) throws SQLException {
+            long sequenceNumber = rs.getLong("last_processed_sequence_number");
+            Optional<Long> lastProcessedSequenceNumber = rs.wasNull() ? empty() : of(sequenceNumber);
+
+            Timestamp lastErrorAt = rs.getTimestamp("last_error_at");
+            Timestamp lastGapDetectedAt = rs.getTimestamp("last_gap_detected_at");
+
+            return new PostgresToken(
+                processingGroup,
+                connectionProvider,
+                lastProcessedSequenceNumber,
+                rs.getInt("error_count"),
+                lastErrorAt == null ? null : lastErrorAt.toInstant(),
+                lastGapDetectedAt == null ? null : lastGapDetectedAt.toInstant()
+            );
         }
 
         @Override
         public Optional<Long> lastProcessedSequenceNumber() {
-            return connectionProvider.doWithConnection(connection -> {
-                try (PreparedStatement stmt = connection.prepareStatement(SELECT_TOKEN)) {
-                    stmt.setString(1, processingGroup);
-
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            long sequenceNumber = rs.getLong("last_processed_sequence_number");
-                            if (rs.wasNull()) {
-                                return empty();
-                            }
-                            return of(sequenceNumber);
-                        }
-                        return empty();
-                    }
-                } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to read token for processing group: " + processingGroup, e);
-                }
-            });
+            return lastProcessedSequenceNumber;
         }
 
         @Override
         public int errorCount() {
-            return connectionProvider.doWithConnection(connection -> {
-                try (PreparedStatement stmt = connection.prepareStatement(SELECT_TOKEN)) {
-                    stmt.setString(1, processingGroup);
-
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            return rs.getInt("error_count");
-                        }
-                        return 0;
-                    }
-                } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to read error count for processing group: " + processingGroup, e);
-                }
-            });
+            return errorCount;
         }
 
         @Override
         public Instant lastErrorAt() {
-            return connectionProvider.doWithConnection(connection -> {
-                try (PreparedStatement stmt = connection.prepareStatement(SELECT_TOKEN)) {
-                    stmt.setString(1, processingGroup);
-
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            Timestamp timestamp = rs.getTimestamp("last_error_at");
-                            if (timestamp != null) {
-                                return timestamp.toInstant();
-                            }
-                        }
-                        return null;
-                    }
-                } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to read last error timestamp for processing group: " + processingGroup, e);
-                }
-            });
+            return lastErrorAt;
         }
 
         @Override
         public Instant lastGapDetectedAt() {
-            return connectionProvider.doWithConnection(connection -> {
-                try (PreparedStatement stmt = connection.prepareStatement(SELECT_TOKEN)) {
-                    stmt.setString(1, processingGroup);
-
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            Timestamp timestamp = rs.getTimestamp("last_gap_detected_at");
-                            if (timestamp != null) {
-                                return timestamp.toInstant();
-                            }
-                        }
-                        return null;
-                    }
-                } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to read last gap detected timestamp for processing group: " + processingGroup, e);
-                }
-            });
+            return lastGapDetectedAt;
         }
 
         @Override

@@ -1,6 +1,8 @@
 package app.dodb.smd.eventstore.store;
 
+import java.util.Optional;
+
 public interface TokenStore {
 
-    Token getToken(String processingGroup);
+    Optional<Token> claimToken(String processingGroup);
 }

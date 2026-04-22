@@ -29,6 +29,7 @@ public interface RetryBackoffStrategy {
 
         @Override
         public Duration calculateDelay(int retryCount) {
+            requireAtLeastZero(retryCount);
             return delay;
         }
     }
@@ -43,6 +44,7 @@ public interface RetryBackoffStrategy {
 
         @Override
         public Duration calculateDelay(int retryCount) {
+            requireAtLeastZero(retryCount);
             long delayMs = (long) (initialDelay.toMillis() * Math.pow(multiplier, retryCount));
             return Duration.ofMillis(Math.min(delayMs, maxDelay.toMillis()));
         }
@@ -58,6 +60,7 @@ public interface RetryBackoffStrategy {
 
         @Override
         public Duration calculateDelay(int retryCount) {
+            requireAtLeastZero(retryCount);
             long delayMs = initialDelay.toMillis() + (increment.toMillis() * retryCount);
             return Duration.ofMillis(Math.min(delayMs, maxDelay.toMillis()));
         }

@@ -8,6 +8,9 @@ spring:
 smd:
   event-store:
     enabled: true
+    scheduling:
+      initial-delay: 0ms
+      polling-delay: 100ms
 
 logging:
   level:

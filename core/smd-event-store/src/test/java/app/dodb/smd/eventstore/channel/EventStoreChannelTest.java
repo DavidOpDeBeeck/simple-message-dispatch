@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -58,7 +59,7 @@ class EventStoreChannelTest {
         private final AtomicInteger calls = new AtomicInteger();
 
         @Override
-        public Token getToken(String processingGroup) {
+        public Optional<Token> claimToken(String processingGroup) {
             calls.incrementAndGet();
             throw new IllegalStateException("token store failure");
         }
