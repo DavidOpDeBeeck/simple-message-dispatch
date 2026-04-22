@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 
 import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.exponential;
+import static app.dodb.smd.eventstore.utils.ValidationUtils.requireAtLeastZero;
+import static app.dodb.smd.eventstore.utils.ValidationUtils.requireGreaterThanZero;
 import static java.time.Duration.ofMinutes;
 import static java.time.Duration.ofSeconds;
 import static java.util.Objects.requireNonNull;
@@ -89,37 +91,37 @@ public class EventStoreChannelConfig {
         }
 
         public Builder transactionProvider(TransactionProvider transactionProvider) {
-            this.transactionProvider = requireNonNull(transactionProvider);
+            this.transactionProvider = transactionProvider;
             return this;
         }
 
         public Builder interceptors(List<EventInterceptor> interceptors) {
-            this.interceptors = requireNonNull(interceptors);
+            this.interceptors = interceptors;
             return this;
         }
 
         public Builder tokenStore(TokenStore tokenStore) {
-            this.tokenStore = requireNonNull(tokenStore);
+            this.tokenStore = tokenStore;
             return this;
         }
 
         public Builder eventStorage(EventStorage eventStorage) {
-            this.eventStorage = requireNonNull(eventStorage);
+            this.eventStorage = eventStorage;
             return this;
         }
 
         public Builder eventSerializer(EventSerializer eventSerializer) {
-            this.eventSerializer = requireNonNull(eventSerializer);
+            this.eventSerializer = eventSerializer;
             return this;
         }
 
         public Builder schedulingConfig(SchedulingConfig schedulingConfig) {
-            this.schedulingConfig = requireNonNull(schedulingConfig);
+            this.schedulingConfig = schedulingConfig;
             return this;
         }
 
         public Builder processingConfig(ProcessingConfig processingConfig) {
-            this.processingConfig = requireNonNull(processingConfig);
+            this.processingConfig = processingConfig;
             return this;
         }
 
@@ -143,8 +145,8 @@ public class EventStoreChannelConfig {
         private SchedulingConfig(SchedulingConfig.Builder builder) {
             this.enabled = requireNonNull(builder.enabled);
             this.scheduler = requireNonNull(builder.scheduler);
-            this.initialDelay = requireNonNull(builder.initialDelay);
-            this.pollingDelay = requireNonNull(builder.pollingDelay);
+            this.initialDelay = requireAtLeastZero(builder.initialDelay);
+            this.pollingDelay = requireGreaterThanZero(builder.pollingDelay);
         }
 
         public boolean isEnabled() {
@@ -191,17 +193,17 @@ public class EventStoreChannelConfig {
             }
 
             public Builder scheduler(ScheduledExecutorService scheduler) {
-                this.scheduler = requireNonNull(scheduler);
+                this.scheduler = scheduler;
                 return this;
             }
 
             public Builder initialDelay(Duration initialDelay) {
-                this.initialDelay = requireNonNull(initialDelay);
+                this.initialDelay = initialDelay;
                 return this;
             }
 
             public Builder pollingDelay(Duration pollingDelay) {
-                this.pollingDelay = requireNonNull(pollingDelay);
+                this.pollingDelay = pollingDelay;
                 return this;
             }
 
@@ -229,10 +231,10 @@ public class EventStoreChannelConfig {
         private final Duration gapTimeout;
 
         private ProcessingConfig(ProcessingConfig.Builder builder) {
-            this.maxRetries = requireNonNull(builder.maxRetries);
-            this.batchSize = requireNonNull(builder.batchSize);
+            this.maxRetries = requireAtLeastZero(builder.maxRetries);
+            this.batchSize = requireGreaterThanZero(builder.batchSize);
             this.retryBackoffStrategy = requireNonNull(builder.retryBackoffStrategy);
-            this.gapTimeout = requireNonNull(builder.gapTimeout);
+            this.gapTimeout = requireAtLeastZero(builder.gapTimeout);
         }
 
         public int getMaxRetries() {
@@ -284,12 +286,12 @@ public class EventStoreChannelConfig {
             }
 
             public Builder retryBackoffStrategy(RetryBackoffStrategy retryBackoffStrategy) {
-                this.retryBackoffStrategy = requireNonNull(retryBackoffStrategy);
+                this.retryBackoffStrategy = retryBackoffStrategy;
                 return this;
             }
 
             public Builder gapTimeout(Duration gapTimeout) {
-                this.gapTimeout = requireNonNull(gapTimeout);
+                this.gapTimeout = gapTimeout;
                 return this;
             }
 
