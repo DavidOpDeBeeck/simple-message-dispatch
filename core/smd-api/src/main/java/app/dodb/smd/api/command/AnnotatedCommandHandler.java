@@ -12,6 +12,7 @@ import com.google.common.collect.Sets;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.time.Instant;
@@ -51,6 +52,15 @@ public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provi
 
     @SuppressWarnings("unchecked")
     private static <R, C extends Command<R>> AnnotatedCommandHandler<R, C> mapToCommandHandler(Provider<?> provider, Method method) {
+        if (!Modifier.isPublic(method.getModifiers())) {
+            throw new IllegalArgumentException("""
+                Invalid command handler: method must be public.
+
+                    Method:
+                    %s
+                """.formatted(logMethod(method)));
+        }
+
         Set<Class<?>> allParameterTypes = Set.of(method.getParameterTypes());
         Set<Class<?>> commandParameterTypes = allParameterTypes.stream()
             .filter(Command.class::isAssignableFrom)

@@ -90,6 +90,13 @@ class AnnotatedQueryHandlerTest {
             .hasMessageContaining("Ambiguous query handlers found");
     }
 
+    @Test
+    void handle_withNonPublicAnnotatedMethod() {
+        assertThatThrownBy(() -> AnnotatedQueryHandler.from(new NonPublicAnnotatedQueryHandler()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid query handler: method must be public.");
+    }
+
     public record QueryForTest() implements Query<String> {
     }
 
@@ -189,6 +196,14 @@ class AnnotatedQueryHandlerTest {
         @QueryHandler
         public Integer handle(QueryForTest query) {
             return 0;
+        }
+    }
+
+    public static class NonPublicAnnotatedQueryHandler {
+
+        @QueryHandler
+        String handle(QueryForTest query) {
+            return "";
         }
     }
 }

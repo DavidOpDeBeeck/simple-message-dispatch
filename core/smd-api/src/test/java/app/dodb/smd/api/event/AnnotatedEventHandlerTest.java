@@ -131,6 +131,13 @@ class AnnotatedEventHandlerTest {
             );
     }
 
+    @Test
+    void handle_withNonPublicAnnotatedMethod() {
+        assertThatThrownBy(() -> AnnotatedEventHandler.from(new NonPublicAnnotatedEventHandler()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid event handler: method must be public.");
+    }
+
     public record EventForTest() implements Event {
     }
 
@@ -253,6 +260,14 @@ class AnnotatedEventHandlerTest {
 
         @EventHandler
         public void handle(EventForTest event, AnotherEventForTest anotherEvent) {
+        }
+    }
+
+    @ProcessingGroup
+    public static class NonPublicAnnotatedEventHandler {
+
+        @EventHandler
+        void handle(EventForTest event) {
         }
     }
 }

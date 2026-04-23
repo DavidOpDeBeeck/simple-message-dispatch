@@ -11,6 +11,7 @@ import com.google.common.collect.Sets;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.time.Instant;
@@ -51,6 +52,15 @@ public record AnnotatedQueryHandler<R, Q extends Query<R>>(Provider<?> provider,
 
     @SuppressWarnings("unchecked")
     private static <R, C extends Query<R>> AnnotatedQueryHandler<R, C> mapToQueryHandler(Provider<?> provider, Method method) {
+        if (!Modifier.isPublic(method.getModifiers())) {
+            throw new IllegalArgumentException("""
+                Invalid query handler: method must be public.
+
+                    Method:
+                    %s
+                """.formatted(logMethod(method)));
+        }
+
         Set<Class<?>> allParameterTypes = Set.of(method.getParameterTypes());
         Set<Class<?>> queryParameterTypes = allParameterTypes.stream()
             .filter(Query.class::isAssignableFrom)

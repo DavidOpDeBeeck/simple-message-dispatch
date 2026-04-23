@@ -97,6 +97,13 @@ class AnnotatedCommandHandlerTest {
             .hasMessageContaining("Ambiguous command handlers found");
     }
 
+    @Test
+    void handle_withNonPublicAnnotatedMethod() {
+        assertThatThrownBy(() -> AnnotatedCommandHandler.from(new NonPublicAnnotatedCommandHandler()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid command handler: method must be public.");
+    }
+
     public record CommandForTest() implements Command<String> {
     }
 
@@ -206,6 +213,14 @@ class AnnotatedCommandHandlerTest {
 
         @CommandHandler
         public void handle(YetAnotherCommandForTest command) {
+        }
+    }
+
+    public static class NonPublicAnnotatedCommandHandler {
+
+        @CommandHandler
+        String handle(CommandForTest command) {
+            return "";
         }
     }
 }

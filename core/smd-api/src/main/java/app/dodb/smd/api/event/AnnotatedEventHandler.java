@@ -12,6 +12,7 @@ import com.google.common.collect.Sets;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.time.Instant;
 import java.util.HashSet;
@@ -50,6 +51,15 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
 
     @SuppressWarnings("unchecked")
     private static <E extends Event> AnnotatedEventHandler<E> mapToEventHandler(Provider<?> provider, Method method) {
+        if (!Modifier.isPublic(method.getModifiers())) {
+            throw new IllegalArgumentException("""
+                Invalid event handler: method must be public.
+
+                    Method:
+                    %s
+                """.formatted(logMethod(method)));
+        }
+
         Set<Class<?>> allParameterTypes = Set.of(method.getParameterTypes());
         Set<Class<?>> eventParameterTypes = allParameterTypes.stream()
             .filter(Event.class::isAssignableFrom)
