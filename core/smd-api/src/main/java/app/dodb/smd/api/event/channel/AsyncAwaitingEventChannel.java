@@ -46,9 +46,10 @@ public class AsyncAwaitingEventChannel implements EventChannel {
 
     @Override
     public <E extends Event> void send(EventMessage<E> eventMessage) {
-        try {
-            var futures = new ArrayList<Future<?>>();
+        var futures = new ArrayList<Future<?>>();
+        var failures = new ArrayList<Throwable>();
 
+        try {
             for (EventChannelListener listener : listeners) {
                 futures.add(executorService.submit(() -> {
                     MetadataFactory.runInScope(eventMessage, () -> {
@@ -59,16 +60,28 @@ public class AsyncAwaitingEventChannel implements EventChannel {
             }
 
             for (Future<?> future : futures) {
-                future.get();
+                try {
+                    future.get();
+                } catch (ExecutionException e) {
+                    failures.add(e.getCause());
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            futures.forEach(future -> future.cancel(true));
             throw rethrow(e);
-        } catch (ExecutionException e) {
-            throw rethrow(e.getCause());
         } catch (Exception e) {
             throw rethrow(e);
         }
+
+        if (failures.isEmpty()) {
+            return;
+        }
+
+        var primaryFailure = failures.getFirst();
+        failures.stream().skip(1).forEach(primaryFailure::addSuppressed);
+
+        throw rethrow(primaryFailure);
     }
 
     @Override

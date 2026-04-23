@@ -19,6 +19,9 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static app.dodb.smd.api.event.ProcessingGroup.DEFAULT;
@@ -78,6 +81,49 @@ class AsyncAwaitingEventChannelTest {
     }
 
     @Test
+    void dispatch_whenOneListenerFails_waitsForOtherListenersBeforeThrowing() throws InterruptedException {
+        var completed = new CountDownLatch(1);
+        var allowCompletion = new CountDownLatch(1);
+        var channel = AsyncAwaitingEventChannel.usingVirtualThreads();
+        channel.subscribe(new FailingListener("fast failure"));
+        channel.subscribe(new AwaitingListener(completed, allowCompletion));
+
+        var sendThreadFailure = new AtomicReference<Throwable>();
+        var sendThread = Thread.ofPlatform().start(() -> {
+            try {
+                channel.send(EventMessage.from(new EventForTest("Hello world"), METADATA));
+            } catch (Throwable throwable) {
+                sendThreadFailure.set(throwable);
+            }
+        });
+
+        assertThat(completed.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(sendThread.isAlive()).isTrue();
+
+        allowCompletion.countDown();
+        sendThread.join(5000);
+
+        assertThat(sendThread.isAlive()).isFalse();
+        assertThat(sendThreadFailure.get())
+            .isInstanceOf(RuntimeException.class)
+            .hasMessage("fast failure");
+    }
+
+    @Test
+    void dispatch_whenMultipleListenersFail_addsSuppressedFailures() {
+        var channel = AsyncAwaitingEventChannel.usingVirtualThreads();
+        channel.subscribe(new FailingListener("first failure"));
+        channel.subscribe(new FailingListener("second failure"));
+
+        assertThatThrownBy(() -> channel.send(EventMessage.from(new EventForTest("Hello world"), METADATA)))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessage("first failure")
+            .satisfies(throwable -> assertThat(throwable.getSuppressed())
+                .singleElement()
+                .satisfies(suppressed -> assertThat(suppressed).hasMessage("second failure")));
+    }
+
+    @Test
     void dispatch_withAsyncInterceptor_nestedQueryInheritsEventMetadata() {
         var queryHandler = new QueryHandlerForMetadata();
         var queryBus = QueryBusSpec.withDefaults()
@@ -112,7 +158,7 @@ class AsyncAwaitingEventChannelTest {
 
     public static class EventHandlerWithDifferentProcessingGroup {
 
-        private final List<Integer> methodCalled = new ArrayList<>();
+        private final List<Integer> methodCalled = new CopyOnWriteArrayList<>();
 
         @EventHandler
         @ProcessingGroup("1")
@@ -174,6 +220,53 @@ class AsyncAwaitingEventChannelTest {
 
         @Override
         public <E extends Event> void on(EventMessage<E> eventMessage) {
+        }
+    }
+
+    private static class FailingListener implements EventChannelListener {
+
+        private final String message;
+
+        private FailingListener(String message) {
+            this.message = message;
+        }
+
+        @Override
+        public String processingGroup() {
+            return DEFAULT;
+        }
+
+        @Override
+        public <E extends Event> void on(EventMessage<E> eventMessage) {
+            throw new RuntimeException(message);
+        }
+    }
+
+    private static class AwaitingListener implements EventChannelListener {
+
+        private final CountDownLatch completed;
+        private final CountDownLatch allowCompletion;
+
+        private AwaitingListener(CountDownLatch completed, CountDownLatch allowCompletion) {
+            this.completed = completed;
+            this.allowCompletion = allowCompletion;
+        }
+
+        @Override
+        public String processingGroup() {
+            return DEFAULT;
+        }
+
+        @Override
+        public <E extends Event> void on(EventMessage<E> eventMessage) {
+            completed.countDown();
+
+            try {
+                assertThat(allowCompletion.await(5, TimeUnit.SECONDS)).isTrue();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
         }
     }
 
