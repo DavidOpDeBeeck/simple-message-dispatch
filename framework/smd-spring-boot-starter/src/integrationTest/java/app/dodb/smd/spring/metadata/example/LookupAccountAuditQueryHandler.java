@@ -6,17 +6,17 @@ import app.dodb.smd.api.query.QueryHandler;
 import org.springframework.stereotype.Component;
 
 @Component
-public class GetAccountBalanceQueryHandler {
+public class LookupAccountAuditQueryHandler {
 
     private final MetadataRecorder metadataRecorder;
 
-    public GetAccountBalanceQueryHandler(MetadataRecorder metadataRecorder) {
+    public LookupAccountAuditQueryHandler(MetadataRecorder metadataRecorder) {
         this.metadataRecorder = metadataRecorder;
     }
 
     @QueryHandler
-    public int handle(GetAccountBalanceQuery query, Metadata metadata, @MetadataValue("key") String value) {
-        metadataRecorder.recordQuery(metadata, value);
+    public int handle(LookupAccountAuditQuery query, Metadata metadata, @MetadataValue("key") String value) {
+        metadataRecorder.recordNestedQuery(metadata, value);
         return 1;
     }
 }

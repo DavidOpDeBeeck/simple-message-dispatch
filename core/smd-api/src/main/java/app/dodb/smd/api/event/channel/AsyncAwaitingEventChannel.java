@@ -4,6 +4,7 @@ import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.metadata.MetadataFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,8 +51,10 @@ public class AsyncAwaitingEventChannel implements EventChannel {
 
             for (EventChannelListener listener : listeners) {
                 futures.add(executorService.submit(() -> {
-                    var chain = EventInterceptorChain.<E>create(listener::on, interceptors);
-                    chain.proceed(eventMessage);
+                    MetadataFactory.runInScope(eventMessage, () -> {
+                        var chain = EventInterceptorChain.<E>create(listener::on, interceptors);
+                        chain.proceed(eventMessage);
+                    });
                 }));
             }
 

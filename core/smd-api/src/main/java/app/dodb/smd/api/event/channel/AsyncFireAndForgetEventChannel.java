@@ -4,6 +4,7 @@ import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.metadata.MetadataFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,8 +49,10 @@ public class AsyncFireAndForgetEventChannel implements EventChannel {
     public <E extends Event> void send(EventMessage<E> eventMessage) {
         listeners.forEach(listener -> executorService.submit(() -> {
             try {
-                var chain = EventInterceptorChain.<E>create(listener::on, interceptors);
-                chain.proceed(eventMessage);
+                MetadataFactory.runInScope(eventMessage, () -> {
+                    var chain = EventInterceptorChain.<E>create(listener::on, interceptors);
+                    chain.proceed(eventMessage);
+                });
             } catch (Exception e) {
                 LOGGER.error("Unhandled event error: processingGroup={}", listener.processingGroup(), e);
             }

@@ -2,8 +2,8 @@ package app.dodb.smd.api.metadata;
 
 import app.dodb.smd.api.message.Message;
 import app.dodb.smd.api.message.MessageId;
-import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
+import app.dodb.smd.api.metadata.time.TimeProvider;
 
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -30,6 +30,11 @@ public class MetadataFactory {
 
     public MetadataScope createScope(Metadata metadata) {
         return new MetadataScope(() -> metadata);
+    }
+
+    public static void runInScope(Message<?, ?> message, Runnable runnable) {
+        ScopedValue.where(PARENT_METADATA, message.metadata())
+            .run(() -> ScopedValue.where(PARENT_MESSAGE_ID, message.messageId()).run(runnable));
     }
 
     private Metadata determineMetadata() {

@@ -5,6 +5,7 @@
 - Documentation is now split into focused guides under `docs/` instead of one large root README.
 - Time-related metadata APIs now use the `time` naming consistently.
 - Metadata properties are now immutable after creation.
+- Async event handling now restores parent metadata scope so nested dispatch keeps principal, properties, and lineage across worker threads.
 - Event interception now uses one consistent API.
 - Event processing groups must now be configured explicitly when you provide custom group routing.
 - Event-store polling can now be disabled cleanly through configuration.

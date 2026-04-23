@@ -1,17 +1,29 @@
 package app.dodb.smd.api.event.channel;
 
+import app.dodb.smd.api.command.AnnotatedCommandHandler;
+import app.dodb.smd.api.command.Command;
+import app.dodb.smd.api.command.CommandHandler;
+import app.dodb.smd.api.command.CommandHandlerLocator;
+import app.dodb.smd.api.command.CommandHandlerRegistry;
+import app.dodb.smd.api.command.bus.CommandBusSpec;
 import app.dodb.smd.api.event.AnnotatedEventHandler;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.ProcessingGroup;
+import app.dodb.smd.api.metadata.Metadata;
+import app.dodb.smd.api.metadata.principal.Principal;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static app.dodb.smd.api.event.ProcessingGroup.DEFAULT;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.METADATA;
+import static app.dodb.smd.api.metadata.MetadataTestConstants.PRINCIPAL;
+import static app.dodb.smd.api.metadata.MetadataTestConstants.TIMESTAMP;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
@@ -83,6 +95,31 @@ class AsyncFireAndForgetEventChannelTest {
         await().untilAsserted(() ->
             assertThat(eventHandler.getMethodCalled())
                 .containsOnly(1, 2));
+    }
+
+    @Test
+    void dispatch_withAsyncListener_nestedCommandInheritsEventMetadata() {
+        var commandHandler = new CommandHandlerForMetadata();
+        var commandBus = CommandBusSpec.withDefaults()
+            .commandHandlers(new StaticCommandHandlerLocator(AnnotatedCommandHandler.from(commandHandler)))
+            .create();
+
+        var channel = AsyncFireAndForgetEventChannel.usingVirtualThreads();
+        channel.subscribe(new NestedCommandDispatchingListener(commandBus));
+
+        var eventMetadata = new Metadata(PRINCIPAL, TIMESTAMP, null, Map.of("key", "value"));
+        var eventMessage = EventMessage.from(new EventForTest("Hello world"), eventMetadata);
+
+        channel.send(eventMessage);
+
+        await().untilAsserted(() -> {
+            var nestedMetadata = commandHandler.handledMetadata.get();
+            assertThat(nestedMetadata).isNotNull();
+            assertThat(nestedMetadata.principal()).isEqualTo(eventMetadata.principal());
+            assertThat(nestedMetadata.properties()).containsEntry("key", "value");
+            assertThat(nestedMetadata.parentMessageId()).isEqualTo(eventMessage.messageId());
+            assertThat(nestedMetadata.timestamp()).isNotEqualTo(eventMetadata.timestamp());
+        });
     }
 
     public record EventForTest(String value) implements Event {
@@ -174,6 +211,47 @@ class AsyncFireAndForgetEventChannelTest {
 
         public List<Integer> getMethodCalled() {
             return methodCalled;
+        }
+    }
+
+    public record CommandForMetadata() implements Command<Metadata> {
+    }
+
+    public static class CommandHandlerForMetadata {
+
+        private final AtomicReference<Metadata> handledMetadata = new AtomicReference<>();
+
+        @CommandHandler
+        public Metadata handle(CommandForMetadata command, Metadata metadata, Principal principal) {
+            handledMetadata.set(metadata);
+            return metadata;
+        }
+    }
+
+    private static class NestedCommandDispatchingListener implements EventChannelListener {
+
+        private final app.dodb.smd.api.command.CommandGateway commandBus;
+
+        private NestedCommandDispatchingListener(app.dodb.smd.api.command.CommandGateway commandBus) {
+            this.commandBus = commandBus;
+        }
+
+        @Override
+        public String processingGroup() {
+            return DEFAULT;
+        }
+
+        @Override
+        public <E extends Event> void on(EventMessage<E> eventMessage) {
+            commandBus.send(new CommandForMetadata());
+        }
+    }
+
+    private record StaticCommandHandlerLocator(CommandHandlerRegistry registry) implements CommandHandlerLocator {
+
+        @Override
+        public CommandHandlerRegistry locate() {
+            return registry;
         }
     }
 }

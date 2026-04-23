@@ -8,6 +8,7 @@ import app.dodb.smd.api.event.channel.EventChannel;
 import app.dodb.smd.api.event.channel.EventChannelListener;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.Metadata;
+import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.store.EventStorage;
 import app.dodb.smd.eventstore.store.Token;
@@ -215,8 +216,10 @@ public class EventStoreChannel implements EventChannel, Closeable {
                     )));
 
                 try {
-                    var chain = EventInterceptorChain.create(listener::on, interceptors);
-                    chain.proceed(eventMessage);
+                    MetadataFactory.runInScope(eventMessage, () -> {
+                        var chain = EventInterceptorChain.create(listener::on, interceptors);
+                        chain.proceed(eventMessage);
+                    });
                     lastProcessedInBatch = sequenceToProcess;
                     LOGGER.debug("Event processed: processingGroup={}, sequenceNumber={}, messageId={}",
                         processingGroup, sequenceToProcess, eventToProcess.messageId());

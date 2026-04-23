@@ -1,11 +1,12 @@
 package app.dodb.smd.spring.metadata;
 
 import app.dodb.smd.spring.EnableSMD;
-import org.springframework.context.annotation.ComponentScan;
+import app.dodb.smd.spring.metadata.example.MetadataExampleIntegrationTestConfiguration;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 
-@Configuration
-@ComponentScan
 @EnableSMD
+@Configuration
+@Import(MetadataExampleIntegrationTestConfiguration.class)
 public class MetadataIntegrationTestConfiguration {
 }
