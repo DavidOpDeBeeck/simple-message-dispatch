@@ -1,46 +1,57 @@
 # Changelog
 
+## [Unreleased]
+
+- Documentation is now split into focused guides under `docs/` instead of one large root README.
+- Time-related metadata APIs now use the `time` naming consistently.
+- Metadata properties are now immutable after creation.
+- Event interception now uses one consistent API.
+- Event processing groups must now be configured explicitly when you provide custom group routing.
+- Event-store polling can now be disabled cleanly through configuration.
+- Event-store configuration now fails fast on invalid values.
+- Event-store serialization now supports custom event type names.
+- Event-store processing is more robust when handlers fail after producing side effects.
+- Event-store processing is safer in multi-instance or multi-threaded setups because processing-group tokens are claimed before work starts.
+- Requires-new Spring transaction deferred work now runs correctly.
+
 ## [0.0.7]
 
-- Rework Metadata to use `Instant` timestamp, add `parentMessageId` and custom properties.
-- Rename `DatetimeProvider` to `TimeProvider`.
-- Rework Message API: `getXxx()` to `xxx()`.
-- Add `@MetadataValue` annotation for handler parameter injection.
-- Add `MessageArgumentBinder` for flexible handler argument resolution.
-- Add `TransactionProvider` and transactional bus interceptors.
-- Add `smd-event-store` module with JDBC event storage, polling, token tracking, gap detection, and configurable retry/backoff.
-- Add Spring Boot autoconfiguration for event store and transactions.
-- Migrate to Gradle version catalog.
-- Upgrade Gradle wrapper 9.1.0 to 9.4.0, Spring Boot 3.5.0 to 4.0.3.
+- Message metadata now includes `Instant` timestamps, `parentMessageId`, and custom properties.
+- `DatetimeProvider` was renamed to `TimeProvider`.
+- Message access now uses `xxx()` style accessors instead of `getXxx()`.
+- Handlers can now read individual metadata properties with `@MetadataValue`.
+- Command, query, and event handling can now run through transactional interceptors.
+- Added the `smd-event-store` module for JDBC-backed event storage and polling-based event delivery.
+- Spring Boot applications can now autoconfigure event-store and transaction support.
+- Build configuration was refreshed and dependency versions were updated.
 
 ## [0.0.6]
 
-- Rework EventChannel to support synchronous (same-thread), asynchronous (awaiting and fire-and-forget) behavior
+- Event channels now support synchronous, async-awaiting, and fire-and-forget delivery modes.
 
 ## [0.0.5]
 
-- Command-, Event-, and QueryBus are now configured via `XXXBusSpec`.
-- Introduced `EventChannel` to support blocking and non-blocking execution.
-- `@ProcessingGroup` is now mandatory for all event handlers.
+- Command, query, and event buses are now configured through `*BusSpec` builders.
+- Event delivery can now be configured through `EventChannel`.
+- Event handlers now require an explicit `@ProcessingGroup`.
 
 ## [0.0.4]
 
-- Fixed a bug where the logging for multiple processing groups would fail.
+- Fixed logging for applications with multiple processing groups.
 
 ## [0.0.3]
 
-- Compile with Java 25 due to usage of `ScopedValue`.
-- Introduced interceptors for command, query, and event bus to enable cross-cutting concerns.
-- Metadata is now partially reused/copied downstream (e.g. when a command handler publishes an event, the metadata of the command is reused for the event). This mechanism will evolve as metadata is
-  expanded.
-- Added `@ConditionalOnMissingBean` to `ObjectCreator`, `PrincipalProvider`, and `DatetimeProvider` to allow applications to override them if needed.
-- `Principal` and `Datetime` can now be correctly stubbed during testing.
+- SMD now targets Java 25.
+- Added interceptors for command, query, and event handling.
+- Downstream messages now inherit metadata from the message that triggered them.
+- Spring applications can now override key infrastructure beans more easily.
+- Principal and time providers can now be stubbed correctly in tests.
 
 ## [0.0.2]
 
-- Package-based locators now only scan the explicitly provided packages via the `@EnableSMD` annotation.
-- If no packages are specified with `@EnableSMD`, the package of the annotated class is used by default.
-- When a wrapper type is used as the return type for a command or query, the handler must return the primitive type. If `null` is a valid case, the type should be wrapped using `Optional`.
+- Package scanning now stays within the packages configured through `@EnableSMD`.
+- If no packages are configured, SMD now defaults to the package of the annotated class.
+- Command and query handler return types are now validated more strictly; use `Optional` when `null` is a valid outcome.
 
 ## [0.0.1]
 
