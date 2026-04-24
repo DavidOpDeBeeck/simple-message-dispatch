@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 
+import static app.dodb.smd.api.utils.LoggingUtils.logClass;
 import static java.lang.Integer.MIN_VALUE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -66,7 +67,7 @@ class AnnotatedEventHandlerTest {
     void handle_withoutEventParameter() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithoutEventParameter()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid event handler: method must include a parameter of type Event.");
+            .hasMessageStartingWith("Invalid handler: method must include a parameter of type %s.".formatted(logClass(Event.class)));
     }
 
     @Test
@@ -84,31 +85,66 @@ class AnnotatedEventHandlerTest {
     }
 
     @Test
+    void handle_withEventAndMultipleMetadataValueParameters() {
+        var registry = AnnotatedEventHandler.from(new EventHandlerWithEventAndMultipleMetadataValueParameters());
+
+        assertThat(registry.eventHandlerRegistryByProcessingGroup()).hasSize(1);
+    }
+
+    @Test
     void handle_withoutMetadataValueAnnotation() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithoutMetadataValueAnnotation()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid event handler: metadata value parameter must be annotated with @MetadataValue.");
+            .hasMessageStartingWith("Invalid handler: metadata value parameter must be annotated with @MetadataValue.");
     }
 
     @Test
     void handle_withIncorrectMetadataValueAnnotation() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithIncorrectMetadataValueAnnotation()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid event handler: only parameters of type String can be annotated with @MetadataValue.");
+            .hasMessageStartingWith("Invalid handler: only parameters of type String can be annotated with @MetadataValue.");
+    }
+
+    @Test
+    void handle_withDuplicateMessageIdParameters() {
+        assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithDuplicateMessageIdParameters()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(MessageId.class)));
+    }
+
+    @Test
+    void handle_withDuplicateMetadataParameters() {
+        assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithDuplicateMetadataParameters()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(Metadata.class)));
+    }
+
+    @Test
+    void handle_withDuplicatePrincipalParameters() {
+        assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithDuplicatePrincipalParameters()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(app.dodb.smd.api.metadata.principal.Principal.class)));
+    }
+
+    @Test
+    void handle_withDuplicateInstantParameters() {
+        assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithDuplicateInstantParameters()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(Instant.class)));
     }
 
     @Test
     void handle_withoutParameters() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithoutParameters()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid event handler: method must have at least one parameter.");
+            .hasMessageStartingWith("Invalid handler: method must have at least one parameter.");
     }
 
     @Test
     void handle_withMultipleEventTypes() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlerWithMultipleEventTypes()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid event handler: method must only include one Event as a parameter.");
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(Event.class)));
     }
 
     @Test
@@ -169,6 +205,14 @@ class AnnotatedEventHandlerTest {
     }
 
     @ProcessingGroup
+    public static class EventHandlerWithEventAndMultipleMetadataValueParameters {
+
+        @EventHandler
+        public void handle(EventForTest event, @MetadataValue("value1") String value1, @MetadataValue("value2") String value2) {
+        }
+    }
+
+    @ProcessingGroup
     public static class EventHandlerWithoutMetadataValueAnnotation {
 
         @EventHandler
@@ -181,6 +225,38 @@ class AnnotatedEventHandlerTest {
 
         @EventHandler
         public void handle(EventForTest event, @MetadataValue("property") Metadata metadata) {
+        }
+    }
+
+    @ProcessingGroup
+    public static class EventHandlerWithDuplicateMessageIdParameters {
+
+        @EventHandler
+        public void handle(EventForTest event, MessageId messageId1, MessageId messageId2) {
+        }
+    }
+
+    @ProcessingGroup
+    public static class EventHandlerWithDuplicateMetadataParameters {
+
+        @EventHandler
+        public void handle(EventForTest event, Metadata metadata1, Metadata metadata2) {
+        }
+    }
+
+    @ProcessingGroup
+    public static class EventHandlerWithDuplicatePrincipalParameters {
+
+        @EventHandler
+        public void handle(EventForTest event, SimplePrincipal principal1, SimplePrincipal principal2) {
+        }
+    }
+
+    @ProcessingGroup
+    public static class EventHandlerWithDuplicateInstantParameters {
+
+        @EventHandler
+        public void handle(EventForTest event, Instant instant1, Instant instant2) {
         }
     }
 

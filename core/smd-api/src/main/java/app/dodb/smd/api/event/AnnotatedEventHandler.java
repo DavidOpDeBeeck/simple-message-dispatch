@@ -4,11 +4,14 @@ import app.dodb.smd.api.framework.Provider;
 import app.dodb.smd.api.framework.SingletonProvider;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.api.metadata.MetadataValue;
 import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.api.utils.MessageArgumentBinder;
-import app.dodb.smd.api.utils.TypeUtils;
-import com.google.common.collect.Sets;
+import app.dodb.smd.api.utils.parameterstrategy.AllowedParameterTypesStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.AtLeastOneParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.AtMostOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.ExactlyOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.MetadataValueParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -16,20 +19,34 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 import static app.dodb.smd.api.utils.LoggingUtils.logClass;
-import static app.dodb.smd.api.utils.LoggingUtils.logClasses;
 import static app.dodb.smd.api.utils.LoggingUtils.logMethod;
 import static app.dodb.smd.api.utils.TypeUtils.getAnnotationOnMethodOrClass;
+import static app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy.validateParameters;
+import static java.util.Arrays.stream;
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toSet;
 
 public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Method method, Class<E> eventType, int order, String processingGroup,
                                                      MessageArgumentBinder<E, EventMessage<E>> argumentBinder)
     implements EventHandlerBehaviour<E> {
+
+    private static final List<ParameterValidationStrategy> PARAMETER_VALIDATION_STRATEGIES = List.of(
+        new AtLeastOneParameterStrategy(),
+        new ExactlyOneAssignableParameterStrategy(Event.class),
+        new AtMostOneAssignableParameterStrategy(MessageId.class),
+        new AtMostOneAssignableParameterStrategy(Metadata.class),
+        new AtMostOneAssignableParameterStrategy(Principal.class),
+        new AtMostOneAssignableParameterStrategy(Instant.class),
+        new MetadataValueParameterStrategy(),
+        new AllowedParameterTypesStrategy(
+            Set.of(Event.class, MessageId.class, Metadata.class, Principal.class, Instant.class, String.class)
+        )
+    );
 
     public static ProcessingGroupRegistry from(Object object) {
         return from(new SingletonProvider<>(object));
@@ -54,85 +71,14 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
         if (!Modifier.isPublic(method.getModifiers())) {
             throw new IllegalArgumentException("""
                 Invalid event handler: method must be public.
-
-                    Method:
-                    %s
-                """.formatted(logMethod(method)));
-        }
-
-        Set<Class<?>> allParameterTypes = Set.of(method.getParameterTypes());
-        Set<Class<?>> eventParameterTypes = allParameterTypes.stream()
-            .filter(Event.class::isAssignableFrom)
-            .collect(toSet());
-        Set<Class<?>> otherParameterTypes = Sets.difference(allParameterTypes, eventParameterTypes);
-
-        if (allParameterTypes.isEmpty()) {
-            throw new IllegalArgumentException("""
-                Invalid event handler: method must have at least one parameter.
                 
                     Method:
                     %s
                 """.formatted(logMethod(method)));
-        }
-        if (eventParameterTypes.isEmpty()) {
-            throw new IllegalArgumentException("""
-                Invalid event handler: method must include a parameter of type Event.
-                
-                    Method:
-                    %s
-                """.formatted(logMethod(method)));
-        }
-        if (eventParameterTypes.size() > 1) {
-            throw new IllegalArgumentException("""
-                Invalid event handler: method must only include one Event as a parameter.
-                
-                    Method:
-                    %s
-                """.formatted(logMethod(method)));
-        }
-
-        Set<Class<?>> allowedParameterTypes = Set.of(MessageId.class, Metadata.class, Principal.class, Instant.class, String.class);
-        Set<Class<?>> invalidParameterTypes = TypeUtils.unrelatedTypes(otherParameterTypes, allowedParameterTypes);
-        if (!invalidParameterTypes.isEmpty()) {
-            throw new IllegalArgumentException("""
-                Invalid event handler: unsupported parameter types found.
-                
-                    Method:
-                    %s
-                
-                    Allowed:
-                    %s
-                
-                    Found:
-                    %s
-                """.formatted(logMethod(method), logClasses(allowedParameterTypes), logClasses(invalidParameterTypes)));
         }
 
         var parameters = method.getParameters();
-        for (Parameter parameter : parameters) {
-            if (String.class.isAssignableFrom(parameter.getType()) && !parameter.isAnnotationPresent(MetadataValue.class)) {
-                throw new IllegalArgumentException("""
-                    Invalid event handler: metadata value parameter must be annotated with @MetadataValue.
-                    
-                        Method:
-                        %s
-                    
-                        Parameter:
-                        %s
-                    """.formatted(logMethod(method), parameter.getName()));
-            }
-            if (parameter.isAnnotationPresent(MetadataValue.class) && !String.class.isAssignableFrom(parameter.getType())) {
-                throw new IllegalArgumentException("""
-                    Invalid event handler: only parameters of type String can be annotated with @MetadataValue.
-                    
-                        Method:
-                        %s
-                    
-                        Parameter:
-                        %s
-                    """.formatted(logMethod(method), parameter.getName()));
-            }
-        }
+        validateParameters(method, parameters, PARAMETER_VALIDATION_STRATEGIES);
 
         Class<?> methodReturnType = method.getReturnType();
         if (!Void.TYPE.equals(methodReturnType)) {
@@ -160,7 +106,11 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
                 """.formatted(logMethod(method)));
         }
 
-        var eventType = (Class<E>) eventParameterTypes.iterator().next();
+        var eventType = (Class<E>) stream(parameters)
+            .map(Parameter::getType)
+            .filter(Event.class::isAssignableFrom)
+            .findFirst()
+            .orElseThrow();
         var order = method.getAnnotation(EventHandler.class).order();
         var processingGroup = processingGroupOpt.orElseThrow();
         return new AnnotatedEventHandler<>(provider, method, eventType, order, processingGroup, MessageArgumentBinder.fromMethodParameters(eventType, parameters));

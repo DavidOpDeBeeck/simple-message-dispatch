@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 
+import static app.dodb.smd.api.utils.LoggingUtils.logClass;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -31,7 +32,7 @@ class AnnotatedQueryHandlerTest {
     void handle_withoutQueryParameter() {
         assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithoutQueryParameter()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid query handler: method must include a parameter of type Query.");
+            .hasMessageStartingWith("Invalid handler: method must include a parameter of type %s.".formatted(logClass(Query.class)));
     }
 
     @Test
@@ -49,31 +50,66 @@ class AnnotatedQueryHandlerTest {
     }
 
     @Test
+    void handle_withQueryAndMultipleMetadataValueParameters() {
+        var registry = AnnotatedQueryHandler.from(new QueryHandlerWithQueryAndMultipleMetadataValueParameters());
+
+        assertThat(registry.queryHandlers()).hasSize(1);
+    }
+
+    @Test
     void handle_withoutMetadataValueAnnotation() {
         assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithoutMetadataValueAnnotation()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid query handler: metadata value parameter must be annotated with @MetadataValue.");
+            .hasMessageStartingWith("Invalid handler: metadata value parameter must be annotated with @MetadataValue.");
     }
 
     @Test
     void handle_withIncorrectMetadataValueAnnotation() {
         assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithIncorrectMetadataValueAnnotation()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid query handler: only parameters of type String can be annotated with @MetadataValue.");
+            .hasMessageStartingWith("Invalid handler: only parameters of type String can be annotated with @MetadataValue.");
+    }
+
+    @Test
+    void handle_withDuplicateMessageIdParameters() {
+        assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithDuplicateMessageIdParameters()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(MessageId.class)));
+    }
+
+    @Test
+    void handle_withDuplicateMetadataParameters() {
+        assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithDuplicateMetadataParameters()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(Metadata.class)));
+    }
+
+    @Test
+    void handle_withDuplicatePrincipalParameters() {
+        assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithDuplicatePrincipalParameters()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(app.dodb.smd.api.metadata.principal.Principal.class)));
+    }
+
+    @Test
+    void handle_withDuplicateInstantParameters() {
+        assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithDuplicateInstantParameters()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(Instant.class)));
     }
 
     @Test
     void handle_withoutParameters() {
         assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithoutParameters()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid query handler: method must have at least one parameter.");
+            .hasMessageStartingWith("Invalid handler: method must have at least one parameter.");
     }
 
     @Test
     void handle_withMultipleQueryTypes() {
         assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithMultipleQueryTypes()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid query handler: method must only include one Query as a parameter.");
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(Query.class)));
     }
 
     @Test
@@ -138,6 +174,14 @@ class AnnotatedQueryHandlerTest {
         }
     }
 
+    public static class QueryHandlerWithQueryAndMultipleMetadataValueParameters {
+
+        @QueryHandler
+        public String handle(QueryForTest query, @MetadataValue("value1") String value1, @MetadataValue("value2") String value2) {
+            return "";
+        }
+    }
+
     public static class QueryHandlerWithoutMetadataValueAnnotation {
 
         @QueryHandler
@@ -150,6 +194,38 @@ class AnnotatedQueryHandlerTest {
 
         @QueryHandler
         public String handle(QueryForTest query, @MetadataValue("property") Metadata metadata) {
+            return "";
+        }
+    }
+
+    public static class QueryHandlerWithDuplicateMessageIdParameters {
+
+        @QueryHandler
+        public String handle(QueryForTest query, MessageId messageId1, MessageId messageId2) {
+            return "";
+        }
+    }
+
+    public static class QueryHandlerWithDuplicateMetadataParameters {
+
+        @QueryHandler
+        public String handle(QueryForTest query, Metadata metadata1, Metadata metadata2) {
+            return "";
+        }
+    }
+
+    public static class QueryHandlerWithDuplicatePrincipalParameters {
+
+        @QueryHandler
+        public String handle(QueryForTest query, SimplePrincipal principal1, SimplePrincipal principal2) {
+            return "";
+        }
+    }
+
+    public static class QueryHandlerWithDuplicateInstantParameters {
+
+        @QueryHandler
+        public String handle(QueryForTest query, Instant instant1, Instant instant2) {
             return "";
         }
     }

@@ -4,10 +4,14 @@ import app.dodb.smd.api.framework.Provider;
 import app.dodb.smd.api.framework.SingletonProvider;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.api.metadata.MetadataValue;
 import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.api.utils.MessageArgumentBinder;
-import com.google.common.collect.Sets;
+import app.dodb.smd.api.utils.parameterstrategy.AllowedParameterTypesStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.AtLeastOneParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.AtMostOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.ExactlyOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.MetadataValueParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -16,21 +20,34 @@ import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 import static app.dodb.smd.api.utils.LoggingUtils.logClass;
-import static app.dodb.smd.api.utils.LoggingUtils.logClasses;
 import static app.dodb.smd.api.utils.LoggingUtils.logMethod;
 import static app.dodb.smd.api.utils.MessageArgumentBinder.fromMethodParameters;
 import static app.dodb.smd.api.utils.TypeUtils.haveSameBounds;
 import static app.dodb.smd.api.utils.TypeUtils.resolveGenericType;
-import static app.dodb.smd.api.utils.TypeUtils.unrelatedTypes;
+import static app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy.validateParameters;
+import static java.util.Arrays.stream;
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toSet;
 
 public record AnnotatedQueryHandler<R, Q extends Query<R>>(Provider<?> provider, Method method, Class<Q> queryType, MessageArgumentBinder<Q, QueryMessage<R, Q>> argumentBinder)
     implements QueryHandlerBehaviour<R, Q> {
+
+    private static final List<ParameterValidationStrategy> PARAMETER_VALIDATION_STRATEGIES = List.of(
+        new AtLeastOneParameterStrategy(),
+        new ExactlyOneAssignableParameterStrategy(Query.class),
+        new AtMostOneAssignableParameterStrategy(MessageId.class),
+        new AtMostOneAssignableParameterStrategy(Metadata.class),
+        new AtMostOneAssignableParameterStrategy(Principal.class),
+        new AtMostOneAssignableParameterStrategy(Instant.class),
+        new MetadataValueParameterStrategy(),
+        new AllowedParameterTypesStrategy(
+            Set.of(Query.class, MessageId.class, Metadata.class, Principal.class, Instant.class, String.class)
+        )
+    );
 
     public static QueryHandlerRegistry from(Object object) {
         return from(new SingletonProvider<>(object));
@@ -55,87 +72,20 @@ public record AnnotatedQueryHandler<R, Q extends Query<R>>(Provider<?> provider,
         if (!Modifier.isPublic(method.getModifiers())) {
             throw new IllegalArgumentException("""
                 Invalid query handler: method must be public.
-
-                    Method:
-                    %s
-                """.formatted(logMethod(method)));
-        }
-
-        Set<Class<?>> allParameterTypes = Set.of(method.getParameterTypes());
-        Set<Class<?>> queryParameterTypes = allParameterTypes.stream()
-            .filter(Query.class::isAssignableFrom)
-            .collect(toSet());
-        Set<Class<?>> otherParameterTypes = Sets.difference(allParameterTypes, queryParameterTypes);
-
-        if (allParameterTypes.isEmpty()) {
-            throw new IllegalArgumentException("""
-                Invalid query handler: method must have at least one parameter.
                 
                     Method:
                     %s
                 """.formatted(logMethod(method)));
-        }
-        if (queryParameterTypes.isEmpty()) {
-            throw new IllegalArgumentException("""
-                Invalid query handler: method must include a parameter of type Query.
-                
-                    Method:
-                    %s
-                """.formatted(logMethod(method)));
-        }
-        if (queryParameterTypes.size() > 1) {
-            throw new IllegalArgumentException("""
-                Invalid query handler: method must only include one Query as a parameter.
-                
-                    Method:
-                    %s
-                """.formatted(logMethod(method)));
-        }
-
-        Set<Class<?>> allowedParameterTypes = Set.of(MessageId.class, Metadata.class, Principal.class, Instant.class, String.class);
-        Set<Class<?>> invalidParameterTypes = unrelatedTypes(otherParameterTypes, allowedParameterTypes);
-        if (!invalidParameterTypes.isEmpty()) {
-            throw new IllegalArgumentException("""
-                Invalid query handler: unsupported parameter types found.
-                
-                    Method:
-                    %s
-                
-                    Allowed:
-                    %s
-                
-                    Found:
-                    %s
-                """.formatted(logMethod(method), logClasses(allowedParameterTypes), logClasses(invalidParameterTypes)));
         }
 
         var parameters = method.getParameters();
-        for (Parameter parameter : parameters) {
-            if (String.class.isAssignableFrom(parameter.getType()) && !parameter.isAnnotationPresent(MetadataValue.class)) {
-                throw new IllegalArgumentException("""
-                    Invalid query handler: metadata value parameter must be annotated with @MetadataValue.
-                    
-                        Method:
-                        %s
-                    
-                        Parameter:
-                        %s
-                    """.formatted(logMethod(method), parameter.getName()));
-            }
-            if (parameter.isAnnotationPresent(MetadataValue.class) && !String.class.isAssignableFrom(parameter.getType())) {
-                throw new IllegalArgumentException("""
-                    Invalid query handler: only parameters of type String can be annotated with @MetadataValue.
-                    
-                        Method:
-                        %s
-                    
-                        Parameter:
-                        %s
-                    """.formatted(logMethod(method), parameter.getName()));
-            }
-        }
+        validateParameters(method, parameters, PARAMETER_VALIDATION_STRATEGIES);
 
-        Class<C> queryType = (Class<C>) queryParameterTypes.iterator().next();
+        Class<C> queryType = (Class<C>) stream(parameters)
+            .map(Parameter::getType)
+            .filter(Query.class::isAssignableFrom)
+            .findFirst()
+            .orElseThrow();
         Type queryReturnType = resolveGenericType(queryType, Query.class);
         Type methodReturnType = method.getGenericReturnType();
         if (!haveSameBounds(methodReturnType, queryReturnType)) {

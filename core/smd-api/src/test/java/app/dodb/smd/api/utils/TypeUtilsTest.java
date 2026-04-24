@@ -1,14 +1,23 @@
 package app.dodb.smd.api.utils;
 
+import app.dodb.smd.api.metadata.MetadataValue;
+import app.dodb.smd.api.utils.parameterstrategy.AllowedParameterTypesStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.AtLeastOneParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.AtMostOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.MetadataValueParameterStrategy;
+import app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy;
 import org.junit.jupiter.api.Test;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
+import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import static app.dodb.smd.api.utils.LoggingUtils.logClass;
 import static app.dodb.smd.api.utils.TypeUtils.getAnnotationOnMethodOrClass;
 import static app.dodb.smd.api.utils.TypeUtils.haveSameBounds;
 import static app.dodb.smd.api.utils.TypeUtils.resolveGenericType;
@@ -16,11 +25,76 @@ import static app.dodb.smd.api.utils.TypeUtils.unrelatedTypes;
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
+import static java.util.Arrays.stream;
 import static java.util.Collections.emptySet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TypeUtilsTest {
+
+    @Test
+    void validateParameters_whenAtMostOneAssignableParameterStrategyHasDuplicateParameters_throwsDefaultException() throws NoSuchMethodException {
+        var method = ParameterFixtures.class.getDeclaredMethod("duplicateStringParameters", String.class, String.class, Integer.class, Integer.class);
+        var parameters = parametersOf("duplicateStringParameters");
+
+        assertThatThrownBy(() -> ParameterValidationStrategy.validateParameters(method, parameters, List.of(
+            new AtMostOneAssignableParameterStrategy(String.class),
+            new AtMostOneAssignableParameterStrategy(Integer.class)
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must only include one parameter of type %s.".formatted(logClass(String.class)));
+    }
+
+    @Test
+    void validateParameters_whenAtLeastOneParameterStrategyHasNoParameters_throwsDefaultException() throws NoSuchMethodException {
+        var method = ParameterFixtures.class.getDeclaredMethod("withoutParameters");
+        var parameters = parametersOf("withoutParameters");
+
+        assertThatThrownBy(() -> ParameterValidationStrategy.validateParameters(method, parameters, List.of(
+            new AtLeastOneParameterStrategy()
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: method must have at least one parameter.");
+    }
+
+    @Test
+    void validateParameters_whenMetadataValueParameterStrategyHasBareString_throwsDefaultException() throws NoSuchMethodException {
+        var method = ParameterFixtures.class.getDeclaredMethod("plainStringParameter", String.class);
+        var parameters = parametersOf("plainStringParameter");
+
+        assertThatThrownBy(() -> ParameterValidationStrategy.validateParameters(method, parameters, List.of(
+            new MetadataValueParameterStrategy()
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: metadata value parameter must be annotated with @MetadataValue.");
+    }
+
+    @Test
+    void validateParameters_whenMetadataValueParameterStrategyHasNonStringAnnotatedParameter_throwsDefaultException() throws NoSuchMethodException {
+        var method = ParameterFixtures.class.getDeclaredMethod("nonStringMetadataValueParameter", Integer.class);
+        var parameters = parametersOf("nonStringMetadataValueParameter");
+
+        assertThatThrownBy(() -> ParameterValidationStrategy.validateParameters(method, parameters, List.of(
+            new MetadataValueParameterStrategy()
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: only parameters of type String can be annotated with @MetadataValue.");
+    }
+
+    @Test
+    void validateParameters_whenAllowedParameterTypesStrategyHasUnsupportedType_throwsDefaultException() throws NoSuchMethodException {
+        var method = ParameterFixtures.class.getDeclaredMethod("unsupportedParameterType", Runnable.class, Long.class);
+        var parameters = parametersOf("unsupportedParameterType");
+
+        assertThatThrownBy(() -> ParameterValidationStrategy.validateParameters(method, parameters, List.of(
+            new AllowedParameterTypesStrategy(
+                Set.of(Runnable.class, String.class, Integer.class)
+            )
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid handler: unsupported parameter types found.")
+            .hasMessageContaining("Long");
+    }
 
     @Test
     void haveSameBounds_whenBothTypeVariablesHaveSameBounds_returnsTrue() {
@@ -327,6 +401,14 @@ class TypeUtilsTest {
     @interface MarkerAnnotation {
     }
 
+    private static Parameter[] parametersOf(String methodName) throws NoSuchMethodException {
+        return stream(ParameterFixtures.class.getDeclaredMethods())
+            .filter(method -> method.getName().equals(methodName))
+            .findFirst()
+            .orElseThrow()
+            .getParameters();
+    }
+
     private static ParameterizedType parameterizedType(Type rawType, Type actualType) {
         return new ParameterizedType() {
             @Override
@@ -344,5 +426,28 @@ class TypeUtilsTest {
                 return null;
             }
         };
+    }
+
+    private static class ParameterFixtures {
+
+        @SuppressWarnings("unused")
+        static void duplicateStringParameters(String firstString, String secondString, Integer firstInteger, Integer secondInteger) {
+        }
+
+        @SuppressWarnings("unused")
+        static void plainStringParameter(String value) {
+        }
+
+        @SuppressWarnings("unused")
+        static void nonStringMetadataValueParameter(@MetadataValue("value") Integer value) {
+        }
+
+        @SuppressWarnings("unused")
+        static void unsupportedParameterType(Runnable runnable, Long value) {
+        }
+
+        @SuppressWarnings("unused")
+        static void withoutParameters() {
+        }
     }
 }

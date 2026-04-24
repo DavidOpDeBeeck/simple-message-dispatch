@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Annotated handler parameter validation now supports multiple `@MetadataValue` `String` parameters and uses clearer shared validation rules.
 - Documentation is now split into focused guides under `docs/` instead of one large root README.
 - Time-related metadata APIs now use the `time` naming consistently.
 - Metadata properties are now immutable after creation.
