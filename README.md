@@ -25,15 +25,15 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-api:0.0.x")
+    implementation("app.dodb:smd-api:0.0.8")
     // Optional: durable event storage and polling
-    implementation("app.dodb:smd-event-store:0.0.x")
+    implementation("app.dodb:smd-event-store:0.0.8")
     // Optional: Spring Boot autoconfiguration
-    implementation("app.dodb:smd-spring-boot-starter:0.0.x")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.8")
     // Optional: framework-agnostic test helpers
-    testImplementation("app.dodb:smd-test:0.0.x")
+    testImplementation("app.dodb:smd-test:0.0.8")
     // Optional: Spring Boot test support
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.x")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.8")
 }
 ```
 

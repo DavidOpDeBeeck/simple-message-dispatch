@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-04-26
+
 - Annotated handler parameter validation now supports multiple `@MetadataValue` `String` parameters and uses clearer shared validation rules.
+- Annotated handler methods must now be public, with clearer validation errors for non-public methods.
+- Async-await event handling now reports listener failures consistently and preserves suppressed failures when multiple listeners fail.
 - Documentation is now split into focused guides under `docs/` instead of one large root README.
 - Time-related metadata APIs now use the `time` naming consistently.
 - Metadata properties are now immutable after creation.
@@ -18,6 +22,7 @@
 - Event-store processing is safer in multi-instance or multi-threaded setups because processing-group tokens are claimed before work starts.
 - Requires-new Spring transaction deferred work now runs correctly.
 - Spring Boot dependency declarations now distinguish framework APIs, Boot auto-configuration, starters, and test dependencies more clearly.
+- Gradle wrapper was updated to 9.4.1.
 
 ## [0.0.7]
 
