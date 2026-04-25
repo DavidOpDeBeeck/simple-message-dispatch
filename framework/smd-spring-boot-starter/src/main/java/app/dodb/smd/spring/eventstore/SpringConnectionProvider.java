@@ -1,4 +1,4 @@
-package app.dodb.smd.spring;
+package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.eventstore.framework.ConnectionProvider;
 import org.springframework.jdbc.datasource.DataSourceUtils;

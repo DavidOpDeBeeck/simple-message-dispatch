@@ -1,7 +1,7 @@
 spring:
   datasource:
     name: smd
-    url: jdbc:tc:postgresql:///smd?TC_INITSCRIPT=db/smd/event-store-schema.sql
+    url: jdbc:tc:postgresql:18-alpine:///smd?TC_INITSCRIPT=db/smd/event-store-schema.sql
     username: test_user
     password: test_password
 
@@ -11,7 +11,6 @@ smd:
     scheduling:
       initial-delay: 0ms
       polling-delay: 100ms
-
 logging:
   level:
     app.dodb: DEBUG

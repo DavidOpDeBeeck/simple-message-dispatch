@@ -1,5 +1,6 @@
 package app.dodb.smd.spring;
 
+import app.dodb.smd.spring.eventstore.SMDEventStoreAutoConfiguration;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.context.annotation.Import;
 
@@ -12,7 +13,10 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target(TYPE)
 @Retention(RUNTIME)
 @Import(SMDRegistrar.class)
-@ImportAutoConfiguration(SMDConfiguration.class)
+@ImportAutoConfiguration({
+    SMDAutoConfiguration.class,
+    SMDEventStoreAutoConfiguration.class,
+})
 public @interface EnableSMD {
 
     String[] packages() default {};

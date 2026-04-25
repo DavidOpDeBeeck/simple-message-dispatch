@@ -2,12 +2,12 @@ package app.dodb.smd.spring.test;
 
 import app.dodb.smd.api.command.CommandHandlerLocator;
 import app.dodb.smd.api.command.bus.CommandBusInterceptor;
-import app.dodb.smd.api.event.ProcessingGroupLocator;
 import app.dodb.smd.api.event.EventInterceptor;
+import app.dodb.smd.api.event.ProcessingGroupLocator;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.query.QueryHandlerLocator;
 import app.dodb.smd.api.query.bus.QueryBusInterceptor;
-import app.dodb.smd.spring.SMDConfiguration;
+import app.dodb.smd.spring.SMDAutoConfiguration;
 import app.dodb.smd.spring.test.scope.SMDTestScopeConfiguration;
 import app.dodb.smd.spring.test.scope.annotation.SMDTestScope;
 import app.dodb.smd.test.CommandBusTestConfigurer;
@@ -29,7 +29,7 @@ import java.util.List;
 
 @ComponentScan
 @AutoConfiguration
-@AutoConfigureBefore(SMDConfiguration.class)
+@AutoConfigureBefore(SMDAutoConfiguration.class)
 @Import(SMDTestScopeConfiguration.class)
 public class SMDStubsConfiguration {
 

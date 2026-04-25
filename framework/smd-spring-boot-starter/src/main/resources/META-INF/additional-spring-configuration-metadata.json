@@ -49,7 +49,7 @@
     },
     {
       "name": "smd.event-store.processing.retry-backoff.strategy",
-      "type": "app.dodb.smd.spring.SMDEventStoreProperties$ProcessingProperties$Strategy",
+      "type": "app.dodb.smd.spring.eventstore.SMDEventStoreProperties$ProcessingProperties$Strategy",
       "description": "Backoff strategy for failed event retries.",
       "defaultValue": "EXPONENTIAL"
     },

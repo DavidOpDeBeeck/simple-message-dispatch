@@ -1,33 +1,53 @@
 [versions]
+# Core libraries
 guava = "33.5.0-jre"
-slf4j = "2.0.17"
+jackson = "2.21.1"
 reflections = "0.10.2"
-junit = "6.0.3"
+slf4j = "2.0.17"
+
+# Spring
+spring = "4.0.3"
+
+# Testing
 assertj = "3.27.7"
 awaitility = "4.3.0"
-spring = "4.0.3"
-jackson = "2.21.1"
-postgresql = "42.7.10"
+junit = "6.0.3"
 testcontainers = "2.0.3"
 
+# Database
+postgresql = "42.7.10"
+
 [libraries]
+# Core libraries
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
-jackson-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
 jackson-jdk8 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jdk8", version.ref = "jackson" }
+jackson-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
 reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
 slf4j = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+# Spring Framework
+spring-context = { module = "org.springframework:spring-context" }
+spring-jdbc = { module = "org.springframework:spring-jdbc" }
+
+# Spring Boot
+spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
+spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
+spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring" }
+spring-boot-transaction = { module = "org.springframework.boot:spring-boot-transaction" }
+
+# Spring Boot starters
+spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+
+# Testing
+assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
-assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
-awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
-spring-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring" }
-spring-context = { module = "org.springframework:spring-context" }
-spring-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
-spring-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
-spring-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
-spring-test = { module = "org.springframework.boot:spring-boot-starter-test" }
-postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
-testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
+
+# Database
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
