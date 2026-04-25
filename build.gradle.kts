@@ -71,8 +71,8 @@ subprojects {
                     inceptionYear.set("2025")
                     licenses {
                         license {
-                            name.set("GPL-3.0 license")
-                            url.set("https://www.gnu.org/licenses/gpl-3.0.html")
+                            name.set("MIT License")
+                            url.set("https://opensource.org/license/mit")
                         }
                     }
                     developers {
@@ -97,8 +97,8 @@ subprojects {
                     name = "sonatype"
                     url = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
                     credentials {
-                        username = findProperty("sonatypeUsername") as String
-                        password = findProperty("sonatypePassword") as String
+                        username = providers.gradleProperty("sonatypeUsername").orNull
+                        password = providers.gradleProperty("sonatypePassword").orNull
                     }
                 }
             }
@@ -106,10 +106,15 @@ subprojects {
     }
 
     signing {
-        useInMemoryPgpKeys(
-            findProperty("signing.key") as String?,
-            findProperty("signing.password") as String?
-        )
+        val signingKey = providers.gradleProperty("signing.key").orNull?.takeIf { it.isNotBlank() }
+        val signingPassword = providers.gradleProperty("signing.password").orNull
+
+        setRequired {
+            gradle.taskGraph.allTasks.any { task -> task.name.contains("Sonatype") }
+        }
+        if (signingKey != null) {
+            useInMemoryPgpKeys(signingKey, signingPassword)
+        }
         sign(publishing.publications["mavenJava"])
     }
 }

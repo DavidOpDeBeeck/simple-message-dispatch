@@ -21,7 +21,7 @@ If you do not pass `packages`, SMD scans from the package of the annotated class
 
 ## Handler Beans
 
-Register handlers as Spring beans:
+Register handlers as Spring beans. Annotated handler methods must be public:
 
 ```java
 

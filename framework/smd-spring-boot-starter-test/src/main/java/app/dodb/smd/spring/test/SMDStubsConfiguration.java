@@ -85,7 +85,7 @@ public class SMDStubsConfiguration {
         QueryBusTestConfigurer queryBusTestConfigurer,
         EventBusTestConfigurer eventBusTestConfigurer,
         PrincipalProviderStub principalProviderStub,
-        TimeProviderStub datetimeProviderStub,
+        TimeProviderStub timeProviderStub,
         CommandGatewayStub commandGatewayStub,
         QueryGatewayStub queryGatewayStub,
         EventPublisherStub eventPublisherStub
@@ -95,7 +95,7 @@ public class SMDStubsConfiguration {
             queryBusTestConfigurer,
             eventBusTestConfigurer,
             principalProviderStub,
-            datetimeProviderStub,
+            timeProviderStub,
             commandGatewayStub,
             queryGatewayStub,
             eventPublisherStub

@@ -51,7 +51,7 @@ There are three message types, each with a corresponding bus and gateway:
 - **Query** (`Query<R>`) — dispatched via `QueryGateway`/`QueryBus`, returns a result `R`
 - **Event** (`Event`) — published via `EventPublisher`/`EventBus`, fan-out to all subscribed processing groups
 
-All messages carry a `Metadata` record containing `Principal`, `Instant timestamp`, `MessageId parentMessageId`, and `Map<String, String> additionalProperties`.
+All messages carry a `Metadata` record containing `Principal`, `Instant timestamp`, `MessageId parentMessageId`, and `Map<String, String> properties`.
 
 ### Handler Discovery & Annotation Model
 
@@ -69,7 +69,7 @@ Handler method parameters are resolved by type from the message:
 - `Metadata` — the full metadata object
 - `Principal` — the principal from metadata
 - `Instant` — the timestamp from metadata
-- `@MetadataValue("key") String value` — extracts a key from `additionalProperties`
+- `@MetadataValue("key") String value` — extracts a key from `properties`
 
 Handler classes are discovered via package scanning (`PackageBasedCommandHandlerLocator`, etc.), instantiated by `ObjectCreator` (Spring context in Spring Boot, constructor-based otherwise).
 
@@ -115,7 +115,7 @@ EventBusSpec.withDefaults()
 
 ### Spring Boot Integration
 
-Activate with `@EnableSMD` on a configuration class. This imports `SMDRegistrar` and `SMDConfiguration` autoconfiguration, which wires all three gateways, locators, and
+Activate with `@EnableSMD` on a configuration class. This imports `SMDRegistrar` and `SMDAutoConfiguration` autoconfiguration, which wires all three gateways, locators, and
 transactional interceptors.
 
 Enable the event store via `application.yml`:

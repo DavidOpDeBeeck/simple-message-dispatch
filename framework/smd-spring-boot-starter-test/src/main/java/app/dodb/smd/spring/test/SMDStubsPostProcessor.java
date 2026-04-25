@@ -24,7 +24,7 @@ public class SMDStubsPostProcessor implements BeanFactoryPostProcessor {
         // These beans are registered outside of @Bean because they are decorators that delegate to the provided implementation.
         // They are also proxied with 'proxyTargetClass' so they can be correctly used with the 'smd-test' scope.
         registerPrincipalProviderStub(registry, beanFactory);
-        registerDatetimeProviderStub(registry, beanFactory);
+        registerTimeProviderStub(registry, beanFactory);
     }
 
     private static void registerPrincipalProviderStub(BeanDefinitionRegistry registry, ConfigurableListableBeanFactory beanFactory) {
@@ -38,14 +38,14 @@ public class SMDStubsPostProcessor implements BeanFactoryPostProcessor {
         registry.registerBeanDefinition("principalProviderStub", scopedBeanDefinition);
     }
 
-    private static void registerDatetimeProviderStub(BeanDefinitionRegistry registry, ConfigurableListableBeanFactory beanFactory) {
+    private static void registerTimeProviderStub(BeanDefinitionRegistry registry, ConfigurableListableBeanFactory beanFactory) {
         RootBeanDefinition beanDefinition = new RootBeanDefinition(TimeProviderStub.class);
         beanDefinition.setPrimary(true);
         beanDefinition.setScope(SCOPE_SMD_TEST);
         beanDefinition.getConstructorArgumentValues().addIndexedArgumentValue(0, beanFactory.getBean(TimeProvider.class));
 
-        BeanDefinitionHolder beanDefinitionHolder = new BeanDefinitionHolder(beanDefinition, "scopedTarget.datetimeProviderStub");
+        BeanDefinitionHolder beanDefinitionHolder = new BeanDefinitionHolder(beanDefinition, "scopedTarget.timeProviderStub");
         BeanDefinition scopedBeanDefinition = ScopedProxyUtils.createScopedProxy(beanDefinitionHolder, registry, true).getBeanDefinition();
-        registry.registerBeanDefinition("datetimeProviderStub", scopedBeanDefinition);
+        registry.registerBeanDefinition("timeProviderStub", scopedBeanDefinition);
     }
 }

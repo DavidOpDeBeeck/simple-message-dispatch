@@ -71,6 +71,8 @@ Handlers are plain classes with annotated methods:
 - `@QueryHandler`
 - `@EventHandler`
 
+Annotated handler methods must be public.
+
 ## First Example
 
 ```java
@@ -263,9 +265,7 @@ You can also attach a custom `EventChannel` with `.channel(myChannel)`.
 ```java
 UUID accountId = commandBus.send(new CreateAccount("Alice"));
 int balance = queryBus.send(new GetAccountBalance(accountId));
-eventBus.
-
-publish(new AccountCreated(accountId, "Alice"));
+eventBus.publish(new AccountCreated(accountId, "Alice"));
 ```
 
 ## Where To Go Next
