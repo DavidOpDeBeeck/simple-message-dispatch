@@ -218,12 +218,14 @@ public class EventStoreChannelConfig {
         public static final int DEFAULT_MAX_RETRIES = 3;
         public static final int DEFAULT_BATCH_SIZE = 100;
         public static final Duration DEFAULT_GAP_TIMEOUT = ofMinutes(5);
-        public static final Duration DEFAULT_RETRY_INITIAL_DELAY = ofSeconds(1);
+        public static final Duration DEFAULT_RETRY_BASE_DELAY = ofSeconds(1);
+        public static final Duration DEFAULT_RETRY_FIXED_DELAY = DEFAULT_RETRY_BASE_DELAY;
+        public static final Duration DEFAULT_RETRY_INCREMENT = ofSeconds(5);
         public static final double DEFAULT_RETRY_MULTIPLIER = 5.0;
         public static final Duration DEFAULT_RETRY_MAX_DELAY = ofMinutes(5);
 
         private static final RetryBackoffStrategy DEFAULT_RETRY_BACKOFF_STRATEGY =
-            exponential(DEFAULT_RETRY_INITIAL_DELAY, DEFAULT_RETRY_MULTIPLIER, DEFAULT_RETRY_MAX_DELAY);
+            exponential(DEFAULT_RETRY_BASE_DELAY, DEFAULT_RETRY_MULTIPLIER, DEFAULT_RETRY_MAX_DELAY);
 
         private final int maxRetries;
         private final int batchSize;

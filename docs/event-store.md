@@ -86,7 +86,7 @@ smd:
             gap-timeout: 5m
             retry-backoff:
                 strategy: EXPONENTIAL
-                initial-delay: 1s
+                base-delay: 1s
                 multiplier: 5.0
                 max-delay: 5m
 ```
@@ -95,11 +95,11 @@ This example pins `thread-pool-size` to `1` for simple, predictable polling. If 
 
 ## Retry Backoff Strategies
 
-`smd.event-store.processing.retry-backoff.strategy` supports three modes. Each mode has its own required settings:
+`smd.event-store.processing.retry-backoff.strategy` supports three modes. Each mode can be tuned with its own settings:
 
-- `EXPONENTIAL` uses `initial-delay`, `multiplier`, and `max-delay`
+- `EXPONENTIAL` uses `base-delay`, `multiplier`, and `max-delay`
 - `FIXED` uses `fixed-delay`
-- `LINEAR` uses `initial-delay`, `increment`, and `max-delay`
+- `LINEAR` uses `base-delay`, `increment`, and `max-delay`
 
 ### Exponential
 
@@ -109,7 +109,7 @@ smd:
         processing:
             retry-backoff:
                 strategy: EXPONENTIAL
-                initial-delay: 1s
+                base-delay: 1s
                 multiplier: 5.0
                 max-delay: 5m
 ```
@@ -133,12 +133,12 @@ smd:
         processing:
             retry-backoff:
                 strategy: LINEAR
-                initial-delay: 1s
+                base-delay: 1s
                 increment: 5s
                 max-delay: 1m
 ```
 
-If a strategy is selected without the properties it needs, event-store configuration fails fast when Spring Boot creates the channel configuration.
+If you omit retry backoff settings, SMD uses the documented defaults. Invalid values still fail fast when Spring Boot creates the channel configuration.
 
 If you use Flyway or Liquibase, apply the schema before the application starts polling.
 

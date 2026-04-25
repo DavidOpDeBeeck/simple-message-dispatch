@@ -13,12 +13,12 @@ public interface RetryBackoffStrategy {
         return new FixedRetryBackoffStrategy(delay);
     }
 
-    static RetryBackoffStrategy exponential(Duration initialDelay, double multiplier, Duration maxDelay) {
-        return new ExponentialRetryBackoffStrategy(initialDelay, multiplier, maxDelay);
+    static RetryBackoffStrategy exponential(Duration baseDelay, double multiplier, Duration maxDelay) {
+        return new ExponentialRetryBackoffStrategy(baseDelay, multiplier, maxDelay);
     }
 
-    static RetryBackoffStrategy linear(Duration initialDelay, Duration increment, Duration maxDelay) {
-        return new LinearRetryBackoffStrategy(initialDelay, increment, maxDelay);
+    static RetryBackoffStrategy linear(Duration baseDelay, Duration increment, Duration maxDelay) {
+        return new LinearRetryBackoffStrategy(baseDelay, increment, maxDelay);
     }
 
     record FixedRetryBackoffStrategy(Duration delay) implements RetryBackoffStrategy {
@@ -34,10 +34,10 @@ public interface RetryBackoffStrategy {
         }
     }
 
-    record ExponentialRetryBackoffStrategy(Duration initialDelay, double multiplier, Duration maxDelay) implements RetryBackoffStrategy {
+    record ExponentialRetryBackoffStrategy(Duration baseDelay, double multiplier, Duration maxDelay) implements RetryBackoffStrategy {
 
         public ExponentialRetryBackoffStrategy {
-            requireAtLeastZero(initialDelay);
+            requireAtLeastZero(baseDelay);
             requireGreaterThanZero(multiplier);
             requireAtLeastZero(maxDelay);
         }
@@ -45,15 +45,15 @@ public interface RetryBackoffStrategy {
         @Override
         public Duration calculateDelay(int retryCount) {
             requireAtLeastZero(retryCount);
-            long delayMs = (long) (initialDelay.toMillis() * Math.pow(multiplier, retryCount));
+            long delayMs = (long) (baseDelay.toMillis() * Math.pow(multiplier, retryCount));
             return Duration.ofMillis(Math.min(delayMs, maxDelay.toMillis()));
         }
     }
 
-    record LinearRetryBackoffStrategy(Duration initialDelay, Duration increment, Duration maxDelay) implements RetryBackoffStrategy {
+    record LinearRetryBackoffStrategy(Duration baseDelay, Duration increment, Duration maxDelay) implements RetryBackoffStrategy {
 
         public LinearRetryBackoffStrategy {
-            requireAtLeastZero(initialDelay);
+            requireAtLeastZero(baseDelay);
             requireAtLeastZero(increment);
             requireAtLeastZero(maxDelay);
         }
@@ -61,7 +61,7 @@ public interface RetryBackoffStrategy {
         @Override
         public Duration calculateDelay(int retryCount) {
             requireAtLeastZero(retryCount);
-            long delayMs = initialDelay.toMillis() + (increment.toMillis() * retryCount);
+            long delayMs = baseDelay.toMillis() + (increment.toMillis() * retryCount);
             return Duration.ofMillis(Math.min(delayMs, maxDelay.toMillis()));
         }
     }

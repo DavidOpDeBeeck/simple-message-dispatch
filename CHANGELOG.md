@@ -11,6 +11,7 @@
 - Event processing groups must now be configured explicitly when you provide custom group routing.
 - Event-store polling can now be disabled cleanly through configuration.
 - Event-store configuration now fails fast on invalid values.
+- Event-store retry backoff configuration now uses `base-delay` for linear and exponential strategies and documents default delay values.
 - Event-store serialization now supports custom event type names.
 - Event-store processing is more robust when handlers fail after producing side effects.
 - Event-store processing is safer in multi-instance or multi-threaded setups because processing-group tokens are claimed before work starts.

@@ -135,7 +135,7 @@ smd:
       gap-timeout: 5m
       retry-backoff:
         strategy: EXPONENTIAL  # FIXED | LINEAR | EXPONENTIAL
-        initial-delay: 1s
+        base-delay: 1s
         multiplier: 5.0
         max-delay: 5m
 ```

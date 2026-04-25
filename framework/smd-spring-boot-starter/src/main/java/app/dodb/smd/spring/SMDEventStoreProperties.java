@@ -124,10 +124,10 @@ public class SMDEventStoreProperties {
         public static class RetryBackoffProperties {
 
             private Strategy strategy = Strategy.EXPONENTIAL;
-            private Duration fixedDelay;
-            private Duration initialDelay = ProcessingConfig.DEFAULT_RETRY_INITIAL_DELAY;
+            private Duration fixedDelay = ProcessingConfig.DEFAULT_RETRY_FIXED_DELAY;
+            private Duration baseDelay = ProcessingConfig.DEFAULT_RETRY_BASE_DELAY;
             private double multiplier = ProcessingConfig.DEFAULT_RETRY_MULTIPLIER;
-            private Duration increment;
+            private Duration increment = ProcessingConfig.DEFAULT_RETRY_INCREMENT;
             private Duration maxDelay = ProcessingConfig.DEFAULT_RETRY_MAX_DELAY;
 
             public Strategy getStrategy() {
@@ -146,12 +146,12 @@ public class SMDEventStoreProperties {
                 this.fixedDelay = fixedDelay;
             }
 
-            public Duration getInitialDelay() {
-                return initialDelay;
+            public Duration getBaseDelay() {
+                return baseDelay;
             }
 
-            public void setInitialDelay(Duration initialDelay) {
-                this.initialDelay = initialDelay;
+            public void setBaseDelay(Duration baseDelay) {
+                this.baseDelay = baseDelay;
             }
 
             public double getMultiplier() {
@@ -181,8 +181,8 @@ public class SMDEventStoreProperties {
             public RetryBackoffStrategy createStrategy() {
                 return switch (strategy) {
                     case FIXED -> fixed(fixedDelay);
-                    case LINEAR -> linear(initialDelay, increment, maxDelay);
-                    case EXPONENTIAL -> exponential(initialDelay, multiplier, maxDelay);
+                    case LINEAR -> linear(baseDelay, increment, maxDelay);
+                    case EXPONENTIAL -> exponential(baseDelay, multiplier, maxDelay);
                 };
             }
         }
