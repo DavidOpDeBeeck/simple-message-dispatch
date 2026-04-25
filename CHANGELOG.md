@@ -13,9 +13,11 @@
 - Event-store configuration now fails fast on invalid values.
 - Event-store retry backoff configuration now uses `base-delay` for linear and exponential strategies and documents default delay values.
 - Event-store serialization now supports custom event type names.
+- Event-store Spring Boot beans now live in a dedicated event-store auto-configuration package.
 - Event-store processing is more robust when handlers fail after producing side effects.
 - Event-store processing is safer in multi-instance or multi-threaded setups because processing-group tokens are claimed before work starts.
 - Requires-new Spring transaction deferred work now runs correctly.
+- Spring Boot dependency declarations now distinguish framework APIs, Boot auto-configuration, starters, and test dependencies more clearly.
 
 ## [0.0.7]
 
