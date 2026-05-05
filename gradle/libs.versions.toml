@@ -1,7 +1,7 @@
 [versions]
 # Core libraries
 guava = "33.5.0-jre"
-jackson = "2.21.1"
+jackson = "3.0.4"
 reflections = "0.10.2"
 slf4j = "2.0.17"
 
@@ -20,9 +20,7 @@ postgresql = "42.7.10"
 [libraries]
 # Core libraries
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
-jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
-jackson-jdk8 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jdk8", version.ref = "jackson" }
-jackson-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
 reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
 slf4j = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 
@@ -34,6 +32,7 @@ spring-jdbc = { module = "org.springframework:spring-jdbc" }
 spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
 spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring" }
+spring-boot-jackson = { module = "org.springframework.boot:spring-boot-jackson" }
 spring-boot-transaction = { module = "org.springframework.boot:spring-boot-transaction" }
 
 # Spring Boot starters

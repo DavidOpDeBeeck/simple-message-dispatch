@@ -170,6 +170,38 @@ var serializer = new JacksonEventSerializer(objectMapper, new EventTypeResolver(
 
 In Spring Boot, you can override `EventTypeResolver` or replace the `EventSerializer` bean entirely.
 
+When the event store is enabled, Spring Boot creates the default `EventSerializer` from Boot's Jackson 3 `JsonMapper.Builder` and registers `SMDJacksonModule` automatically.
+
+To add Jackson modules for event serialization while keeping SMD's defaults, provide Jackson 3 `JacksonModule` beans:
+
+```java
+@Bean
+JacksonModule eventSerializationModule() {
+    return new MyEventSerializationModule();
+}
+```
+
+To customize the base Jackson 3 mapper builder, provide Spring Boot `JsonMapperBuilderCustomizer` beans:
+
+```java
+@Bean
+JsonMapperBuilderCustomizer eventJsonMapperBuilderCustomizer() {
+    return builder -> builder.findAndAddModules();
+}
+```
+
+For framework-agnostic setup, add modules to the mapper you pass into `JacksonEventSerializer`:
+
+```java
+var objectMapper = JsonMapper.builder()
+        .addModule(new SMDJacksonModule())
+        .addModule(new MyEventSerializationModule())
+        .build();
+var serializer = new JacksonEventSerializer(objectMapper, eventTypeResolver);
+```
+
+For full control in Spring Boot, replace the `EventSerializer` bean entirely.
+
 ## Processing Guarantees
 
 The event store tracks progress per processing group through a token.

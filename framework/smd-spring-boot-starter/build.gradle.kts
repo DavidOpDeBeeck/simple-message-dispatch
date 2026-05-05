@@ -10,9 +10,8 @@ dependencies {
     implementation(libs.spring.boot.autoconfigure)
     implementation(libs.spring.boot.transaction)
     implementation(libs.jackson.databind)
-    implementation(libs.jackson.jsr310)
-    implementation(libs.jackson.jdk8)
     implementation(libs.spring.jdbc)
+    implementation(libs.spring.boot.jackson)
 
     compileOnly(libs.postgresql)
 

@@ -7,5 +7,4 @@ dependencies {
     compileOnly(libs.jackson.databind)
 
     testImplementation(libs.jackson.databind)
-    testImplementation(libs.jackson.jsr310)
 }

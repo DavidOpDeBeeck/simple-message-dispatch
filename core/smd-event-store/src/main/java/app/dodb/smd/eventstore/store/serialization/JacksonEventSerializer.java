@@ -4,12 +4,9 @@ import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.store.SerializedEvent;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
-
-import static java.time.ZoneId.systemDefault;
 import static java.util.Objects.requireNonNull;
 
 public class JacksonEventSerializer implements EventSerializer {
@@ -39,11 +36,11 @@ public class JacksonEventSerializer implements EventSerializer {
                 eventType,
                 payloadBytes,
                 metadataBytes,
-                eventMessage.metadata().timestamp().atZone(systemDefault()).toInstant()
+                eventMessage.metadata().timestamp()
             );
         } catch (EventTypeResolutionException e) {
             throw new EventSerializationException("Failed to resolve event type for event: " + eventMessage.messageId(), e);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new EventSerializationException("Failed to serialize event: " + eventMessage.messageId(), e);
         }
     }
@@ -59,7 +56,7 @@ public class JacksonEventSerializer implements EventSerializer {
             return new EventMessage<>(serializedEvent.messageId(), payload, metadata);
         } catch (EventTypeResolutionException e) {
             throw new EventSerializationException("Failed to resolve event type: " + serializedEvent.eventType(), e);
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw new EventSerializationException("Failed to deserialize event: " + serializedEvent.messageId(), e);
         }
     }

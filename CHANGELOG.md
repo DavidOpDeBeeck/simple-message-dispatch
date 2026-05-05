@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Event-store serialization now uses Jackson 3 (`tools.jackson.databind.*`, `tools.jackson.core:jackson-databind`). Spring Boot customization now goes through `JsonMapperBuilderCustomizer`, `JacksonModule`, or a replacement `EventSerializer` instead of the former `eventObjectMapper` bean.
+
 ## [0.0.8] - 2026-04-26
 
 - Annotated handler parameter validation now supports multiple `@MetadataValue` `String` parameters and uses clearer shared validation rules.

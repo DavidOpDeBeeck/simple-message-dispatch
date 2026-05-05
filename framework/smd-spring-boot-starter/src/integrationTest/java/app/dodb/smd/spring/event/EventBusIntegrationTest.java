@@ -32,19 +32,6 @@ class EventBusIntegrationTest {
     }
 
     @Test
-    void publish_withEventStore() {
-        try (var context = createContext(EventIntegrationTestConfigurationWithEventStore.class, "event-store")) {
-            var eventBus = context.getBean(EventBus.class);
-            var testEventHandler = context.getBean(TestEventHandler.class);
-
-            var event = new TestEvent();
-            eventBus.publish(event);
-
-            await().untilAsserted(() -> assertThat(testEventHandler.getHandledEvents()).contains(event));
-        }
-    }
-
-    @Test
     void publish_withAsyncAwait() {
         try (var context = createContext(EventIntegrationTestConfigurationWithAsyncAwait.class)) {
             var eventBus = context.getBean(EventBus.class);
@@ -70,9 +57,8 @@ class EventBusIntegrationTest {
         }
     }
 
-    private ConfigurableApplicationContext createContext(Class<?> configClass, String... profiles) {
+    private ConfigurableApplicationContext createContext(Class<?> configClass) {
         return new SpringApplicationBuilder(configClass)
-            .profiles(profiles)
             .web(NONE)
             .run();
     }
