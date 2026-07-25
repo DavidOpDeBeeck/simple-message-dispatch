@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Event channels now distinguish directly subscribable channels from channels attached through an `EventChannelBinding`.
+
 ## [0.0.9] - 2026-07-09
 
 - Event-store serialization now uses Jackson 3 (`tools.jackson.databind.*`, `tools.jackson.core:jackson-databind`). Spring Boot customization now goes through `JsonMapperBuilderCustomizer`, `JacksonModule`, or a replacement `EventSerializer` instead of the former `eventObjectMapper` bean.

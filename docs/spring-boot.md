@@ -105,6 +105,8 @@ Multiple `ProcessingGroupsConfigurer` beans are supported and applied in order.
 
 If you do not provide one, the starter uses synchronous delivery for all groups.
 
+`.channel(channel)` accepts a `SubscribableEventChannel`. Use `.channel(channel, binding)` when a channel needs per-processing-group configuration.
+
 ## Common Wiring Notes
 
 - `ObjectCreator`, `PrincipalProvider`, `TimeProvider`, and `TransactionProvider` are overridable beans

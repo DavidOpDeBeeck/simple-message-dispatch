@@ -234,7 +234,8 @@ Processing groups determine how event handlers are dispatched.
 - synchronous on the publishing thread
 - asynchronous while awaiting completion
 - asynchronous fire-and-forget
-- custom `EventChannel`
+- a custom `SubscribableEventChannel`
+- a custom `EventChannel` paired with an `EventChannelBinding`
 - disabled explicitly
 
 By default, `processingGroups(locator)` uses synchronous delivery. Use a custom configurer when you need different behavior:
@@ -258,7 +259,7 @@ When you define custom processing-group configuration, every discovered group mu
 
 Otherwise bus creation fails instead of silently skipping the group.
 
-You can also attach a custom `EventChannel` with `.channel(myChannel)`.
+Attach a built-in or custom `SubscribableEventChannel` with `.channel(myChannel)`; SMD subscribes the processing group's listener directly. For a channel that needs per-group configuration, use `.channel(myChannel, binding)`. The binding controls how the listener is attached to the channel.
 
 ## Dispatching Messages
 

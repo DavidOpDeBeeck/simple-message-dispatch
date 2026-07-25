@@ -4,7 +4,7 @@ import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
-import app.dodb.smd.api.event.channel.EventChannel;
+import app.dodb.smd.api.event.channel.SubscribableEventChannel;
 import app.dodb.smd.api.event.channel.EventChannelListener;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.Metadata;
@@ -31,7 +31,7 @@ import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-public class EventStoreChannel implements EventChannel, Closeable {
+public class EventStoreChannel implements SubscribableEventChannel, Closeable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventStoreChannel.class);
 

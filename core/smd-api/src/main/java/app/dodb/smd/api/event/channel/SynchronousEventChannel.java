@@ -8,7 +8,7 @@ import java.util.List;
 
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 
-public class SynchronousEventChannel implements EventChannel {
+public class SynchronousEventChannel implements SubscribableEventChannel {
 
     private final List<EventChannelListener> listeners = new ArrayList<>();
 
