@@ -146,27 +146,17 @@ If you use Flyway or Liquibase, apply the schema before the application starts p
 
 By default, `JacksonEventSerializer` uses `ClassNameEventTypeResolver`, which stores the event class name as the event type.
 
-For long-lived stores, prefer a stable application-level mapping by providing your own `EventTypeResolver`:
+For long-lived stores, prefer stable application-level names with `StaticEventTypeResolver`:
 
 ```java
-var serializer = new JacksonEventSerializer(objectMapper, new EventTypeResolver() {
-    @Override
-    public String eventTypeFor(Event event) throws EventTypeResolutionException {
-        if (event instanceof AccountCreated) {
-            return "account-created";
-        }
-        throw new EventTypeResolutionException("Unknown event: " + event.getClass().getName());
-    }
-
-    @Override
-    public Class<? extends Event> eventClassFor(String eventType) throws EventTypeResolutionException {
-        if ("account-created".equals(eventType)) {
-            return AccountCreated.class;
-        }
-        throw new EventTypeResolutionException("Unknown event type: " + eventType);
-    }
-});
+var eventTypeResolver = new StaticEventTypeResolver(Map.of(
+        "account-created", AccountCreated.class,
+        "account-closed", AccountClosed.class
+));
+var serializer = new JacksonEventSerializer(objectMapper, eventTypeResolver);
 ```
+
+Serialization fails when an event class or stored event type is missing from the static mapping. Implement `EventTypeResolver` directly when resolution needs to be dynamic.
 
 In Spring Boot, you can override `EventTypeResolver` or replace the `EventSerializer` bean entirely.
 

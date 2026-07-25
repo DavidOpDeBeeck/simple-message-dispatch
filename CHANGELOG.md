@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Event channels now distinguish directly subscribable channels from channels attached through an `EventChannelBinding`.
+- Added `StaticEventTypeResolver` for stable application-level event type mappings.
 
 ## [0.0.9] - 2026-07-09
 
