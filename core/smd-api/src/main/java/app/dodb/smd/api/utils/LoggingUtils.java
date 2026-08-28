@@ -22,6 +22,15 @@ public class LoggingUtils {
         return type.getTypeName();
     }
 
+    public static String logMethods(Collection<Method> methods) {
+        if (methods.isEmpty()) {
+            return "empty";
+        }
+        return methods.stream()
+            .map(LoggingUtils::logMethod)
+            .collect(joining(", "));
+    }
+
     public static String logMethod(Method method) {
         return "%s#%s(%s)".formatted(
             method.getDeclaringClass().getName(),

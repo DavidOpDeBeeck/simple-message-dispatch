@@ -105,7 +105,8 @@ Multiple `ProcessingGroupsConfigurer` beans are supported and applied in order.
 
 If you do not provide one, the starter uses synchronous delivery for all groups.
 
-`.channel(channel)` accepts a `SubscribableEventChannel`. Use `.channel(channel, binding)` when a channel needs per-processing-group configuration.
+`.channel(channel)` accepts a `SubscribableEventChannel`. Use `.channel(channel, binding)` only when another channel needs per-processing-group attachment configuration. The event store is directly
+subscribable and uses each event's optional subject ID for sequencing; see [Event Subjects and Sequencing](event-store.md#event-subjects-and-sequencing).
 
 ## Common Wiring Notes
 

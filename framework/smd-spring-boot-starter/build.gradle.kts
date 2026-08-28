@@ -15,6 +15,7 @@ dependencies {
 
     compileOnly(libs.postgresql)
 
+    integrationTestImplementation(project(":smd-test"))
     integrationTestImplementation(libs.spring.boot.starter.test)
     integrationTestImplementation(libs.postgresql)
     integrationTestImplementation(libs.testcontainers.postgresql)

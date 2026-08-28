@@ -8,6 +8,8 @@ Use `smd-test` when you want lightweight handler or bus tests without Spring.
 - `CommandGatewayStub`
 - `QueryGatewayStub`
 - `EventPublisherStub`
+- `EventChannelListenerStub`
+- `NoOpTransactionProvider`
 
 ```java
 class CreateAccountHandlerTest {
@@ -25,6 +27,9 @@ class CreateAccountHandlerTest {
 ```
 
 `SMDTestExtension` also lets you stub principal, time, commands, and queries while building temporary buses internally.
+
+Use `EventChannelListenerStub` to capture events delivered directly by a channel. `NoOpTransactionProvider` runs transaction callbacks and deferred work immediately when a test does not need real
+transaction boundaries.
 
 ## When To Use It
 

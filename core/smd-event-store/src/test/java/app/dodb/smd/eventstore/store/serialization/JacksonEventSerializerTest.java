@@ -2,6 +2,7 @@ package app.dodb.smd.eventstore.store.serialization;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.principal.SimplePrincipal;
@@ -11,9 +12,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
-import static app.dodb.smd.eventstore.store.serialization.JacksonEventSerializer.*;
+import static app.dodb.smd.eventstore.store.serialization.JacksonEventSerializer.EventSerializationException;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,7 +27,7 @@ class JacksonEventSerializerTest {
     private static final MessageId PARENT_MESSAGE_ID = new MessageId(UUID.fromString("14d68b69-d3f7-4d61-88de-175938716af0"));
 
     @Test
-    void defaultConstructor_serializesWithClassNameEventTypeResolverButCannotDeserializePrincipalMetadata() {
+    void defaultConstructor_serializesWithClassNameEventTypeResolver() {
         var serializer = new JacksonEventSerializer(JsonMapper.builder().build());
         var eventMessage = EventMessage.from(new TestEvent("value"), metadata());
 
@@ -35,6 +37,7 @@ class JacksonEventSerializerTest {
             .isEqualTo(new SerializedEvent(
                 eventMessage.messageId(),
                 null,
+                Optional.of("subjectId"),
                 TestEvent.class.getName(),
                 json("""
                     {
@@ -57,9 +60,16 @@ class JacksonEventSerializerTest {
                     """.formatted(PRINCIPAL.id(), PARENT_MESSAGE_ID.value())),
                 TIMESTAMP
             ));
+    }
+
+    @Test
+    void deserialize_withoutSmdJacksonModule_cannotRestorePrincipalType() {
+        var serializer = new JacksonEventSerializer(JsonMapper.builder().build());
+        var serialized = serializer.serialize(EventMessage.from(new TestEvent("value"), metadata()));
+
         assertThatThrownBy(() -> serializer.deserialize(serialized))
             .isInstanceOf(EventSerializationException.class)
-            .hasMessageContaining("Failed to deserialize event: " + eventMessage.messageId());
+            .hasMessageContaining("Failed to deserialize event: " + serialized.messageId());
     }
 
     @Test
@@ -76,6 +86,7 @@ class JacksonEventSerializerTest {
             .isEqualTo(new SerializedEvent(
                 eventMessage.messageId(),
                 null,
+                Optional.of("subjectId"),
                 TestEvent.class.getName(),
                 json("""
                     {
@@ -103,12 +114,20 @@ class JacksonEventSerializerTest {
     }
 
     @Test
-    void classNameEventTypeResolver_rejectsClassThatDoesNotImplementEvent() {
-        var resolver = new ClassNameEventTypeResolver();
+    void deserialize_restoresThePersistedSubjectWithoutRecomputingIt() {
+        var serializer = new JacksonEventSerializer(JsonMapper.builder()
+            .addModule(new SMDJacksonModule())
+            .build());
+        var eventMessage = new EventMessage<>(
+            MessageId.generate(),
+            Optional.of("captured-subjectId"),
+            new TestEvent("value"),
+            metadata()
+        );
 
-        assertThatThrownBy(() -> resolver.eventClassFor(String.class.getName()))
-            .isInstanceOf(EventTypeResolutionException.class)
-            .hasMessageContaining("does not implement Event");
+        var deserialized = serializer.deserialize(serializer.serialize(eventMessage));
+
+        assertThat(deserialized.subjectId()).contains("captured-subjectId");
     }
 
     private Metadata metadata() {
@@ -120,5 +139,10 @@ class JacksonEventSerializerTest {
     }
 
     record TestEvent(String value) implements Event {
+
+        @SubjectId
+        public String subjectId() {
+            return "subjectId";
+        }
     }
 }

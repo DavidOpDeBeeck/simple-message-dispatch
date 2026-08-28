@@ -1,4 +1,4 @@
-package app.dodb.smd.spring.event.processing;
+package app.dodb.smd.spring.eventstore.processing;
 
 import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.ProcessingGroup;
@@ -17,7 +17,7 @@ public class SideEffectFailingTestEventHandler {
     }
 
     @EventHandler
-    public void on(SideEffectTestEvent event) {
+    public void on(SideEffectTestEventWithSubjectId event) {
         var connection = DataSourceUtils.getConnection(dataSource);
         try (var stmt = connection.prepareStatement("INSERT INTO event_handler_side_effects (description) VALUES (?)")) {
             stmt.setString(1, "side effect before failure");

@@ -9,6 +9,10 @@ import java.util.Map;
 
 public record Metadata(Principal principal, Instant timestamp, MessageId parentMessageId, Map<String, String> properties) {
 
+    public static Metadata withProperties(Map<String, String> properties) {
+        return new Metadata(null, null, null, properties);
+    }
+
     public Metadata {
         properties = Map.copyOf(properties);
     }

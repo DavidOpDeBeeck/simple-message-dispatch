@@ -2,12 +2,17 @@
 
 ## [Unreleased]
 
-- Event channels now distinguish directly subscribable channels from channels attached through an `EventChannelBinding`.
-- Added `StaticEventTypeResolver` for stable application-level event type mappings.
+- Events can declare a non-blank subject ID through `@SubjectId`; `EventMessage` captures and persists it, while events without a subject ID share a global sequence.
+- Event-store processing now supports independent, ordered subjects per processing group, with per-subject retry, backoff, and abandonment state.
+- Event channels now distinguish directly subscribable channels from channels attached through an `EventChannelBinding`; the event store is directly subscribable.
+- Built-in event-store persistence is now explicitly PostgreSQL-specific through `PostgresEventStorage`, `PostgresTokenStore`, and `PostgresEventSubjectSequenceStore`.
+- The bundled event-store schema now requires PostgreSQL 15 or newer and needs an explicit database migration when upgrading an existing installation.
+- Added `StaticEventTypeResolver` for stable application-level event type mappings and processing metadata for stored-event delivery attempts.
 
 ## [0.0.9] - 2026-07-09
 
-- Event-store serialization now uses Jackson 3 (`tools.jackson.databind.*`, `tools.jackson.core:jackson-databind`). Spring Boot customization now goes through `JsonMapperBuilderCustomizer`, `JacksonModule`, or a replacement `EventSerializer` instead of the former `eventObjectMapper` bean.
+- Event-store serialization now uses Jackson 3 (`tools.jackson.databind.*`, `tools.jackson.core:jackson-databind`). Spring Boot customization now goes through `JsonMapperBuilderCustomizer`,
+  `JacksonModule`, or a replacement `EventSerializer` instead of the former `eventObjectMapper` bean.
 - Gradle wrapper was updated to 9.6.1.
 
 ## [0.0.8] - 2026-04-26

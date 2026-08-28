@@ -1,33 +1,20 @@
 package app.dodb.smd.eventstore.channel;
 
 import app.dodb.smd.api.event.Event;
-import app.dodb.smd.api.event.EventInterceptor;
-import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
-import app.dodb.smd.api.event.channel.SubscribableEventChannel;
 import app.dodb.smd.api.event.channel.EventChannelListener;
+import app.dodb.smd.api.event.channel.SubscribableEventChannel;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.api.metadata.MetadataFactory;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
+import app.dodb.smd.eventstore.channel.processing.EventStoreTokenProcessor;
 import app.dodb.smd.eventstore.store.EventStorage;
-import app.dodb.smd.eventstore.store.Token;
-import app.dodb.smd.eventstore.store.TokenStore;
 import app.dodb.smd.eventstore.store.serialization.EventSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 
-import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 import static app.dodb.smd.eventstore.channel.EventStoreChannelConfig.SchedulingConfig;
-import static java.time.Duration.between;
-import static java.time.Instant.now;
-import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -36,21 +23,17 @@ public class EventStoreChannel implements SubscribableEventChannel, Closeable {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventStoreChannel.class);
 
     private final TransactionProvider transactionProvider;
-    private final TokenStore tokenStore;
     private final EventStorage eventStorage;
     private final EventSerializer eventSerializer;
-    private final List<EventInterceptor> interceptors;
     private final SchedulingConfig schedulingConfig;
-    private final ProcessingConfig processingConfig;
+    private final EventStoreTokenProcessor tokenProcessor;
 
     public EventStoreChannel(EventStoreChannelConfig config) {
         this.transactionProvider = config.getTransactionProvider();
-        this.tokenStore = config.getTokenStore();
         this.eventStorage = config.getEventStorage();
         this.eventSerializer = config.getEventSerializer();
-        this.interceptors = config.getInterceptors();
         this.schedulingConfig = config.getSchedulingConfig();
-        this.processingConfig = config.getProcessingConfig();
+        this.tokenProcessor = new EventStoreTokenProcessor(config);
     }
 
     @Override
@@ -64,185 +47,14 @@ public class EventStoreChannel implements SubscribableEventChannel, Closeable {
             LOGGER.info("Event store polling disabled: processingGroup={}", listener.processingGroup());
             return;
         }
+
         var scheduler = schedulingConfig.getScheduler();
         scheduler.scheduleWithFixedDelay(
-            () -> pollAndProcess(listener),
+            () -> tokenProcessor.poll(listener),
             schedulingConfig.getInitialDelay().toMillis(),
             schedulingConfig.getPollingDelay().toMillis(),
             MILLISECONDS
         );
-    }
-
-    private void pollAndProcess(EventChannelListener listener) {
-        var processingGroup = listener.processingGroup();
-        try {
-            var newBatchSize = processingConfig.getBatchSize();
-
-            do {
-                int finalNewBatchSize = newBatchSize;
-                try {
-                    newBatchSize = transactionProvider.doInNewTransaction(() -> {
-                        var claimedToken = tokenStore.claimToken(processingGroup);
-                        if (claimedToken.isEmpty()) {
-                            LOGGER.debug("Token already claimed, skipping poll: processingGroup={}", processingGroup);
-                            return 0;
-                        }
-
-                        var token = claimedToken.get();
-                        return switch (processBatch(listener, token, processingConfig, finalNewBatchSize)) {
-                            case NothingToProcess _ -> 0;
-                            // Transaction is not tainted, we can safely mark the items as processed
-                            case GapDetected(var expectedNextSeq) -> {
-                                token.markGapDetected(expectedNextSeq);
-                                yield 0;
-                            }
-                            // Transaction is tainted by handler side effects, roll back before marking failure
-                            case Failed(var sequenceNumber, var exception) -> throw new BatchRolledBackException(
-                                0,
-                                exception,
-                                () -> transactionProvider.doInNewTransaction(() -> markFailedIfClaimed(processingGroup, sequenceNumber, exception))
-                            );
-                            // Transaction is tainted by handler side effects, roll back before marking abandoned
-                            case Abandoned(var sequenceNumber, var exception) -> throw new BatchRolledBackException(
-                                0,
-                                exception,
-                                () -> transactionProvider.doInNewTransaction(() -> markAbandonedIfClaimed(processingGroup, sequenceNumber, exception))
-                            );
-                            // Transaction is not tainted, we can safely mark the items as processed
-                            case GapDetectedMidBatch(var sequenceNumber, var retryBatchSize) -> {
-                                token.markProcessed(sequenceNumber);
-                                yield retryBatchSize;
-                            }
-                            // Transaction is tainted, retry the successful prefix after rolling back side effects
-                            case FailedMidBatch(var _, var retryBatchSize) -> throw new BatchRolledBackException(retryBatchSize);
-                            case BatchSucceeded(var sequenceNumber) -> {
-                                token.markProcessed(sequenceNumber);
-                                yield processingConfig.getBatchSize();
-                            }
-                        };
-                    });
-                } catch (BatchRolledBackException e) {
-                    e.afterRollback();
-                    newBatchSize = e.nextBatchSize();
-                }
-            } while (newBatchSize != 0);
-        } catch (Exception e) {
-            LOGGER.error("Polling error: processingGroup={}, error={}", processingGroup, e.getMessage(), e);
-        }
-    }
-
-    private void markFailedIfClaimed(String processingGroup, long sequenceNumber, Exception exception) {
-        tokenStore.claimToken(processingGroup).ifPresentOrElse(
-            token -> token.markFailed(sequenceNumber, exception),
-            () -> LOGGER.debug("Token already claimed, skipping failure mark: processingGroup={}", processingGroup)
-        );
-    }
-
-    private void markAbandonedIfClaimed(String processingGroup, long sequenceNumber, Exception exception) {
-        tokenStore.claimToken(processingGroup).ifPresentOrElse(
-            token -> token.markAbandoned(sequenceNumber, exception),
-            () -> LOGGER.debug("Token already claimed, skipping abandoned mark: processingGroup={}", processingGroup)
-        );
-    }
-
-    private Result processBatch(EventChannelListener listener, Token token, ProcessingConfig processingConfig, int batchSize) {
-        var processingGroup = listener.processingGroup();
-        var processingId = UUID.randomUUID().toString();
-        var currentErrorCount = token.errorCount();
-
-        if (currentErrorCount > processingConfig.getMaxRetries()) {
-            LOGGER.error("Processing abandoned (retries exhausted): processingGroup={}, errorCount={}, maxRetries={}",
-                processingGroup, currentErrorCount, processingConfig.getMaxRetries());
-            return new NothingToProcess();
-        }
-
-        if (currentErrorCount > 0) {
-            var lastErrorAt = token.lastErrorAt();
-            var backoffDelay = processingConfig.getRetryBackoffStrategy().calculateDelay(currentErrorCount - 1);
-            var nextRetryTime = lastErrorAt.plus(backoffDelay);
-            var currentTime = now();
-
-            if (currentTime.isBefore(nextRetryTime)) {
-                var remainingDelay = between(currentTime, nextRetryTime);
-                LOGGER.debug("Backoff active: processingGroup={}, remainingDelay={}ms",
-                    processingGroup, remainingDelay.toMillis());
-                return new NothingToProcess();
-            }
-        }
-
-        long lastProcessedSeq = token.lastProcessedSequenceNumber().orElse(0L);
-        try (var cursor = eventStorage.load(lastProcessedSeq, batchSize)) {
-            if (!cursor.hasNext()) {
-                LOGGER.debug("No events to process: processingGroup={}, lastProcessedSequence={}", processingGroup, lastProcessedSeq);
-                return new NothingToProcess();
-            }
-            long lastProcessedInBatch = lastProcessedSeq;
-            while (cursor.hasNext()) {
-                var eventToProcess = cursor.next();
-                var sequenceToProcess = eventToProcess.sequenceNumber();
-                var isFirstItem = lastProcessedInBatch == lastProcessedSeq;
-
-                if (sequenceToProcess > lastProcessedInBatch + 1) {
-                    if (!isFirstItem) {
-                        LOGGER.debug("Gap detected mid-batch, retrying without gap: processingGroup={}, expectedSequence={}, actualSequence={}",
-                            processingGroup, lastProcessedInBatch + 1, sequenceToProcess);
-                        return new GapDetectedMidBatch(lastProcessedInBatch, (int) (lastProcessedInBatch - lastProcessedSeq));
-                    }
-
-                    var gapDetectedAt = token.lastGapDetectedAt();
-                    if (gapDetectedAt == null) {
-                        LOGGER.warn("Gap detected: processingGroup={}, expectedSequence={}, actualSequence={}",
-                            processingGroup, lastProcessedSeq + 1, sequenceToProcess);
-                        return new GapDetected(lastProcessedSeq + 1);
-                    }
-
-                    var currentTime = now();
-                    var gapAge = between(gapDetectedAt, currentTime);
-                    if (gapAge.compareTo(processingConfig.getGapTimeout()) < 0) {
-                        LOGGER.debug("Gap still present: processingGroup={}, age={}ms, timeout={}ms",
-                            processingGroup, gapAge.toMillis(), processingConfig.getGapTimeout().toMillis());
-                        return new NothingToProcess();
-                    }
-
-                    LOGGER.error("Gap timeout expired, skipping: processingGroup={}, fromSequence={}, toSequence={}",
-                        processingGroup, lastProcessedSeq + 1, sequenceToProcess - 1);
-                }
-
-                var eventMessage = eventSerializer.deserialize(eventToProcess)
-                    .andMetadata(new Metadata(null, null, null, Map.of(
-                        "processingId", processingId,
-                        "sequenceNumber", String.valueOf(sequenceToProcess),
-                        "errorCount", String.valueOf(currentErrorCount)
-                    )));
-
-                try {
-                    MetadataFactory.runInScope(eventMessage, () -> {
-                        var chain = EventInterceptorChain.create(listener::on, interceptors);
-                        chain.proceed(eventMessage);
-                    });
-                    lastProcessedInBatch = sequenceToProcess;
-                    LOGGER.debug("Event processed: processingGroup={}, sequenceNumber={}, messageId={}",
-                        processingGroup, sequenceToProcess, eventToProcess.messageId());
-                } catch (Exception e) {
-                    if (!isFirstItem) {
-                        LOGGER.warn("Event processing failed mid-batch, retrying with {} items: processingGroup={}, sequenceNumber={}, messageId={}, retry={}/{}, error={}",
-                            lastProcessedInBatch - lastProcessedSeq, processingGroup, sequenceToProcess, eventToProcess.messageId(), currentErrorCount + 1, processingConfig.getMaxRetries(), e.getMessage(), e);
-                        return new FailedMidBatch(lastProcessedInBatch, (int) (lastProcessedInBatch - lastProcessedSeq));
-                    }
-                    if (currentErrorCount >= processingConfig.getMaxRetries()) {
-                        LOGGER.error("Event abandoned (retries exhausted): processingGroup={}, sequenceNumber={}, messageId={}, maxRetries={}, error={}",
-                            processingGroup, sequenceToProcess, eventToProcess.messageId(), processingConfig.getMaxRetries(), e.getMessage(), e);
-                        return new Abandoned(sequenceToProcess, e);
-                    }
-                    LOGGER.warn("Event processing failed: processingGroup={}, sequenceNumber={}, messageId={}, retry={}/{}, error={}",
-                        processingGroup, sequenceToProcess, eventToProcess.messageId(), currentErrorCount + 1, processingConfig.getMaxRetries(), e.getMessage(), e);
-                    return new Failed(sequenceToProcess, e);
-                }
-            }
-            return new BatchSucceeded(lastProcessedInBatch);
-        } catch (Exception e) {
-            throw rethrow(e);
-        }
     }
 
     @Override
@@ -250,61 +62,13 @@ public class EventStoreChannel implements SubscribableEventChannel, Closeable {
         ScheduledExecutorService scheduler = schedulingConfig.getScheduler();
         scheduler.shutdown();
         try {
-            if (!scheduler.awaitTermination(30, SECONDS)) {
-                scheduler.shutdownNow();
+            if (scheduler.awaitTermination(30, SECONDS)) {
+                return;
             }
+            scheduler.shutdownNow();
         } catch (InterruptedException e) {
             scheduler.shutdownNow();
             Thread.currentThread().interrupt();
-        }
-    }
-
-    sealed interface Result permits GapDetectedMidBatch, GapDetected, Abandoned, Failed, FailedMidBatch, NothingToProcess, BatchSucceeded {
-    }
-
-    record NothingToProcess() implements Result {
-    }
-
-    record GapDetected(long expectedSeq) implements Result {
-    }
-
-    record Failed(long sequenceNumber, Exception exception) implements Result {
-    }
-
-    record Abandoned(long sequenceNumber, Exception exception) implements Result {
-    }
-
-    record GapDetectedMidBatch(long sequenceNumber, int processedCount) implements Result {
-    }
-
-    record FailedMidBatch(long sequenceNumber, int processedCount) implements Result {
-    }
-
-    record BatchSucceeded(long sequenceNumber) implements Result {
-    }
-
-    private static class BatchRolledBackException extends RuntimeException {
-
-        private final int nextBatchSize;
-        private final Runnable afterRollback;
-
-        BatchRolledBackException(int nextBatchSize) {
-            this(nextBatchSize, null, () -> {
-            });
-        }
-
-        BatchRolledBackException(int nextBatchSize, Exception cause, Runnable afterRollback) {
-            super(cause);
-            this.nextBatchSize = nextBatchSize;
-            this.afterRollback = requireNonNull(afterRollback);
-        }
-
-        void afterRollback() {
-            afterRollback.run();
-        }
-
-        int nextBatchSize() {
-            return nextBatchSize;
         }
     }
 }

@@ -38,7 +38,7 @@
     {
       "name": "smd.event-store.processing.batch-size",
       "type": "java.lang.Integer",
-      "description": "Number of events fetched per poll cycle.",
+      "description": "Maximum number of events fetched and scanned per poll cycle.",
       "defaultValue": 100
     },
     {

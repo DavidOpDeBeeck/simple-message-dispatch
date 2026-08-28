@@ -7,17 +7,9 @@ public interface Token {
 
     Optional<Long> lastProcessedSequenceNumber();
 
-    int errorCount();
+    Optional<Instant> lastGapDetectedAt();
 
-    Instant lastErrorAt();
+    void markProcessed(long sequenceNumber);
 
-    Instant lastGapDetectedAt();
-
-    void markProcessed(Long sequenceNumber);
-
-    void markFailed(Long sequenceNumber, Exception exception);
-
-    void markAbandoned(Long sequenceNumber, Exception exception);
-
-    void markGapDetected(Long gapSequenceNumber);
+    void markGapDetected(long sequenceNumber);
 }

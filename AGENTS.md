@@ -34,7 +34,7 @@ Five Gradle subprojects mapped to two directories:
 | Module                         | Path                                     | Purpose                                             |
 |--------------------------------|------------------------------------------|-----------------------------------------------------|
 | `smd-api`                      | `core/smd-api`                           | Framework-agnostic core (buses, handlers, channels) |
-| `smd-event-store`              | `core/smd-event-store`                   | Event store (JDBC storage, polling, token tracking) |
+| `smd-event-store`              | `core/smd-event-store`                   | PostgreSQL event store, polling, subject sequencing |
 | `smd-test`                     | `core/smd-test`                          | Test utilities (stubs, `SMDTestExtension`)          |
 | `smd-spring-boot-starter`      | `framework/smd-spring-boot-starter`      | Spring Boot autoconfiguration                       |
 | `smd-spring-boot-starter-test` | `framework/smd-spring-boot-starter-test` | Spring test scope support                           |
@@ -88,10 +88,11 @@ The `EventBus` dispatches to one or more `EventChannel` implementations:
 - **`EventStoreChannel`** (in `smd-event-store`) — defers event storage within the transaction (via `TransactionProvider.defer`), then polls the store per processing group using a
   `ScheduledExecutorService`
 
-The `EventStoreChannel` uses a token-per-processing-group model (`TokenStore` / `smd_token_store` table) to track position. It includes gap detection, exponential backoff on failure, and
-configurable max retries.
+The `EventStoreChannel` uses a token per processing group (`TokenStore` / `smd_token_store`) for contiguous scan progress and subject-sequence state (`EventSubjectSequenceStore` /
+`smd_event_sequence_state`) for independent ordering, retry, backoff, and abandonment. Events declare their optional sequence identity with `@SubjectId`; subjectless events share a global sequence
+within each processing group.
 
-Event store DB schema is at `core/smd-event-store/src/main/resources/db/smd/event-store-schema.sql`.
+The built-in stores require PostgreSQL 15 or newer. The database schema is at `core/smd-event-store/src/main/resources/db/smd/event-store-schema.sql`.
 
 ### Bus Builder Pattern
 

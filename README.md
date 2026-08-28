@@ -7,13 +7,13 @@ integration.
 
 ## Modules
 
-| Module                         | Purpose                                                   | Guide                                                    |
-|--------------------------------|-----------------------------------------------------------|----------------------------------------------------------|
-| `smd-api`                      | Core command, query, event, metadata, and bus APIs        | [Getting Started](docs/getting-started.md)               |
-| `smd-event-store`              | JDBC event store, polling, token tracking, serialization  | [Event Store Guide](docs/event-store.md)                 |
-| `smd-test`                     | Test helpers and gateway/publisher stubs                  | [Testing Guide](docs/testing.md)                         |
-| `smd-spring-boot-starter`      | Spring Boot autoconfiguration and event-store integration | [Spring Boot Guide](docs/spring-boot.md)                 |
-| `smd-spring-boot-starter-test` | Spring Boot test-scope stubs and lifecycle support        | [Spring Boot Testing Guide](docs/spring-boot-testing.md) |
+| Module                         | Purpose                                                    | Guide                                                    |
+|--------------------------------|------------------------------------------------------------|----------------------------------------------------------|
+| `smd-api`                      | Core command, query, event, metadata, and bus APIs         | [Getting Started](docs/getting-started.md)               |
+| `smd-event-store`              | PostgreSQL 15+ event store, polling, sequencing             | [Event Store Guide](docs/event-store.md)                 |
+| `smd-test`                     | Test helpers and gateway/publisher stubs                   | [Testing Guide](docs/testing.md)                         |
+| `smd-spring-boot-starter`      | Spring Boot autoconfiguration and event-store integration  | [Spring Boot Guide](docs/spring-boot.md)                 |
+| `smd-spring-boot-starter-test` | Spring Boot test-scope stubs and lifecycle support         | [Spring Boot Testing Guide](docs/spring-boot-testing.md) |
 
 ## Install
 

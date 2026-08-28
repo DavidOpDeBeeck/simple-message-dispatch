@@ -1,4 +1,4 @@
-package app.dodb.smd.spring.event.processing;
+package app.dodb.smd.spring.eventstore.processing;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventHandler;
@@ -19,7 +19,7 @@ public class FailableTestEventHandler {
     }
 
     @EventHandler
-    public void on(AnotherTestEvent event) {
+    public void on(TestEventWithSubjectId event) {
         if (failuresRemaining.getAndDecrement() > 0) {
             throw new RuntimeException("Simulated failure");
         }

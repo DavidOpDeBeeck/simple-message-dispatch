@@ -42,6 +42,10 @@ public record GetAccountBalance(UUID accountId) implements Query<Integer> {
 }
 
 public record AccountCreated(UUID accountId, String name) implements Event {
+    @SubjectId
+    public String accountSubject() {
+        return "account:" + accountId;
+    }
 }
 ```
 
@@ -259,7 +263,15 @@ When you define custom processing-group configuration, every discovered group mu
 
 Otherwise bus creation fails instead of silently skipping the group.
 
-Attach a built-in or custom `SubscribableEventChannel` with `.channel(myChannel)`; SMD subscribes the processing group's listener directly. For a channel that needs per-group configuration, use `.channel(myChannel, binding)`. The binding controls how the listener is attached to the channel.
+Attach a built-in or custom `SubscribableEventChannel` with `.channel(myChannel)`; SMD subscribes the processing group's listener directly. For a channel that needs per-group configuration, use
+`.channel(myChannel, binding)`. The event store is directly subscribable:
+
+```java
+spec.processingGroup("accounts")
+        .channel(eventStoreChannel);
+```
+
+See the [Event Store Guide](event-store.md#event-subjects-and-sequencing) for subject-based event sequences.
 
 ## Dispatching Messages
 

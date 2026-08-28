@@ -2,6 +2,7 @@ package app.dodb.smd.eventstore.channel;
 
 import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.framework.TransactionProvider;
+import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.store.EventStorage;
 import app.dodb.smd.eventstore.store.TokenStore;
 import app.dodb.smd.eventstore.store.serialization.EventSerializer;
@@ -25,6 +26,7 @@ public class EventStoreChannelConfig {
     private final EventStorage eventStorage;
     private final EventSerializer eventSerializer;
     private final TokenStore tokenStore;
+    private final EventSubjectSequenceStore eventSubjectSequenceStore;
     private final SchedulingConfig schedulingConfig;
     private final ProcessingConfig processingConfig;
 
@@ -34,6 +36,7 @@ public class EventStoreChannelConfig {
         this.eventStorage = requireNonNull(builder.eventStorage);
         this.eventSerializer = requireNonNull(builder.eventSerializer);
         this.tokenStore = requireNonNull(builder.tokenStore);
+        this.eventSubjectSequenceStore = requireNonNull(builder.eventSubjectSequenceStore);
         this.schedulingConfig = requireNonNull(builder.schedulingConfig);
         this.processingConfig = requireNonNull(builder.processingConfig);
     }
@@ -56,6 +59,10 @@ public class EventStoreChannelConfig {
 
     public TokenStore getTokenStore() {
         return tokenStore;
+    }
+
+    public EventSubjectSequenceStore getEventSequenceStore() {
+        return eventSubjectSequenceStore;
     }
 
     public SchedulingConfig getSchedulingConfig() {
@@ -82,6 +89,7 @@ public class EventStoreChannelConfig {
         private TransactionProvider transactionProvider;
         private List<EventInterceptor> interceptors;
         private TokenStore tokenStore;
+        private EventSubjectSequenceStore eventSubjectSequenceStore;
         private EventStorage eventStorage;
         private EventSerializer eventSerializer;
         private SchedulingConfig schedulingConfig;
@@ -102,6 +110,11 @@ public class EventStoreChannelConfig {
 
         public Builder tokenStore(TokenStore tokenStore) {
             this.tokenStore = tokenStore;
+            return this;
+        }
+
+        public Builder eventSequenceStore(EventSubjectSequenceStore eventSubjectSequenceStore) {
+            this.eventSubjectSequenceStore = eventSubjectSequenceStore;
             return this;
         }
 
@@ -301,5 +314,6 @@ public class EventStoreChannelConfig {
                 return new ProcessingConfig(this);
             }
         }
+
     }
 }
