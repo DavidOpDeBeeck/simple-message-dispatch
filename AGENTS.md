@@ -1,151 +1,111 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Design Priorities
 
-## Build & Test Commands
+SMD is a lightweight Java library. Keep usage simple and correctness-sensitive behavior explicit.
+
+Prefer, in order:
+
+1. Observable correctness.
+2. A small public API.
+3. Framework-independent core code.
+4. Early validation and useful errors.
+5. Direct code.
+6. Deduplication.
+
+Command, query, and event code intentionally stays symmetrical. Share code only for a common invariant or stable boundary.
+
+## Module Boundaries
+
+| Module | Responsibility |
+| --- | --- |
+| `core/smd-api` | Messages, buses, handlers, channels, metadata, and framework ports |
+| `core/smd-event-store` | PostgreSQL storage, polling, ordering, retries, and tokens |
+| `core/smd-test` | Framework-independent test support |
+| `framework/smd-spring-boot-starter` | Spring Boot wiring and autoconfiguration |
+| `framework/smd-spring-boot-starter-test` | Spring test support |
+
+Core modules must not depend on Spring. Define the smallest required core contract, then adapt it in the framework module. Keep classes near the domain concept they use.
+
+## Code Design
+
+- Use domain verbs such as `send`, `publish`, `handle`, `locate`, and `markProcessed`. Avoid vague `manager`, `util`, `process`, and `execute` names.
+- Expose policy with clear factories and fluent specs. Defaults must be safe; incomplete configuration must fail rather than silently fall back.
+- Keep interfaces narrow. Name implementations by role, never with an `Impl` suffix.
+- Use records for immutable data and results; use classes for stateful services, builders, adapters, channels, and lifecycle owners.
+- Preserve domain and generic types. Do not reduce IDs, messages, metadata, or results to strings and maps for convenience.
+- Use sealed results when callers must distinguish several outcomes; use booleans for predicates.
+- Keep visibility limited to the real extension surface.
+- Extract an abstraction only when it names a stable concept or replaceable boundary.
+
+Create valid objects. Reject null dependencies in constructors, validate values in their owning types, validate handlers during discovery, detect registry ambiguity, and validate completed specs before use.
+
+Errors at user-controlled boundaries must state what is invalid, what was expected, and the relevant method, type, processing group, message ID, or value.
+
+Contain reflection, unchecked casts, serialization, SQL, and nullable storage values at their boundaries. Return domain types to core code.
+
+## Correctness Semantics
+
+Threads, metadata, ordering, transactions, and failure propagation are API behavior. For dispatch changes, establish:
+
+- the executing thread and visible metadata lineage;
+- the transaction owning each state change;
+- what commits or rolls back after partial failure;
+- listener and processing-group isolation;
+- ordering guarantees and concurrent claim ownership.
+
+Restore metadata on worker threads. Preserve interruption, cancel owned work where appropriate, and use thread-safe state across threads.
+
+Do not rearrange handler side effects, deferred work, token advancement, retries, or rollback recovery without proving the transaction semantics remain correct.
+
+Preserve handler exceptions. Wrap failures only at technology boundaries and add domain context. Keep one primary concurrent failure and attach others as suppressed exceptions.
+
+Comment only when transaction, locking, concurrency, lifecycle, or ownership intent is not clear from the code.
+
+## Implementation Style
+
+- Write methods top to bottom: derive values, handle guards, perform the operation, translate boundary failures, return the result.
+- Use `var` when the type is obvious. Use explicit types when they clarify generics, reflection, JDBC, or examples.
+- Use streams for transformations and searches; use loops for mutation, resources, state machines, and early exits.
+- Extract helpers to name a step or isolate a boundary, not just to shorten a method.
+- Keep JDBC direct and auditable: nearby SQL, prepared statements, explicit mapping, try-with-resources, row-count checks, and contextual exceptions.
+- Keep Spring bean methods as explicit assembly code; keep policy in core specs.
+- Log operator-relevant state changes once, with useful identifiers.
+- Prefer names and types over comments. Add Javadoc only for public semantics the API cannot express.
+
+Follow `.editorconfig`: four spaces, same-line braces, one top-level type per file, no wildcard imports, and no routine `final` on parameters or locals. Avoid unrelated formatting.
+
+## Tests
+
+Test caller-visible behavior and likely regressions, not private interactions.
+
+- Name tests `operation_condition_expectedOutcome`.
+- Separate arrange, act, and assert with blank lines; prefer one meaningful action.
+- Use real objects with small handwritten fakes, lambdas, or records instead of mocks.
+- Use AssertJ. Assert results, side effects, failure identity and context, guaranteed order, and forbidden effects.
+- Keep scenario fixtures beside the test. Share only reusable domain fixtures.
+- Cover distinct validation cases separately.
+- Make async tests deterministic with latches, atomics, thread-safe collections, Awaitility, and bounded waits. Do not use arbitrary sleeps.
+- Reserve integration tests for Spring wiring, transactions, JDBC, PostgreSQL behavior, and Testcontainers concurrency.
+
+Treat `smd-test` as a public API: keep stubbing explicit, captured outcomes ordered, mutable state contained, and reset behavior reliable.
+
+## Change Workflow
+
+Before coding, identify the owning module, smallest public contract, safe defaults, construction-time invariants, execution semantics, and required test boundary.
+
+Implement one semantic slice. Check parallel command/query/event paths, add focused tests, and update documentation when public behavior or configuration changes.
+
+## Commands
 
 ```bash
-# Build all modules
+./gradlew test
+./gradlew integrationTest  # Event-store tests require Docker
+./gradlew check
 ./gradlew build
 
-# Run unit tests (all modules)
-./gradlew test
-
-# Run integration tests (all modules)
-./gradlew integrationTest
-
-# Run both (same as build check)
-./gradlew check
-
-# Run a single test class
 ./gradlew :smd-api:test --tests "app.dodb.smd.api.command.AnnotatedCommandHandlerTest"
 ./gradlew :smd-spring-boot-starter:integrationTest --tests "app.dodb.smd.spring.event.EventBusIntegrationTest"
 
-# Publish to local Maven repo
 ./gradlew publishToMavenLocal
 ```
-
-Integration tests for the event store use Testcontainers (Docker required) and the `eventstore` Spring profile.
-
-## Project Structure
-
-Five Gradle subprojects mapped to two directories:
-
-| Module                         | Path                                     | Purpose                                             |
-|--------------------------------|------------------------------------------|-----------------------------------------------------|
-| `smd-api`                      | `core/smd-api`                           | Framework-agnostic core (buses, handlers, channels) |
-| `smd-event-store`              | `core/smd-event-store`                   | PostgreSQL event store, polling, subject sequencing |
-| `smd-test`                     | `core/smd-test`                          | Test utilities (stubs, `SMDTestExtension`)          |
-| `smd-spring-boot-starter`      | `framework/smd-spring-boot-starter`      | Spring Boot autoconfiguration                       |
-| `smd-spring-boot-starter-test` | `framework/smd-spring-boot-starter-test` | Spring test scope support                           |
-
-Each module has a standard `src/main`, `src/test`, and `src/integrationTest` source set.
-
-## Architecture
-
-### Message Types
-
-There are three message types, each with a corresponding bus and gateway:
-
-- **Command** (`Command<R>`) — dispatched via `CommandGateway`/`CommandBus`, returns a result `R`
-- **Query** (`Query<R>`) — dispatched via `QueryGateway`/`QueryBus`, returns a result `R`
-- **Event** (`Event`) — published via `EventPublisher`/`EventBus`, fan-out to all subscribed processing groups
-
-All messages carry a `Metadata` record containing `Principal`, `Instant timestamp`, `MessageId parentMessageId`, and `Map<String, String> properties`.
-
-### Handler Discovery & Annotation Model
-
-Handlers are plain classes with annotated methods. The annotation drives which bus picks them up:
-
-- `@CommandHandler` on a method → handled by `CommandBus`
-- `@QueryHandler` on a method → handled by `QueryBus`
-- `@EventHandler` on a method → handled by `EventBus`
-- `@ProcessingGroup` on a class → groups event handlers for the event store channel
-
-Handler method parameters are resolved by type from the message:
-
-- The payload type (`Command<R>`, `Query<R>`, or `Event` subclass)
-- `MessageId` — the message's ID
-- `Metadata` — the full metadata object
-- `Principal` — the principal from metadata
-- `Instant` — the timestamp from metadata
-- `@MetadataValue("key") String value` — extracts a key from `properties`
-
-Handler classes are discovered via package scanning (`PackageBasedCommandHandlerLocator`, etc.), instantiated by `ObjectCreator` (Spring context in Spring Boot, constructor-based otherwise).
-
-### Bus Interceptors
-
-Each bus supports an interceptor chain (`CommandBusInterceptor`, `QueryBusInterceptor`, `EventInterceptor`). Interceptors receive the message and a `proceed()` call to continue the chain. In Spring
-Boot, `TransactionalCommandBusInterceptor`, `TransactionalEventInterceptor`, and `TransactionalQueryBusInterceptor` are registered automatically at highest precedence.
-
-### Event Channels
-
-The `EventBus` dispatches to one or more `EventChannel` implementations:
-
-- **Synchronous** (default) — handlers invoked on the publishing thread
-- **Async-await** — handlers invoked on a thread pool, publisher awaits completion
-- **Async-fire-and-forget** — publisher returns immediately, handlers invoked asynchronously
-- **`EventStoreChannel`** (in `smd-event-store`) — defers event storage within the transaction (via `TransactionProvider.defer`), then polls the store per processing group using a
-  `ScheduledExecutorService`
-
-The `EventStoreChannel` uses a token per processing group (`TokenStore` / `smd_token_store`) for contiguous scan progress and subject-sequence state (`EventSubjectSequenceStore` /
-`smd_event_sequence_state`) for independent ordering, retry, backoff, and abandonment. Events declare their optional sequence identity with `@SubjectId`; subjectless events share a global sequence
-within each processing group.
-
-The built-in stores require PostgreSQL 15 or newer. The database schema is at `core/smd-event-store/src/main/resources/db/smd/event-store-schema.sql`.
-
-### Bus Builder Pattern
-
-Buses are constructed via a spec/builder:
-
-```java
-// Framework-agnostic
-CommandBusSpec.withDefaults()
-    .commandHandlers(new PackageBasedCommandHandlerLocator(packages, objectCreator))
-    .interceptors(interceptor)
-    .create();
-
-// With processing group configuration
-EventBusSpec.withDefaults()
-    .processingGroups(locator, spec -> {
-        spec.processingGroup("notifications").async().await();
-        spec.anyProcessingGroup().sync();
-    })
-    .create();
-```
-
-### Spring Boot Integration
-
-Activate with `@EnableSMD` on a configuration class. This imports `SMDRegistrar` and `SMDAutoConfiguration` autoconfiguration, which wires all three gateways, locators, and
-transactional interceptors.
-
-Enable the event store via `application.yml`:
-
-```yaml
-smd:
-  event-store:
-    enabled: true
-    scheduling:
-      enabled: true
-      initial-delay: 10s
-      polling-delay: 5s
-      thread-pool-size: 1
-    processing:
-      max-retries: 3
-      batch-size: 100
-      gap-timeout: 5m
-      retry-backoff:
-        strategy: EXPONENTIAL  # FIXED | LINEAR | EXPONENTIAL
-        base-delay: 1s
-        multiplier: 5.0
-        max-delay: 5m
-```
-
-A `DataSource` bean is required when the event store is enabled.
-
-### Test Utilities
-
-- `SMDTestExtension` (in `smd-test`) — programmatic test helper that wires buses with stub providers; call `smd.send(command)`, `smd.send(event)`, `smd.getEvents()`, `smd.stubCommand(cmd, response)`,
-  etc.
-- `CommandGatewayStub`, `QueryGatewayStub`, `EventPublisherStub` — injectable stubs for unit tests
-- `@EnableSMDStubs` + `SMDTestScopeLifecycleExtension` (in `smd-spring-boot-starter-test`) — Spring integration test support with per-test scope reset
