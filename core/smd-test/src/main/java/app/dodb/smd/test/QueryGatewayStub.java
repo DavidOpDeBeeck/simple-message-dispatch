@@ -1,5 +1,6 @@
 package app.dodb.smd.test;
 
+import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.query.Query;
 import app.dodb.smd.api.query.QueryGateway;
 import app.dodb.smd.api.query.QueryMessage;
@@ -14,6 +15,12 @@ public class QueryGatewayStub implements QueryGateway {
     @Override
     @SuppressWarnings("unchecked")
     public <R, Q extends Query<R>> R send(Q query) {
+        return (R) responseByQuery.get(query);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R, Q extends Query<R>> R send(Q query, Metadata metadata) {
         return (R) responseByQuery.get(query);
     }
 

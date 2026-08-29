@@ -3,6 +3,7 @@ package app.dodb.smd.test;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.EventPublisher;
+import app.dodb.smd.api.metadata.Metadata;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +14,11 @@ public class EventPublisherStub implements EventPublisher {
 
     @Override
     public <E extends Event> void publish(E event) {
+        events.add(event);
+    }
+
+    @Override
+    public <E extends Event> void publish(E event, Metadata metadata) {
         events.add(event);
     }
 

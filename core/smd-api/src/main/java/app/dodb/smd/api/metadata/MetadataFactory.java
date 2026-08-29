@@ -60,10 +60,13 @@ public class MetadataFactory {
                 });
         }
 
-        public <T> T run(Function<Metadata, T> function) {
+        public <P, M extends Message<P, M>, T> T run(Function<Metadata, M> messageCreator, Function<M, T> function) {
             Metadata metadata = metadataSupplier.get();
             return ScopedValue.where(PARENT_METADATA, metadata)
-                .call(() -> function.apply(metadata));
+                .call(() -> {
+                    var message = messageCreator.apply(metadata);
+                    return ScopedValue.where(PARENT_MESSAGE_ID, message.messageId()).call(() -> function.apply(message));
+                });
         }
     }
 }

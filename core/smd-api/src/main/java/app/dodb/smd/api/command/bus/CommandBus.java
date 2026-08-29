@@ -4,6 +4,7 @@ import app.dodb.smd.api.command.Command;
 import app.dodb.smd.api.command.CommandGateway;
 import app.dodb.smd.api.command.CommandHandlerDispatcher;
 import app.dodb.smd.api.command.CommandMessage;
+import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.MetadataFactory;
 
 import java.util.List;
@@ -27,16 +28,27 @@ public class CommandBus implements CommandGateway {
     @Override
     public <R, C extends Command<R>> R send(C command) {
         var chain = CommandBusInterceptorChain.<R, C>create(dispatcher::dispatch, interceptors);
-        return metadataFactory.createScope().run(metadata -> {
-            return chain.proceed(CommandMessage.from(command, metadata));
-        });
+        return metadataFactory.createScope().run(
+            metadata -> CommandMessage.from(command, metadata),
+            chain::proceed
+        );
+    }
+
+    @Override
+    public <R, C extends Command<R>> R send(C command, Metadata commandMetadata) {
+        var chain = CommandBusInterceptorChain.<R, C>create(dispatcher::dispatch, interceptors);
+        return metadataFactory.createScope(commandMetadata).run(
+            metadata -> CommandMessage.from(command, metadata),
+            chain::proceed
+        );
     }
 
     @Override
     public <R, C extends Command<R>> R send(CommandMessage<R, C> commandMessage) {
         var chain = CommandBusInterceptorChain.<R, C>create(dispatcher::dispatch, interceptors);
-        return metadataFactory.createScope(commandMessage.metadata()).run(metadata -> {
-            return chain.proceed(commandMessage.withMetadata(metadata));
-        });
+        return metadataFactory.createScope(commandMessage.metadata()).run(
+            commandMessage::withMetadata,
+            chain::proceed
+        );
     }
 }

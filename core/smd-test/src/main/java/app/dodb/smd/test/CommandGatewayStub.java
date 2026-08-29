@@ -3,6 +3,7 @@ package app.dodb.smd.test;
 import app.dodb.smd.api.command.Command;
 import app.dodb.smd.api.command.CommandGateway;
 import app.dodb.smd.api.command.CommandMessage;
+import app.dodb.smd.api.metadata.Metadata;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,6 +15,12 @@ public class CommandGatewayStub implements CommandGateway {
     @Override
     @SuppressWarnings("unchecked")
     public <R, C extends Command<R>> R send(C command) {
+        return (R) responseByCommand.get(command);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R, C extends Command<R>> R send(C command, Metadata metadata) {
         return (R) responseByCommand.get(command);
     }
 

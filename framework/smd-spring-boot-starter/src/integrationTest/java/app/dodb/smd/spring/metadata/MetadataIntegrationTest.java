@@ -20,6 +20,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -39,10 +40,10 @@ public class MetadataIntegrationTest {
             var metadataRecorder = context.getBean(MetadataRecorder.class);
             var initialTimestamp = Instant.now();
             var initialPrincipal = SimplePrincipal.create();
-            commandBus.send(CommandMessage.from(
+            var commandMessage = CommandMessage.from(
                 new CreateAccountCommand("ACCOUNT_NAME"),
-                new Metadata(initialPrincipal, initialTimestamp, null, Map.of("key", "value")))
-            );
+                new Metadata(initialPrincipal, initialTimestamp, null, Map.of("key", "value")));
+            commandBus.send(commandMessage);
 
             await().untilAsserted(() -> {
                 assertThat(metadataRecorder.commandMetadata()).hasSize(1);
@@ -51,6 +52,14 @@ public class MetadataIntegrationTest {
             assertPrincipalToEqual(metadataRecorder.commandMetadata(), initialPrincipal);
             assertTimestampToEqual(metadataRecorder.commandMetadata(), initialTimestamp);
             assertThat(metadataRecorder.commandMetadataValues()).containsExactly("value");
+
+            await().untilAsserted(() -> {
+                assertThat(metadataRecorder.accountCreatedEventMetadata()).hasSize(1);
+            });
+
+            assertThat(metadataRecorder.accountCreatedEventMetadata())
+                .extracting(Metadata::parentMessageId)
+                .containsExactly(commandMessage.messageId());
         }
     }
 

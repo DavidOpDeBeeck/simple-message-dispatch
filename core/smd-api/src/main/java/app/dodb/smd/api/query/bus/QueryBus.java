@@ -1,5 +1,6 @@
 package app.dodb.smd.api.query.bus;
 
+import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.api.query.Query;
 import app.dodb.smd.api.query.QueryGateway;
@@ -27,16 +28,27 @@ public class QueryBus implements QueryGateway {
     @Override
     public <R, Q extends Query<R>> R send(Q query) {
         var chain = QueryBusInterceptorChain.<R, Q>create(dispatcher::dispatch, interceptors);
-        return metadataFactory.createScope().run(metadata -> {
-            return chain.proceed(QueryMessage.from(query, metadata));
-        });
+        return metadataFactory.createScope().run(
+            metadata -> QueryMessage.from(query, metadata),
+            chain::proceed
+        );
+    }
+
+    @Override
+    public <R, Q extends Query<R>> R send(Q query, Metadata queryMetadata) {
+        var chain = QueryBusInterceptorChain.<R, Q>create(dispatcher::dispatch, interceptors);
+        return metadataFactory.createScope(queryMetadata).run(
+            metadata -> QueryMessage.from(query, metadata),
+            chain::proceed
+        );
     }
 
     @Override
     public <R, Q extends Query<R>> R send(QueryMessage<R, Q> queryMessage) {
         var chain = QueryBusInterceptorChain.<R, Q>create(dispatcher::dispatch, interceptors);
-        return metadataFactory.createScope(queryMessage.metadata()).run(metadata -> {
-            return chain.proceed(queryMessage.withMetadata(metadata));
-        });
+        return metadataFactory.createScope(queryMessage.metadata()).run(
+            queryMessage::withMetadata,
+            chain::proceed
+        );
     }
 }
