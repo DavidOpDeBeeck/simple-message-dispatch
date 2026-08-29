@@ -1,0 +1,21 @@
+[versions]
+smd = "0.0.10"
+assertj = "3.27.7"
+awaitility = "4.3.0"
+junit = "6.0.3"
+testcontainers = "2.0.3"
+postgresql = "42.7.10"
+
+[libraries]
+smd-spring-boot-starter = { module = "app.dodb:smd-spring-boot-starter", version.ref = "smd" }
+smd-test = { module = "app.dodb:smd-test", version.ref = "smd" }
+smd-spring-boot-starter-test = { module = "app.dodb:smd-spring-boot-starter-test", version.ref = "smd" }
+assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+testcontainers-jdbc = { module = "org.testcontainers:testcontainers-jdbc", version.ref = "testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }

@@ -1,0 +1,3 @@
+smd:
+  event-store:
+    enabled: false

@@ -1,0 +1,42 @@
+@host = http://localhost:8080
+@customerId = customer-42
+
+### Open a ticket and capture its ID
+POST {{host}}/tickets
+Content-Type: application/json
+X-Customer-Id: {{customerId}}
+
+{
+    "title": "Cannot sign in",
+    "description": "Password reset does not arrive"
+}
+
+> {%
+    client.global.set("ticketId", response.body.ticketId);
+%}
+
+### Assign the captured ticket
+POST {{host}}/tickets/{{ticketId}}/assign
+Content-Type: application/json
+X-Customer-Id: {{customerId}}
+
+{
+    "assignee": "agent-7"
+}
+
+### Resolve the captured ticket
+POST {{host}}/tickets/{{ticketId}}/resolve
+Content-Type: application/json
+X-Customer-Id: {{customerId}}
+
+{
+    "resolution": "Reset mail was unblocked"
+}
+
+### Get the immediately updated ticket view
+GET {{host}}/tickets/{{ticketId}}
+X-Customer-Id: {{customerId}}
+
+### Get the eventual durable activity timeline
+GET {{host}}/tickets/{{ticketId}}/activity
+X-Customer-Id: {{customerId}}

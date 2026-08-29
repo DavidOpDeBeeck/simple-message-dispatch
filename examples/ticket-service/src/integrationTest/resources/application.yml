@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:18:///ticket_service
+
+smd:
+  event-store:
+    enabled: true
+    scheduling:
+      initial-delay: 0s
+      polling-delay: 1s
