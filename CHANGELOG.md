@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.0.10] - 2026-08-30
 
 - Events can declare a non-blank subject ID through `@SubjectId`; `EventMessage` captures and persists it, while events without a subject ID share a global sequence.
 - Event-store processing now supports independent, ordered subjects per processing group, with per-subject retry, backoff, and abandonment state.

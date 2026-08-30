@@ -6,6 +6,8 @@ include("smd-test")
 include("smd-spring-boot-starter")
 include("smd-spring-boot-starter-test")
 
+includeBuild("examples/ticket-service")
+
 project(":smd-api").projectDir = file("core/smd-api")
 project(":smd-event-store").projectDir = file("core/smd-event-store")
 project(":smd-test").projectDir = file("core/smd-test")

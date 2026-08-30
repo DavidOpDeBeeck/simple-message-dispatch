@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "app.dodb"
-version = "0.0.9"
+version = libs.versions.smd.get()
 
 subprojects {
     apply(plugin = "java-library")
@@ -35,7 +35,7 @@ subprojects {
         useJUnitPlatform()
     }
 
-    val integrationTest by sourceSets.creating {
+    val integrationTest = sourceSets.create("integrationTest") {
         compileClasspath += sourceSets.main.get().output + configurations.testRuntimeClasspath.get()
         runtimeClasspath += output + compileClasspath
     }

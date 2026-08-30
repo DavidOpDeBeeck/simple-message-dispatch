@@ -1,15 +1,13 @@
-# Getting Started
+# Getting Started with Spring Boot
 
-## Choose Your Path
+This guide adds SMD to an existing Spring Boot 4 application and builds one runnable ticket flow. You will send a command, read the result with a query, and handle the published event. See
+[Core API](core-api.md) if you are not using Spring.
 
-Use the lightest setup that fits your application:
+SMD requires Java 25. Each public type below belongs in its own file.
 
-- Start with `smd-api` if you want framework-agnostic buses and handler discovery
-- Add `smd-spring-boot-starter` if your application already uses Spring Boot
-- Add `smd-event-store` when event delivery must be persisted and polled from storage
-- Add `smd-test` or `smd-spring-boot-starter-test` for testing support
+## 1. Add the Dependency
 
-## Install
+Add the SMD starter and Spring MVC to `build.gradle.kts`:
 
 ```kotlin
 repositories {
@@ -17,273 +15,270 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-api:0.0.9")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.10")
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 }
 ```
 
-Optional modules:
+The starter already exposes the core API and event-store module. Do not add them separately unless you are managing modules manually.
 
-```kotlin
-implementation("app.dodb:smd-event-store:0.0.9")
-implementation("app.dodb:smd-spring-boot-starter:0.0.9")
-testImplementation("app.dodb:smd-test:0.0.9")
-testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.9")
-```
+## 2. Define the Messages
 
-## Messages
-
-SMD defines three message types:
+A command requests a state change, a query reads state, and an event announces something that happened.
 
 ```java
-public record CreateAccount(String name) implements Command<UUID> {
-}
+public record OpenTicketCommand(String title, String description) implements Command<UUID> {
 
-public record GetAccountBalance(UUID accountId) implements Query<Integer> {
-}
-
-public record AccountCreated(UUID accountId, String name) implements Event {
-    @SubjectId
-    public String accountSubject() {
-        return "account:" + accountId;
+    public OpenTicketCommand {
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("OpenTicketCommand title must contain text");
+        }
+        if (description == null || description.isBlank()) {
+            throw new IllegalArgumentException("OpenTicketCommand description must contain text");
+        }
     }
 }
 ```
 
-## Metadata
-
-Every message carries `Metadata`:
-
-- `Principal principal`
-- `Instant timestamp`
-- `MessageId parentMessageId`
-- `Map<String, String> properties`
-
 ```java
-var metadata = new Metadata(principal, Instant.now(), parentMessageId, Map.of(
-        "tenantId", "acme",
-        "correlationId", "checkout-123"
-));
+public record GetTicketQuery(UUID ticketId) implements Query<Optional<TicketDTO>> {
+
+    public GetTicketQuery {
+        requireNonNull(ticketId, "GetTicketQuery ticketId must not be null");
+    }
+}
 ```
 
-Metadata properties are immutable. When a handler dispatches another message, SMD copies the parent metadata, preserves the lineage through `parentMessageId`, and refreshes the timestamp.
-
-## Handlers
-
-Handlers are plain classes with annotated methods:
-
-- `@CommandHandler`
-- `@QueryHandler`
-- `@EventHandler`
-
-Annotated handler methods must be public.
-
-## First Example
+```java
+public record TicketDTO(UUID ticketId, String title, String description) {
+}
+```
 
 ```java
-public class CreateAccountHandler {
+public record TicketOpenedEvent(@SubjectId UUID ticketId, String title, String description) implements Event {
 
-    private final EventPublisher eventPublisher;
+    public TicketOpenedEvent {
+        requireNonNull(ticketId, "TicketOpenedEvent ticketId must not be null");
+        requireNonNull(title, "TicketOpenedEvent title must not be null");
+        requireNonNull(description, "TicketOpenedEvent description must not be null");
+    }
+}
+```
 
-    public CreateAccountHandler(EventPublisher eventPublisher) {
-        this.eventPublisher = eventPublisher;
+The subject ID is used if this event is later routed through the event store. Events for the same ticket then retain their relative order.
+
+## 3. Add the Ticket State and Repository
+
+Keep storage behind a small application contract. This guide uses an in-memory adapter so the first flow can run without a database.
+
+```java
+public class Ticket {
+
+    private final UUID ticketId;
+    private final String title;
+    private final String description;
+    private final List<TicketOpenedEvent> uncommittedEvents = new ArrayList<>();
+
+    public Ticket(UUID ticketId, String title, String description) {
+        this.ticketId = requireNonNull(ticketId, "Ticket ticketId must not be null");
+        this.title = requireNonNull(title, "Ticket title must not be null");
+        this.description = requireNonNull(description, "Ticket description must not be null");
+        uncommittedEvents.add(new TicketOpenedEvent(ticketId, title, description));
+    }
+
+    public UUID ticketId() {
+        return ticketId;
+    }
+
+    public String title() {
+        return title;
+    }
+
+    public String description() {
+        return description;
+    }
+
+    public List<TicketOpenedEvent> consumeEvents() {
+        var events = List.copyOf(uncommittedEvents);
+        uncommittedEvents.clear();
+        return events;
+    }
+}
+```
+
+```java
+public interface TicketRepository {
+
+    void save(Ticket ticket);
+
+    Optional<Ticket> find(UUID ticketId);
+}
+```
+
+```java
+@Repository
+public class InMemoryTicketRepository implements TicketRepository {
+
+    private final Map<UUID, Ticket> tickets = new ConcurrentHashMap<>();
+
+    @Override
+    public void save(Ticket ticket) {
+        tickets.put(ticket.ticketId(), ticket);
+    }
+
+    @Override
+    public Optional<Ticket> find(UUID ticketId) {
+        return Optional.ofNullable(tickets.get(ticketId));
+    }
+}
+```
+
+## 4. Add Command and Query Handlers
+
+Handlers are Spring beans with public annotated methods. Keep command and query behavior in separate handlers.
+
+```java
+@Component
+public class TicketCommandHandler {
+
+    private final TicketRepository tickets;
+    private final EventPublisher events;
+
+    public TicketCommandHandler(TicketRepository tickets, EventPublisher events) {
+        this.tickets = tickets;
+        this.events = events;
     }
 
     @CommandHandler
-    public UUID handle(CreateAccount command) {
-        var id = UUID.randomUUID();
-        eventPublisher.publish(new AccountCreated(id, command.name()));
-        return id;
+    public UUID handle(OpenTicketCommand command) {
+        var ticket = new Ticket(UUID.randomUUID(), command.title(), command.description());
+
+        tickets.save(ticket);
+        ticket.consumeEvents().forEach(events::publish);
+
+        return ticket.ticketId();
     }
 }
 ```
 
-Event handlers belong to a processing group through `@ProcessingGroup`.
+```java
+@Component
+public class TicketQueryHandler {
 
-You can put `@ProcessingGroup` on the class or on an individual handler method. Method-level annotation wins over the class-level one. `@ProcessingGroup` without a value means the `default` processing
-group.
+    private final TicketRepository tickets;
+
+    public TicketQueryHandler(TicketRepository tickets) {
+        this.tickets = tickets;
+    }
+
+    @QueryHandler
+    public Optional<TicketDTO> handle(GetTicketQuery query) {
+        return tickets.find(query.ticketId())
+            .map(ticket -> new TicketDTO(ticket.ticketId(), ticket.title(), ticket.description()));
+    }
+}
+```
+
+SMD requires exactly one handler for each command or query type. The handler return type must match the message's generic result type.
+
+## 5. Add an Event Handler
+
+Every event handler belongs to a processing group. A published event is delivered once to each group that has a matching handler.
 
 ```java
+@Component
+@ProcessingGroup("notifications")
+public class TicketNotificationEventHandler {
 
-@ProcessingGroup
-public class AccountProjection {
+    private static final Logger LOGGER = LoggerFactory.getLogger(TicketNotificationEventHandler.class);
 
     @EventHandler
-    public void on(AccountCreated event) {
-        // update a read model
-    }
-}
-
-public class AuditHandlers {
-
-    @EventHandler
-    @ProcessingGroup("audit")
-    public void on(AccountCreated event) {
-        // handled in the "audit" processing group
+    public void handle(TicketOpenedEvent event) {
+        LOGGER.info("Ticket opened notification: ticketId={}, title={}", event.ticketId(), event.title());
     }
 }
 ```
 
-## Handler Parameters
+Without custom configuration, Spring Boot delivers events synchronously. This handler finishes before `publish` returns, and a failure is propagated to the publisher.
 
-Besides the message payload, SMD can inject message context into handler parameters.
+## 6. Enable SMD
 
-| Parameter type                      | Resolved value                     |
-|-------------------------------------|------------------------------------|
-| `Command<R>` / `Query<R>` / `Event` | Message payload                    |
-| `MessageId`                         | Message identifier                 |
-| `Metadata`                          | Full metadata                      |
-| `Principal`                         | Metadata principal                 |
-| `Instant`                           | Metadata timestamp                 |
-| `@MetadataValue("key") String`      | Value from `Metadata.properties()` |
+Add `@EnableSMD` to the application and point it at the package containing the handlers:
 
 ```java
+@EnableSMD(packages = "com.example.tickets")
+@SpringBootApplication
+public class TicketApplication {
 
-@CommandHandler
-public UUID handle(CreateAccount command, Metadata metadata, MessageId messageId) { ...}
-
-@EventHandler
-public void on(AccountCreated event, Principal principal, Instant timestamp) { ...}
-```
-
-## Interceptors
-
-Each bus supports an interceptor chain:
-
-- `CommandBusInterceptor`
-- `QueryBusInterceptor`
-- `EventInterceptor`
-
-`EventInterceptor` is the single event interception model for both publishing and channel delivery.
-
-```java
-public class LoggingCommandInterceptor implements CommandBusInterceptor {
-
-    @Override
-    public <R, C extends Command<R>> R intercept(CommandMessage<R, C> message, CommandBusInterceptorChain<R, C> chain) {
-        return chain.proceed(message);
+    public static void main(String[] args) {
+        SpringApplication.run(TicketApplication.class, args);
     }
 }
 ```
 
-## Wiring The Buses
+Handler classes must also be discoverable Spring beans, such as `@Component`, `@Repository`, or explicitly declared `@Bean` instances.
 
-Use this setup when you want SMD without Spring Boot and are happy wiring the buses yourself.
+## 7. Send Commands and Queries
 
-SMD provides builder-style specs for each bus:
-
-- `CommandBusSpec`
-- `QueryBusSpec`
-- `EventBusSpec`
+Entry points depend on the narrow gateway needed for each message type.
 
 ```java
-var packages = List.of("com.example.app");
-var objectCreator = new MyObjectCreator();
+@RestController
+@RequestMapping("/tickets")
+public class TicketController {
 
-var commandBus = CommandBusSpec.withDefaults()
-        .commandHandlers(new PackageBasedCommandHandlerLocator(packages, objectCreator))
-        .create();
+    private final CommandGateway commands;
+    private final QueryGateway queries;
 
-var queryBus = QueryBusSpec.withDefaults()
-        .queryHandlers(new PackageBasedQueryHandlerLocator(packages, objectCreator))
-        .create();
+    public TicketController(CommandGateway commands, QueryGateway queries) {
+        this.commands = commands;
+        this.queries = queries;
+    }
 
-var eventBus = EventBusSpec.withDefaults()
-        .processingGroups(new PackageBasedProcessingGroupLocator(packages, objectCreator))
-        .create();
-```
+    @PostMapping
+    public TicketDTO open(@Valid @RequestBody OpenTicketRequest request) {
+        var ticketId = commands.send(new OpenTicketCommand(request.title(), request.description()));
+        return queries.send(new GetTicketQuery(ticketId)).orElseThrow();
+    }
 
-## Object Creation
+    @GetMapping("/{ticketId}")
+    public ResponseEntity<TicketDTO> get(@PathVariable UUID ticketId) {
+        return ResponseEntity.of(queries.send(new GetTicketQuery(ticketId)));
+    }
 
-Handler instances are created through `ObjectCreator`.
-
-- `ConstructorBasedObjectCreator` only works for handlers with a no-arg constructor
-- provide your own implementation when handlers need constructor-injected or container-managed dependencies
-
-For example, this works with `ConstructorBasedObjectCreator`:
-
-```java
-public class AuditHandler {
-
-    @EventHandler
-    @ProcessingGroup("audit")
-    public void on(AccountCreated event) {
-        // no injected dependencies required
+    public record OpenTicketRequest(@NotBlank String title, @NotBlank String description) {
     }
 }
 ```
 
-If your handlers depend on repositories, gateways, or services through their constructor, plug in a custom `ObjectCreator` that delegates to your own container or factory.
+## 8. Run and Verify the Flow
 
-## Bus Interceptors
+Start the application:
 
-Add interceptors during bus creation:
-
-```java
-var commandBus = CommandBusSpec.withDefaults()
-        .commandHandlers(locator)
-        .interceptors(new LoggingCommandInterceptor())
-        .create();
+```bash
+./gradlew bootRun
 ```
 
-Transactional interceptors are available when you provide a `TransactionProvider`:
+Open a ticket:
 
-- `TransactionalCommandBusInterceptor`
-- `TransactionalQueryBusInterceptor`
-- `TransactionalEventInterceptor`
-
-## Processing Groups And Event Channels
-
-Processing groups determine how event handlers are dispatched.
-
-- synchronous on the publishing thread
-- asynchronous while awaiting completion
-- asynchronous fire-and-forget
-- a custom `SubscribableEventChannel`
-- a custom `EventChannel` paired with an `EventChannelBinding`
-- disabled explicitly
-
-By default, `processingGroups(locator)` uses synchronous delivery. Use a custom configurer when you need different behavior:
-
-```java
-var eventBus = EventBusSpec.withDefaults()
-        .processingGroups(locator, spec -> {
-            spec.processingGroup("notifications").async().await();
-            spec.processingGroup("analytics").async().fireAndForget();
-            spec.processingGroup("audit").disabled();
-            spec.anyProcessingGroup().sync();
-        })
-        .create();
+```bash
+curl --fail-with-body -sS \
+  -X POST http://localhost:8080/tickets \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Cannot sign in","description":"Password reset does not arrive"}'
 ```
 
-When you define custom processing-group configuration, every discovered group must either:
+The response contains the generated `ticketId`, title, and description. The application also logs `Ticket opened notification`, proving that the event handler completed before the response was
+returned.
 
-- receive a specific channel
-- be covered by `anyProcessingGroup()`
-- be disabled explicitly
+## Important Handler Rules
 
-Otherwise bus creation fails instead of silently skipping the group.
+- Handler methods must be public.
+- A handler has exactly one command, query, or event payload parameter.
+- Command and query return types must match their message's generic result type.
+- Event handlers return `void` and require `@ProcessingGroup` on the method or class.
+- Handler classes must be discoverable Spring beans.
 
-Attach a built-in or custom `SubscribableEventChannel` with `.channel(myChannel)`; SMD subscribes the processing group's listener directly. For a channel that needs per-group configuration, use
-`.channel(myChannel, binding)`. The event store is directly subscribable:
-
-```java
-spec.processingGroup("accounts")
-        .channel(eventStoreChannel);
-```
-
-See the [Event Store Guide](event-store.md#event-subjects-and-sequencing) for subject-based event sequences.
-
-## Dispatching Messages
-
-```java
-UUID accountId = commandBus.send(new CreateAccount("Alice"));
-int balance = queryBus.send(new GetAccountBalance(accountId));
-eventBus.publish(new AccountCreated(accountId, "Alice"));
-```
-
-## Where To Go Next
-
-- Use [Spring Boot Guide](spring-boot.md) for `@EnableSMD`
-- Use [Event Store Guide](event-store.md) if events must be stored and replayed
-- Use [Testing Guide](testing.md) for lightweight tests without Spring Boot
-- Use [Spring Boot Testing Guide](spring-boot-testing.md) for Spring Boot test support
+Next, add a focused handler-flow test with [Testing](testing.md), choose delivery and transaction behavior in [Spring Boot](spring-boot.md), or make events durable with [Event Store](event-store.md).
+The runnable [ticket service](../examples/ticket-service/README.md) demonstrates the complete lifecycle with JDBC, projections, metadata, and three delivery modes.

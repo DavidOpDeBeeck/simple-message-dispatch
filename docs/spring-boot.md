@@ -1,122 +1,126 @@
-# Spring Boot Guide
+# Spring Boot Configuration
 
-## When To Use This Path
+The starter discovers handlers, constructs the buses, and exposes `CommandGateway`, `QueryGateway`, and `EventPublisher`. Start with [Getting Started](getting-started.md) if you have not sent a
+message yet.
 
-Use `smd-spring-boot-starter` when your application already uses Spring Boot and you want SMD wired through autoconfiguration.
+## Handler Discovery
 
-## Enable SMD
+Enable SMD on a configuration class:
 
 ```java
-
 @EnableSMD
 @SpringBootApplication
-public class Application {
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
+public class TicketApplication {
 }
 ```
 
-If you do not pass `packages`, SMD scans from the package of the annotated class.
-
-## Handler Beans
-
-Register handlers as Spring beans. Annotated handler methods must be public:
+With no `packages` value, SMD scans from the annotated class's package. Specify one or more roots when needed:
 
 ```java
-
-@Component
-public class CreateAccountHandler {
-
-    private final EventPublisher eventPublisher;
-
-    public CreateAccountHandler(EventPublisher eventPublisher) {
-        this.eventPublisher = eventPublisher;
-    }
-
-    @CommandHandler
-    public UUID handle(CreateAccount command) {
-        var id = UUID.randomUUID();
-        eventPublisher.publish(new AccountCreated(id, command.name()));
-        return id;
-    }
-}
+@EnableSMD(packages = {"com.example.tickets.usecase", "com.example.tickets.drivenadapter"})
 ```
 
-## Injected Gateways And Publisher
+Handler classes must be Spring beans. Annotated handler methods must be public.
 
-The starter provides:
+## Inject the Messaging Interfaces
 
-- `CommandGateway`
-- `QueryGateway`
-- `EventPublisher`
+Depend on the narrow interface needed by each component:
 
 ```java
 
 @RestController
-public class AccountController {
+public class TicketController {
 
-    private final CommandGateway commandGateway;
-    private final QueryGateway queryGateway;
+    private final CommandGateway commands;
+    private final QueryGateway queries;
 
-    public AccountController(CommandGateway commandGateway, QueryGateway queryGateway) {
-        this.commandGateway = commandGateway;
-        this.queryGateway = queryGateway;
+    public TicketController(CommandGateway commands, QueryGateway queries) {
+        this.commands = commands;
+        this.queries = queries;
     }
 }
 ```
 
-## Interceptor Beans
+Inject `EventPublisher` into code that publishes events.
 
-Register interceptors as Spring beans and SMD picks them up automatically.
+## Configure Processing Groups
 
-```java
-
-@Bean
-@Order(10)
-public CommandBusInterceptor loggingInterceptor() {
-    return new LoggingCommandInterceptor();
-}
-```
-
-Transactional interceptors are registered by default at highest precedence:
-
-- `TransactionalCommandBusInterceptor`
-- `TransactionalQueryBusInterceptor`
-- `TransactionalEventInterceptor`
-
-## Processing Group Configuration
-
-Use `ProcessingGroupsConfigurer` to choose event-delivery behavior:
+Without a `ProcessingGroupsConfigurer`, every group uses synchronous delivery. Add one when groups need different behavior:
 
 ```java
-
 @Bean
-public ProcessingGroupsConfigurer processingGroupsConfigurer() {
-    return spec -> {
-        spec.processingGroup("notifications").async().await();
-        spec.processingGroup("analytics").async().fireAndForget();
-        spec.anyProcessingGroup().sync();
+ProcessingGroupsConfigurer processingGroupsConfigurer() {
+    return groups -> {
+        groups.processingGroup("notifications").async().await();
+        groups.processingGroup("ticket-view").sync();
+        groups.anyProcessingGroup().sync();
     };
 }
 ```
 
-Multiple `ProcessingGroupsConfigurer` beans are supported and applied in order.
+| Configuration                        | Execution                 | Return and failure behavior                   | Transaction and durability                                         |
+|--------------------------------------|---------------------------|-----------------------------------------------|--------------------------------------------------------------------|
+| `sync()`                             | Publishing thread         | Waits; handler failure reaches the publisher  | Participates in the publisher's thread-bound transaction           |
+| `async().await()`                    | Virtual worker threads    | Waits; handler failures reach the publisher   | Does not inherit the publisher's thread-bound transaction          |
+| `async().fireAndForget()`            | Virtual worker threads    | Returns immediately; handler failures are logged | Does not inherit the publisher's transaction and is not durable |
+| `channel(eventStoreChannel)`         | Event-store scheduler     | Stores before return; retries delivery failures | Storage joins publishing; delivery uses new transactions |
+| `channel(channel)`                   | Defined by the channel    | Defined by the channel                        | Defined by the channel                                             |
+| `disabled()`                         | No execution              | Returns without invoking the group            | No state change                                                    |
 
-If you do not provide one, the starter uses synchronous delivery for all groups.
+Once custom routing is present, every discovered group must be configured, covered by `anyProcessingGroup()`, or disabled. Multiple configurer beans are applied in Spring order; do not configure the
+same named group twice.
 
-`.channel(channel)` accepts a `SubscribableEventChannel`. Use `.channel(channel, binding)` only when another channel needs per-processing-group attachment configuration. The event store is directly
-subscribable and uses each event's optional subject ID for sequencing; see [Event Subjects and Sequencing](event-store.md#event-subjects-and-sequencing).
+The event store is not selected automatically when enabled. Route durable groups explicitly with `.channel(eventStoreChannel)` as shown in [Event Store](event-store.md).
 
-## Common Wiring Notes
+## Add Interceptors
 
-- `ObjectCreator`, `PrincipalProvider`, `TimeProvider`, and `TransactionProvider` are overridable beans
-- the event store is disabled until `smd.event-store.enabled=true`
-- using the event store still requires explicit routing of processing groups to `EventStoreChannel`
+Expose interceptors as beans. Spring ordering controls the chain:
 
-## Related Docs
+```java
+@Bean
+@Order(10)
+CommandBusInterceptor loggingInterceptor() {
+    return new LoggingCommandInterceptor();
+}
+```
 
-- [Getting Started](getting-started.md)
-- [Event Store Guide](event-store.md)
-- [Testing Guide](testing.md)
-- [Spring Boot Testing Guide](spring-boot-testing.md)
+The starter registers transactional command, query, and event-publication interceptors at highest precedence. They use Spring transactions through `TransactionProvider`. Synchronous handlers execute
+inside that transaction. Work moved to an asynchronous channel does not inherit Spring's thread-bound transaction. With `async().await()`, a failure can roll back the publisher's transaction even
+though worker-thread side effects cannot be rolled back with it. Use idempotent or independently transactional side effects when configuring asynchronous delivery.
+
+## Override Infrastructure
+
+Provide a bean of the same type to replace these defaults:
+
+- `ObjectCreator`
+- `PrincipalProvider`
+- `TimeProvider`
+- `TransactionProvider`
+- `CommandGateway`, `QueryGateway`, or `EventPublisher`
+
+The default `ObjectCreator` retrieves handlers from the Spring application context. A custom principal provider is the normal place to expose the authenticated application user as message metadata.
+
+## Metadata in Handlers
+
+Handlers may request the message context alongside their payload:
+
+```java
+
+@EventHandler
+public void on(
+        TicketOpenedEvent event,
+        Principal principal,
+        Instant timestamp,
+        @MetadataValue("tenantId") String tenantId) {
+    // ...
+}
+```
+
+Nested dispatch preserves the principal and metadata properties, records the current message as the parent, and uses a fresh timestamp. See [Core API](core-api.md#metadata-and-message-lineage) for the
+complete parameter list.
+
+## Next Steps
+
+- [Event Store](event-store.md) for durable PostgreSQL-backed event processing
+- [Testing](testing.md) for Spring test-scope stubs
+- [Core API](core-api.md) for manual construction and channel behavior

@@ -22,30 +22,33 @@ final class SubjectIdResolver {
     static Optional<String> resolve(Event event) {
         var eventType = event.getClass();
         return SUBJECT_ACCESSORS.computeIfAbsent(eventType, SubjectIdResolver::findSubjectIdAccessor)
-            .flatMap(accessor -> invoke(event, accessor));
+            .flatMap(accessor -> resolve(event, accessor));
+    }
+
+    private static Optional<String> resolve(Event event, Method accessor) {
+        var subjectIdOpt = invoke(event, accessor);
+        if (subjectIdOpt.filter(String::isBlank).isPresent()) {
+            throw new IllegalArgumentException("""
+                Invalid event: @SubjectId must resolve to a non-blank value.
+
+                    Event:
+                    %s
+
+                    Accessor:
+                    %s
+                """.formatted(logClass(event.getClass()), logMethod(accessor)));
+        }
+        return subjectIdOpt;
     }
 
     private static Optional<String> invoke(Event event, Method accessor) {
         try {
-            Optional<String> subjectIdOpt = switch (accessor.invoke(event)) {
+            return switch (accessor.invoke(event)) {
                 case null -> Optional.empty();
                 case String string -> Optional.of(string);
                 case Optional<?> optional -> optional.map(Object::toString);
                 case Object object -> Optional.of(object.toString());
             };
-
-            if (subjectIdOpt.filter(String::isBlank).isPresent()) {
-                throw new IllegalArgumentException("""
-                    Invalid event: @SubjectId must resolve to a non-blank value.
-
-                        Event:
-                        %s
-
-                        Accessor:
-                        %s
-                    """.formatted(logClass(event.getClass()), logMethod(accessor)));
-            }
-            return subjectIdOpt;
         } catch (Exception exception) {
             throw new IllegalArgumentException("""
                 Invalid event: something went wrong when resolving the subjectId.
