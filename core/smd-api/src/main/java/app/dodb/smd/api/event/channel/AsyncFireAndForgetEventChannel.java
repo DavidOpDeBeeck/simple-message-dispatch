@@ -15,7 +15,7 @@ import java.util.concurrent.ExecutorService;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor;
 
-public class AsyncFireAndForgetEventChannel implements SubscribableEventChannel {
+public class AsyncFireAndForgetEventChannel implements EventChannel {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AsyncFireAndForgetEventChannel.class);
 

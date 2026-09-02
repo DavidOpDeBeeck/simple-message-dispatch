@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added independent `EventSink` and `EventSource` contracts, with `EventChannel` combining both. `EventBusSpec.sinks(...)` registers outbound destinations, while processing-group `.source(...)`
+  registers incoming events without implicit publication. Removed `SubscribableEventChannel` and `EventChannelBinding` without compatibility aliases.
+- Replaced `EventStoreChannel` and `EventStoreChannelConfig` with the `EventStore` lifecycle owner and `EventStoreConfig`. Spring Boot now registers an enabled event store as a sink with the default
+  event publisher automatically.
+- Added ordered Spring `CommandBusSpecCustomizer`, `EventBusSpecCustomizer`, and `QueryBusSpecCustomizer` extension points.
+
 ## [0.0.10] - 2026-08-30
 
 - Events can declare a non-blank subject ID through `@SubjectId`; `EventMessage` captures and persists it, while events without a subject ID share a global sequence.

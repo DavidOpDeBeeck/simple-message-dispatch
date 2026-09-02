@@ -16,7 +16,7 @@ import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor;
 
-public class AsyncAwaitingEventChannel implements SubscribableEventChannel {
+public class AsyncAwaitingEventChannel implements EventChannel {
 
     public static AsyncAwaitingEventChannel usingVirtualThreads() {
         return new AsyncAwaitingEventChannel(newVirtualThreadPerTaskExecutor(), List.of());

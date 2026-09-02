@@ -19,7 +19,7 @@ import static java.time.Duration.ofSeconds;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 
-public class EventStoreChannelConfig {
+public class EventStoreConfig {
 
     private final TransactionProvider transactionProvider;
     private final List<EventInterceptor> interceptors;
@@ -30,7 +30,7 @@ public class EventStoreChannelConfig {
     private final SchedulingConfig schedulingConfig;
     private final ProcessingConfig processingConfig;
 
-    private EventStoreChannelConfig(Builder builder) {
+    private EventStoreConfig(Builder builder) {
         this.transactionProvider = requireNonNull(builder.transactionProvider);
         this.interceptors = requireNonNull(builder.interceptors);
         this.eventStorage = requireNonNull(builder.eventStorage);
@@ -138,8 +138,8 @@ public class EventStoreChannelConfig {
             return this;
         }
 
-        public EventStoreChannelConfig build() {
-            return new EventStoreChannelConfig(this);
+        public EventStoreConfig build() {
+            return new EventStoreConfig(this);
         }
     }
 

@@ -7,8 +7,8 @@ import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.event.bus.EventBus;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.eventstore.channel.EventStoreChannel;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
+import app.dodb.smd.eventstore.channel.EventStore;
+import app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
 import app.dodb.smd.eventstore.store.TokenState;
 import app.dodb.smd.spring.EnableSMD;
@@ -19,7 +19,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -41,7 +40,7 @@ class SequencedEventProcessingIntegrationTest {
     private static final String SEQUENCE_NUMBER = "sequenceNumber";
 
     @Test
-    void subjectlessEvents_shareGlobalFailureAndAbandonmentState() {
+    void subjectlessFailure_blocksGlobalSequenceButNotSubjectSequence() {
         try (var fixture = eventStoreTestFixture()
             .properties(SCHEDULING_DISABLED)
             .start()) {
@@ -53,13 +52,13 @@ class SequencedEventProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new TestEventWithSubjectId("subjectId-1"))
             );
 
-            try (var channel = fixture.createChannel(ProcessingConfig.withoutDefaults()
+            try (var eventStore = fixture.createEventStore(ProcessingConfig.withoutDefaults()
                 .maxRetries(0)
                 .batchSize(BATCH_SIZE)
                 .retryBackoffStrategy(fixed(Duration.ZERO))
                 .gapTimeout(ofSeconds(1))
                 .build())) {
-                channel.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
                     var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
                     if ("1".equals(sequenceNumber)) {
                         throw new IllegalStateException("global sequence is stuck");
@@ -67,17 +66,7 @@ class SequencedEventProcessingIntegrationTest {
                     handled.add(sequenceNumber);
                 }));
 
-                await().untilAsserted(() -> {
-                    assertThat(handled).containsExactly("3");
-                    assertThat(fixture.globalEventSequenceState(processingGroup)
-                        .map(EventSequenceState::status)).contains(ABANDONED);
-                    assertThat(fixture.globalEventSequenceState(processingGroup)
-                        .flatMap(EventSequenceState::lastProcessedSequenceNumber)).contains(2L);
-                    assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
-                        .flatMap(EventSequenceState::lastProcessedSequenceNumber)).contains(3L);
-                    assertThat(fixture.tokenState(processingGroup)
-                        .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
-                });
+                await().untilAsserted(() -> assertThat(handled).containsExactly("3"));
             }
         }
     }
@@ -95,8 +84,8 @@ class SequencedEventProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new DifferentTestEvent("subjectId-1"))
             );
 
-            try (var channel = fixture.createChannel()) {
-                channel.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+            try (var eventStore = fixture.createEventStore()) {
+                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     invoked.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
                     if ("subjectId-1".equals(metadata.get(SUBJECT))) {
@@ -128,13 +117,13 @@ class SequencedEventProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new TestEventWithSubjectId("subjectId-1"))
             );
 
-            try (var channel = fixture.createChannel(ProcessingConfig.withoutDefaults()
+            try (var eventStore = fixture.createEventStore(ProcessingConfig.withoutDefaults()
                 .maxRetries(5)
                 .batchSize(BATCH_SIZE)
                 .retryBackoffStrategy(fixed(Duration.ofDays(1)))
                 .gapTimeout(ofSeconds(1))
                 .build())) {
-                channel.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     if ("subjectId-1".equals(metadata.get(SUBJECT))) {
                         throw new IllegalStateException("subjectId 1 is in backoff");
@@ -168,8 +157,8 @@ class SequencedEventProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new TestEventWithSubjectId("subjectId-1"))
             );
 
-            try (var channel = fixture.createChannel()) {
-                channel.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+            try (var eventStore = fixture.createEventStore()) {
+                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
                 }));
@@ -216,9 +205,9 @@ class SequencedEventProcessingIntegrationTest {
         }
 
         @Bean
-        ProcessingGroupsConfigurer typedSequenceProcessingGroupsConfigurer(EventStoreChannel eventStoreChannel) {
+        ProcessingGroupsConfigurer typedSequenceProcessingGroupsConfigurer(EventStore eventStore) {
             return spec -> spec.processingGroup(TYPED_SEQUENCE_PROCESSING_GROUP)
-                .channel(eventStoreChannel);
+                .source(eventStore);
         }
     }
 

@@ -1,8 +1,8 @@
 package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.eventstore.channel.EventStoreChannel;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig;
+import app.dodb.smd.eventstore.channel.EventStore;
+import app.dodb.smd.eventstore.channel.EventStoreConfig;
 import app.dodb.smd.eventstore.framework.ConnectionProvider;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.store.EventStorage;
@@ -15,6 +15,7 @@ import app.dodb.smd.eventstore.store.serialization.EventSerializer;
 import app.dodb.smd.eventstore.store.serialization.EventTypeResolver;
 import app.dodb.smd.eventstore.store.serialization.JacksonEventSerializer;
 import app.dodb.smd.eventstore.store.serialization.SMDJacksonModule;
+import app.dodb.smd.spring.EventBusSpecCustomizer;
 import app.dodb.smd.spring.SMDAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -79,28 +80,28 @@ public class SMDEventStoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public EventStoreChannelConfig eventStoreProcessingConfig(EventStorage eventStorage,
-                                                              EventSerializer eventSerializer,
-                                                              TokenStore tokenStore,
-                                                              EventSubjectSequenceStore eventSubjectSequenceStore,
-                                                              TransactionProvider transactionProvider,
-                                                              SMDEventStoreProperties properties) {
+    public EventStoreConfig eventStoreConfig(EventStorage eventStorage,
+                                             EventSerializer eventSerializer,
+                                             TokenStore tokenStore,
+                                             EventSubjectSequenceStore eventSubjectSequenceStore,
+                                             TransactionProvider transactionProvider,
+                                             SMDEventStoreProperties properties) {
         var scheduling = properties.getScheduling();
         var processing = properties.getProcessing();
-        return EventStoreChannelConfig.withoutDefaults()
+        return EventStoreConfig.withoutDefaults()
             .eventStorage(eventStorage)
             .eventSerializer(eventSerializer)
             .tokenStore(tokenStore)
             .eventSequenceStore(eventSubjectSequenceStore)
             .transactionProvider(transactionProvider)
             .interceptors(List.of())
-            .schedulingConfig(EventStoreChannelConfig.SchedulingConfig.withoutDefaults()
+            .schedulingConfig(EventStoreConfig.SchedulingConfig.withoutDefaults()
                 .enabled(scheduling.isEnabled())
                 .scheduler(newScheduledThreadPool(scheduling.getThreadPoolSize()))
                 .initialDelay(scheduling.getInitialDelay())
                 .pollingDelay(scheduling.getPollingDelay())
                 .build())
-            .processingConfig(EventStoreChannelConfig.ProcessingConfig.withoutDefaults()
+            .processingConfig(EventStoreConfig.ProcessingConfig.withoutDefaults()
                 .maxRetries(processing.getMaxRetries())
                 .batchSize(processing.getBatchSize())
                 .gapTimeout(processing.getGapTimeout())
@@ -111,7 +112,12 @@ public class SMDEventStoreAutoConfiguration {
 
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean
-    public EventStoreChannel eventStoreChannel(EventStoreChannelConfig eventStoreChannelConfig) {
-        return new EventStoreChannel(eventStoreChannelConfig);
+    public EventStore eventStore(EventStoreConfig eventStoreConfig) {
+        return new EventStore(eventStoreConfig);
+    }
+
+    @Bean
+    public EventBusSpecCustomizer eventStoreSinkEventBusSpecCustomizer(EventStore eventStore) {
+        return spec -> spec.sinks(eventStore);
     }
 }

@@ -58,19 +58,37 @@ ProcessingGroupsConfigurer processingGroupsConfigurer() {
 }
 ```
 
-| Configuration                        | Execution                 | Return and failure behavior                   | Transaction and durability                                         |
-|--------------------------------------|---------------------------|-----------------------------------------------|--------------------------------------------------------------------|
-| `sync()`                             | Publishing thread         | Waits; handler failure reaches the publisher  | Participates in the publisher's thread-bound transaction           |
-| `async().await()`                    | Virtual worker threads    | Waits; handler failures reach the publisher   | Does not inherit the publisher's thread-bound transaction          |
-| `async().fireAndForget()`            | Virtual worker threads    | Returns immediately; handler failures are logged | Does not inherit the publisher's transaction and is not durable |
-| `channel(eventStoreChannel)`         | Event-store scheduler     | Stores before return; retries delivery failures | Storage joins publishing; delivery uses new transactions |
-| `channel(channel)`                   | Defined by the channel    | Defined by the channel                        | Defined by the channel                                             |
-| `disabled()`                         | No execution              | Returns without invoking the group            | No state change                                                    |
+| Configuration             | Execution              | Return and failure behavior                      | Transaction and durability                                         |
+|---------------------------|------------------------|--------------------------------------------------|--------------------------------------------------------------------|
+| `sync()`                  | Publishing thread      | Waits; handler failure reaches the publisher     | Participates in the publisher's thread-bound transaction           |
+| `async().await()`         | Virtual worker threads | Waits; handler failures reach the publisher      | Does not inherit the publisher's thread-bound transaction          |
+| `async().fireAndForget()` | Virtual worker threads | Returns immediately; handler failures are logged | Does not inherit the publisher's transaction and is not durable    |
+| `channel(channel)`        | Defined by the channel | Defined by the channel                           | Defined by the channel                                             |
+| `source(source)`          | Defined by the source  | Delivers incoming events only                    | Does not register a publication destination                        |
+| `disabled()`              | No execution           | Returns without invoking the group               | No state change                                                    |
 
 Once custom routing is present, every discovered group must be configured, covered by `anyProcessingGroup()`, or disabled. Multiple configurer beans are applied in Spring order; do not configure the
 same named group twice.
 
-The event store is not selected automatically when enabled. Route durable groups explicitly with `.channel(eventStoreChannel)` as shown in [Event Store](event-store.md).
+Use `.source(eventSource)` to attach an independent input to a group. Use `.channel(eventChannel)` when the same component should also receive published events. See
+[Event Sinks and Sources](core-api.md#event-sinks-and-sources) for the underlying contracts.
+
+Enabling the event store automatically registers `eventStore` as a sink with the default publisher. Route durable groups explicitly through `.source(eventStore)` as shown in
+[Event Store](event-store.md); enabling storage does not select processing groups.
+
+## Customize Bus Specs
+
+Declare `CommandBusSpecCustomizer`, `EventBusSpecCustomizer`, or `QueryBusSpecCustomizer` beans to adjust the corresponding autoconfigured spec before its bus is created:
+
+```java
+@Bean
+EventBusSpecCustomizer auditEvents(EventSink auditSink) {
+    return spec -> spec.sinks(auditSink);
+}
+```
+
+Multiple customizers are applied in Spring order. Declaring an `EventSink` bean alone does not register it; use an `EventBusSpecCustomizer` as shown above. Customizers affect only the default
+autoconfigured bus, not a user-provided `CommandGateway`, `EventPublisher`, or `QueryGateway`.
 
 ## Add Interceptors
 

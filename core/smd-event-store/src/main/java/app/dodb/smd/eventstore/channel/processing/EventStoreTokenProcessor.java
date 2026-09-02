@@ -2,8 +2,8 @@ package app.dodb.smd.eventstore.channel.processing;
 
 import app.dodb.smd.api.event.channel.EventChannelListener;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
+import app.dodb.smd.eventstore.channel.EventStoreConfig;
+import app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.channel.processing.EventSequenceProcessingResult.Failure;
 import app.dodb.smd.eventstore.channel.processing.EventSequenceProcessingResult.Processed;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
@@ -29,7 +29,7 @@ public class EventStoreTokenProcessor {
     private final ProcessingConfig processingConfig;
     private final EventSequenceProcessor eventSequenceProcessor;
 
-    public EventStoreTokenProcessor(EventStoreChannelConfig config) {
+    public EventStoreTokenProcessor(EventStoreConfig config) {
         this.transactionProvider = requireNonNull(config.getTransactionProvider());
         this.tokenStore = requireNonNull(config.getTokenStore());
         this.eventStorage = requireNonNull(config.getEventStorage());

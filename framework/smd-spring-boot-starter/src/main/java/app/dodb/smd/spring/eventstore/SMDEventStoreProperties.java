@@ -1,15 +1,26 @@
 package app.dodb.smd.spring.eventstore;
 
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.SchedulingConfig;
 import app.dodb.smd.eventstore.channel.RetryBackoffStrategy;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_BATCH_SIZE;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_GAP_TIMEOUT;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_MAX_RETRIES;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_BASE_DELAY;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_FIXED_DELAY;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_INCREMENT;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_MAX_DELAY;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_MULTIPLIER;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig.DEFAULT_ENABLED;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig.DEFAULT_INITIAL_DELAY;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig.DEFAULT_POLLING_DELAY;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig.DEFAULT_THREAD_POOL_SIZE;
 import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.exponential;
 import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.fixed;
 import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.linear;
+import static app.dodb.smd.spring.eventstore.SMDEventStoreProperties.ProcessingProperties.Strategy.*;
 
 @ConfigurationProperties(prefix = "smd.event-store")
 public class SMDEventStoreProperties {
@@ -44,10 +55,10 @@ public class SMDEventStoreProperties {
 
     public static class SchedulingProperties {
 
-        private boolean enabled = SchedulingConfig.DEFAULT_ENABLED;
-        private Duration initialDelay = SchedulingConfig.DEFAULT_INITIAL_DELAY;
-        private Duration pollingDelay = SchedulingConfig.DEFAULT_POLLING_DELAY;
-        private int threadPoolSize = SchedulingConfig.DEFAULT_THREAD_POOL_SIZE;
+        private boolean enabled = DEFAULT_ENABLED;
+        private Duration initialDelay = DEFAULT_INITIAL_DELAY;
+        private Duration pollingDelay = DEFAULT_POLLING_DELAY;
+        private int threadPoolSize = DEFAULT_THREAD_POOL_SIZE;
 
         public boolean isEnabled() {
             return enabled;
@@ -84,9 +95,9 @@ public class SMDEventStoreProperties {
 
     public static class ProcessingProperties {
 
-        private int maxRetries = ProcessingConfig.DEFAULT_MAX_RETRIES;
-        private int batchSize = ProcessingConfig.DEFAULT_BATCH_SIZE;
-        private Duration gapTimeout = ProcessingConfig.DEFAULT_GAP_TIMEOUT;
+        private int maxRetries = DEFAULT_MAX_RETRIES;
+        private int batchSize = DEFAULT_BATCH_SIZE;
+        private Duration gapTimeout = DEFAULT_GAP_TIMEOUT;
         private RetryBackoffProperties retryBackoff = new RetryBackoffProperties();
 
         public int getMaxRetries() {
@@ -123,12 +134,12 @@ public class SMDEventStoreProperties {
 
         public static class RetryBackoffProperties {
 
-            private Strategy strategy = Strategy.EXPONENTIAL;
-            private Duration fixedDelay = ProcessingConfig.DEFAULT_RETRY_FIXED_DELAY;
-            private Duration baseDelay = ProcessingConfig.DEFAULT_RETRY_BASE_DELAY;
-            private double multiplier = ProcessingConfig.DEFAULT_RETRY_MULTIPLIER;
-            private Duration increment = ProcessingConfig.DEFAULT_RETRY_INCREMENT;
-            private Duration maxDelay = ProcessingConfig.DEFAULT_RETRY_MAX_DELAY;
+            private Strategy strategy = EXPONENTIAL;
+            private Duration fixedDelay = DEFAULT_RETRY_FIXED_DELAY;
+            private Duration baseDelay = DEFAULT_RETRY_BASE_DELAY;
+            private double multiplier = DEFAULT_RETRY_MULTIPLIER;
+            private Duration increment = DEFAULT_RETRY_INCREMENT;
+            private Duration maxDelay = DEFAULT_RETRY_MAX_DELAY;
 
             public Strategy getStrategy() {
                 return strategy;

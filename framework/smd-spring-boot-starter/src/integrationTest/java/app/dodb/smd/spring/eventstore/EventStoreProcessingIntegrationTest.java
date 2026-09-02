@@ -2,7 +2,7 @@ package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.event.bus.EventBus;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
+import app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
 import app.dodb.smd.eventstore.store.SerializedEvent;
 import app.dodb.smd.eventstore.store.TokenState;
@@ -77,8 +77,8 @@ class EventStoreProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new TestEventWithSubjectId(TEST_SUBJECT_ID))
             );
 
-            try (var channel = fixture.createChannel()) {
-                channel.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+            try (var eventStore = fixture.createEventStore()) {
+                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     processingIds.add(metadata.get(PROCESSING_ID));
                     processedSequences.add(metadata.get(SEQUENCE_NUMBER));
@@ -90,6 +90,33 @@ class EventStoreProcessingIntegrationTest {
                     assertThat(fixture.tokenState(processingGroup)
                         .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
                 });
+            }
+        }
+    }
+
+    @Test
+    void restartedEventStore_resumesWithoutReprocessingCommittedEvents() {
+        try (var fixture = eventStoreTestFixture()
+            .properties(SCHEDULING_DISABLED)
+            .start()) {
+            var processingGroup = "restart-processing-group";
+            var processedSequences = new CopyOnWriteArrayList<String>();
+            var listener = new EventChannelListenerStub(processingGroup, eventMessage ->
+                processedSequences.add(eventMessage.metadata().properties().get(SEQUENCE_NUMBER))
+            );
+
+            fixture.storeEvents(new SequencedEvent<>(1L, new TestEventWithSubjectId(TEST_SUBJECT_ID)));
+            try (var eventStore = fixture.createEventStore()) {
+                eventStore.subscribe(listener);
+
+                await().untilAsserted(() -> assertThat(processedSequences).containsExactly("1"));
+            }
+
+            fixture.storeEvents(new SequencedEvent<>(2L, new TestEventWithSubjectId(TEST_SUBJECT_ID)));
+            try (var eventStore = fixture.createEventStore()) {
+                eventStore.subscribe(listener);
+
+                await().untilAsserted(() -> assertThat(processedSequences).containsExactly("1", "2"));
             }
         }
     }
@@ -114,8 +141,8 @@ class EventStoreProcessingIntegrationTest {
                 .gapTimeout(ofSeconds(1))
                 .build();
 
-            try (var channel = fixture.createChannel(processingConfig)) {
-                channel.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+            try (var eventStore = fixture.createEventStore(processingConfig)) {
+                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
                     var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
                     if ("1".equals(sequenceNumber)) {
                         insertTransactionalSideEffect(fixture, "event 1 committed");
@@ -235,15 +262,15 @@ class EventStoreProcessingIntegrationTest {
                 new SequencedEvent<>(1L, new TestEventWithSubjectId(TEST_SUBJECT_ID))
             );
 
-            try (var firstChannel = fixture.createChannel();
-                 var secondChannel = fixture.createChannel()) {
+            try (var firstEventStore = fixture.createEventStore();
+                 var secondEventStore = fixture.createEventStore()) {
                 var listener = new EventChannelListenerStub(processingGroup, _ -> {
                     handledCount.incrementAndGet();
                     sleep(ofMillis(300));
                 });
 
-                firstChannel.subscribe(listener);
-                secondChannel.subscribe(listener);
+                firstEventStore.subscribe(listener);
+                secondEventStore.subscribe(listener);
 
                 await().untilAsserted(() -> {
                     assertThat(fixture.tokenState(processingGroup)

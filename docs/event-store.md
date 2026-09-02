@@ -53,19 +53,19 @@ Every stored type and published event class must remain in the mapping. Migrate 
 Spring Boot builds the default serializer with Jackson 3 and registers `SMDJacksonModule`. Add Jackson 3 `JacksonModule` or `JsonMapperBuilderCustomizer` beans for normal customization, or provide
 your own `EventSerializer` bean for full control.
 
-Enabling the store creates its beans but does not route any handlers. Attach each durable processing group explicitly:
+Enabling the store registers it as a sink with the default event publisher, but does not route any handlers. Attach each durable processing group explicitly as a source:
 
 ```java
 @Bean
-ProcessingGroupsConfigurer processingGroupsConfigurer(EventStoreChannel eventStoreChannel) {
+ProcessingGroupsConfigurer processingGroupsConfigurer(EventStore eventStore) {
     return groups -> {
-        groups.processingGroup("ticket-activity").channel(eventStoreChannel);
+        groups.processingGroup("ticket-activity").source(eventStore);
         groups.anyProcessingGroup().sync();
     };
 }
 ```
 
-Publishing an event now stores it inside the publishing transaction. A scheduler polls and delivers it to the `ticket-activity` group in new transactions.
+Publishing stores events inside the publishing transaction. The scheduler polls and delivers them to `ticket-activity` in new transactions.
 
 ## Identify Event Subjects
 
@@ -240,7 +240,7 @@ dependencies {
 }
 ```
 
-Provide a `ConnectionProvider`, `TransactionProvider`, and serializer, then construct the channel:
+Provide a `ConnectionProvider`, `TransactionProvider`, and serializer, then construct the event store:
 
 ```java
 var mapper = JsonMapper.builder()
@@ -251,22 +251,27 @@ var eventTypeResolver = new StaticEventTypeResolver(Map.of(
     "ticket.opened.v1", TicketOpenedEvent.class
 ));
 
-var eventStoreChannel = new EventStoreChannel(
-    EventStoreChannelConfig.withDefaults()
-        .transactionProvider(transactionProvider)
-        .eventStorage(new PostgresEventStorage(connectionProvider))
-        .tokenStore(new PostgresTokenStore(connectionProvider))
-        .eventSequenceStore(new PostgresEventSubjectSequenceStore(connectionProvider))
-        .eventSerializer(new JacksonEventSerializer(mapper, eventTypeResolver))
-        .build()
-);
+var eventStoreConfig = EventStoreConfig.withDefaults()
+    .transactionProvider(transactionProvider)
+    .eventStorage(new PostgresEventStorage(connectionProvider))
+    .tokenStore(new PostgresTokenStore(connectionProvider))
+    .eventSequenceStore(new PostgresEventSubjectSequenceStore(connectionProvider))
+    .eventSerializer(new JacksonEventSerializer(mapper, eventTypeResolver))
+    .build();
+
+var eventStore = new EventStore(eventStoreConfig);
 
 var eventBus = EventBusSpec.withDefaults()
-    .processingGroups(locator, groups -> groups.anyProcessingGroup().channel(eventStoreChannel))
+    .interceptors(new TransactionalEventInterceptor(transactionProvider))
+    .sinks(eventStore)
+    .processingGroups(locator, groups -> groups.anyProcessingGroup().source(eventStore))
     .create();
 ```
 
-Close `EventStoreChannel` during application shutdown so its scheduler terminates cleanly. Implement `EventStorage`, `TokenStore`, and `EventSubjectSequenceStore` plus an equivalent schema to support
+`EventStore` implements `EventChannel` and owns the polling scheduler. The example registers it separately as a sink and source; `.channel(eventStore)` is equivalent when both directions should always
+be coupled. The transactional interceptor supplies the context required for deferred storage.
+
+Close `EventStore` during application shutdown so its scheduler terminates cleanly. Implement `EventStorage`, `TokenStore`, and `EventSubjectSequenceStore` plus an equivalent schema to support
 another database.
 
 ## Schema and Upgrades

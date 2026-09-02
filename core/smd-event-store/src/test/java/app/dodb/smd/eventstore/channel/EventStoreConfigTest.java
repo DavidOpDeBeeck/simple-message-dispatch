@@ -4,11 +4,11 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 
-import static app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
-import static app.dodb.smd.eventstore.channel.EventStoreChannelConfig.SchedulingConfig;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig;
+import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class EventStoreChannelConfigTest {
+class EventStoreConfigTest {
 
     @Test
     void schedulingConfig_rejectsNegativeInitialDelay() {

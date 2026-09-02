@@ -5,9 +5,9 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.eventstore.channel.EventStoreChannel;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig.ProcessingConfig;
+import app.dodb.smd.eventstore.channel.EventStore;
+import app.dodb.smd.eventstore.channel.EventStoreConfig;
+import app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.store.EventStorage;
@@ -15,7 +15,7 @@ import app.dodb.smd.eventstore.store.SerializedEvent;
 import app.dodb.smd.eventstore.store.TokenState;
 import app.dodb.smd.eventstore.store.TokenStore;
 import app.dodb.smd.eventstore.store.serialization.EventSerializer;
-import app.dodb.smd.spring.eventstore.processing.EventStoreChannelProcessingTestConfiguration;
+import app.dodb.smd.spring.eventstore.processing.EventStoreProcessingTestConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -62,19 +62,19 @@ final class EventStoreTestFixture implements AutoCloseable {
         return context.getBeansOfType(type);
     }
 
-    EventStoreChannel createChannel() {
-        return createChannel(defaultProcessingConfig());
+    EventStore createEventStore() {
+        return createEventStore(defaultProcessingConfig());
     }
 
-    EventStoreChannel createChannel(ProcessingConfig processingConfig) {
-        return new EventStoreChannel(EventStoreChannelConfig.withoutDefaults()
+    EventStore createEventStore(ProcessingConfig processingConfig) {
+        return new EventStore(EventStoreConfig.withoutDefaults()
             .transactionProvider(bean(TransactionProvider.class))
             .interceptors(List.of())
             .eventStorage(bean(EventStorage.class))
             .eventSerializer(bean(EventSerializer.class))
             .tokenStore(bean(TokenStore.class))
             .eventSequenceStore(bean(EventSubjectSequenceStore.class))
-            .schedulingConfig(EventStoreChannelConfig.SchedulingConfig.withoutDefaults()
+            .schedulingConfig(EventStoreConfig.SchedulingConfig.withoutDefaults()
                 .enabled(true)
                 .scheduler(Executors.newScheduledThreadPool(4))
                 .initialDelay(ZERO)
@@ -188,7 +188,7 @@ final class EventStoreTestFixture implements AutoCloseable {
     static final class Builder {
 
         private final List<Class<?>> configurations = new ArrayList<>(
-            List.of(EventStoreChannelProcessingTestConfiguration.class)
+            List.of(EventStoreProcessingTestConfiguration.class)
         );
         private final List<String> properties = new ArrayList<>();
 
@@ -205,9 +205,8 @@ final class EventStoreTestFixture implements AutoCloseable {
         EventStoreTestFixture start() {
             var context = new SpringApplicationBuilder(configurations.toArray(Class<?>[]::new))
                 .profiles("event-store-processing")
-                .properties(properties.toArray(String[]::new))
                 .web(NONE)
-                .run();
+                .run(properties.stream().map(property -> "--" + property).toArray(String[]::new));
             return new EventStoreTestFixture(context);
         }
     }

@@ -38,7 +38,11 @@ Core modules must not depend on Spring. Define the smallest required core contra
 - Keep visibility limited to the real extension surface.
 - Extract an abstraction only when it names a stable concept or replaceable boundary.
 
-Create valid objects. Reject null dependencies in constructors, validate values in their owning types, validate handlers during discovery, detect registry ambiguity, and validate completed specs before use.
+Create valid objects. Validate nullability and owned value invariants in record and class constructors. Use the single-argument `requireNonNull(value)` in constructors and do not repeat constructor
+validation in ordinary methods or fluent configuration methods.
+
+Keep operation-specific checks where the operation occurs: validate handlers during discovery, detect registry ambiguity, and validate completed specs before use. These checks enforce behavior and
+configuration, rather than repeating constructor parameter validation.
 
 Errors at user-controlled boundaries must state what is invalid, what was expected, and the relevant method, type, processing group, message ID, or value.
 

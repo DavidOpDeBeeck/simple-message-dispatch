@@ -111,13 +111,15 @@ public class SMDAutoConfiguration {
     public CommandGateway commandGateway(TimeProvider timeProvider,
                                          PrincipalProvider principalProvider,
                                          CommandHandlerLocator locator,
-                                         List<CommandBusInterceptor> interceptors) {
-        return CommandBusSpec.withoutDefaults()
+                                         List<CommandBusInterceptor> interceptors,
+                                         List<CommandBusSpecCustomizer> customizers) {
+        var spec = CommandBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
             .commandHandlers(locator)
-            .interceptors(interceptors)
-            .create();
+            .interceptors(interceptors);
+        customizers.forEach(customizer -> customizer.customize(spec));
+        return spec.create();
     }
 
     @Bean
@@ -126,13 +128,15 @@ public class SMDAutoConfiguration {
                                          PrincipalProvider principalProvider,
                                          ProcessingGroupLocator locator,
                                          List<ProcessingGroupsConfigurer> processingGroupsConfigurers,
-                                         List<EventInterceptor> interceptors) {
-        return EventBusSpec.withoutDefaults()
+                                         List<EventInterceptor> interceptors,
+                                         List<EventBusSpecCustomizer> customizers) {
+        var spec = EventBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
             .processingGroups(locator, multi(processingGroupsConfigurers))
-            .interceptors(interceptors)
-            .create();
+            .interceptors(interceptors);
+        customizers.forEach(customizer -> customizer.customize(spec));
+        return spec.create();
     }
 
     @Bean
@@ -140,13 +144,15 @@ public class SMDAutoConfiguration {
     public QueryGateway queryGateway(TimeProvider timeProvider,
                                      PrincipalProvider principalProvider,
                                      QueryHandlerLocator locator,
-                                     List<QueryBusInterceptor> interceptors) {
-        return QueryBusSpec.withoutDefaults()
+                                     List<QueryBusInterceptor> interceptors,
+                                     List<QueryBusSpecCustomizer> customizers) {
+        var spec = QueryBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
             .queryHandlers(locator)
-            .interceptors(interceptors)
-            .create();
+            .interceptors(interceptors);
+        customizers.forEach(customizer -> customizer.customize(spec));
+        return spec.create();
     }
 
     private static List<String> combinePackages(List<SMDProperties> properties) {

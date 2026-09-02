@@ -5,12 +5,12 @@ import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.EventPublisher;
-import app.dodb.smd.api.event.channel.EventChannel;
+import app.dodb.smd.api.event.channel.EventSink;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.MetadataFactory;
 
+import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
 
@@ -18,14 +18,14 @@ public class EventBus implements EventPublisher {
 
     private final MetadataFactory metadataFactory;
     private final List<EventInterceptor> interceptors;
-    private final Set<EventChannel> eventChannels;
+    private final List<EventSink> eventSinks;
 
     EventBus(MetadataFactory metadataFactory,
              List<EventInterceptor> interceptors,
-             Set<EventChannel> eventChannels) {
+             Collection<EventSink> eventSinks) {
         this.metadataFactory = requireNonNull(metadataFactory);
-        this.interceptors = requireNonNull(interceptors);
-        this.eventChannels = requireNonNull(eventChannels);
+        this.interceptors = List.copyOf(interceptors);
+        this.eventSinks = List.copyOf(eventSinks);
     }
 
     @Override
@@ -56,6 +56,8 @@ public class EventBus implements EventPublisher {
     }
 
     private <E extends Event> void dispatch(EventMessage<E> eventMessage) {
-        eventChannels.forEach(eventChannel -> eventChannel.send(eventMessage));
+        for (var sink : eventSinks) {
+            sink.send(eventMessage);
+        }
     }
 }

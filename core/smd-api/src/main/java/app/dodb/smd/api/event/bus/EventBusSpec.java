@@ -5,9 +5,9 @@ import app.dodb.smd.api.event.ProcessingGroupLocator;
 import app.dodb.smd.api.event.channel.AsyncAwaitingEventChannel;
 import app.dodb.smd.api.event.channel.AsyncFireAndForgetEventChannel;
 import app.dodb.smd.api.event.channel.EventChannel;
-import app.dodb.smd.api.event.channel.EventChannelBinding;
 import app.dodb.smd.api.event.channel.EventChannelListener;
-import app.dodb.smd.api.event.channel.SubscribableEventChannel;
+import app.dodb.smd.api.event.channel.EventSink;
+import app.dodb.smd.api.event.channel.EventSource;
 import app.dodb.smd.api.event.channel.SynchronousEventChannel;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
@@ -26,6 +26,8 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 import static app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer.defaultSynchronous;
+import static com.google.common.collect.Sets.difference;
+import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
 
 public class EventBusSpec {
@@ -48,25 +50,34 @@ public class EventBusSpec {
     private TimeProvider timeProvider;
     private PrincipalProvider principalProvider;
     private final List<EventInterceptor> interceptors = new ArrayList<>();
-    private final Set<EventChannel> eventChannels = new LinkedHashSet<>();
+    private final Set<EventSink> eventSinks = new LinkedHashSet<>();
     private ProcessingGroupsSpec processingGroupsSpec;
 
     public EventBusSpec time(TimeProvider timeProvider) {
-        this.timeProvider = requireNonNull(timeProvider);
+        this.timeProvider = timeProvider;
         return this;
     }
 
     public EventBusSpec principal(PrincipalProvider principalProvider) {
-        this.principalProvider = requireNonNull(principalProvider);
+        this.principalProvider = principalProvider;
         return this;
     }
 
     public EventBusSpec interceptors(EventInterceptor... interceptors) {
-        return interceptors(List.of(interceptors));
+        return interceptors(asList(interceptors));
     }
 
     public EventBusSpec interceptors(List<EventInterceptor> interceptors) {
-        this.interceptors.addAll(requireNonNull(interceptors));
+        this.interceptors.addAll(interceptors);
+        return this;
+    }
+
+    public EventBusSpec sinks(EventSink... sinks) {
+        return sinks(asList(sinks));
+    }
+
+    public EventBusSpec sinks(List<EventSink> sinks) {
+        this.eventSinks.addAll(sinks);
         return this;
     }
 
@@ -81,49 +92,66 @@ public class EventBusSpec {
     }
 
     public EventBus create() {
-        processingGroupsSpec.configure(this);
-        return new EventBus(new MetadataFactory(principalProvider, timeProvider), interceptors, eventChannels);
+        var subscriptions = processingGroupsSpec.configure(this);
+        for (var subscription : subscriptions) {
+            subscription.subscribe();
+        }
+        return new EventBus(new MetadataFactory(principalProvider, timeProvider), interceptors, eventSinks);
     }
 
     public static class ProcessingGroupsSpec {
 
         private final ProcessingGroupLocator processingGroupLocator;
         private final Map<String, ProcessingGroupSpec> processingGroupSpecByName = new HashMap<>();
-        private final ProcessingGroupSpec defaultProcessingGroupSpec = new ProcessingGroupSpec(this);
+        private final ProcessingGroupSpec defaultProcessingGroupSpec = new ProcessingGroupSpec(this, "anyProcessingGroup()");
 
         public ProcessingGroupsSpec(ProcessingGroupLocator processingGroupLocator) {
             this.processingGroupLocator = requireNonNull(processingGroupLocator);
         }
 
-        void configure(EventBusSpec eventBus) {
+        private List<EventSourceSubscription> configure(EventBusSpec eventBusSpec) {
             var processingGroupRegistry = processingGroupLocator.locate();
             var allProcessingGroups = processingGroupRegistry.eventHandlerRegistryByProcessingGroup().keySet();
 
+            var notLocatedProcessingGroups = difference(processingGroupSpecByName.keySet(), allProcessingGroups);
+            if (!notLocatedProcessingGroups.isEmpty()) {
+                throw new IllegalArgumentException("""
+                    Processing groups '%s' are configured but not located by the ProcessingGroupLocator. \
+                    Please ensure that the ProcessingGroupLocator locates all configured processing groups, or remove the configuration for these processing groups.\
+                    """.formatted(notLocatedProcessingGroups)
+                );
+            }
+
+            var subscriptions = new ArrayList<EventSourceSubscription>();
             for (var processingGroup : allProcessingGroups) {
                 var listener = processingGroupRegistry.findBy(processingGroup);
-                var processingGroupSpec = processingGroupSpecByName.getOrDefault(processingGroup, defaultProcessingGroupSpec);
-                var channelSubscription = processingGroupSpec.channelSubscription;
+                var spec = processingGroupSpecByName.getOrDefault(processingGroup, defaultProcessingGroupSpec);
 
-                if (processingGroupSpec.disabled) {
+                if (spec.disabled) {
                     LOGGER.info("Processing group '{}' is disabled. Event handlers in this group will not be executed.", processingGroup);
                     continue;
                 }
-                if (channelSubscription == null) {
+
+                if (spec.eventSource == null) {
                     throw new IllegalArgumentException("""
                         Processing group '%s' has no configuration. Event handlers in this group will \
-                        not be executed. Please register an EventChannel for this processing group using \
+                        not be executed. Please register a source or channel for this processing group using \
                         ProcessingGroupsSpec.processingGroup("%s") or ProcessingGroupsSpec.anyProcessingGroup(), \
                         or disable it explicitly using .disabled().""".formatted(processingGroup, processingGroup));
                 }
 
-                channelSubscription.subscribe(listener);
-                eventBus.eventChannels.add(channelSubscription.eventChannel());
+                if (spec.eventSink != null) {
+                    eventBusSpec.sinks(spec.eventSink);
+                }
+
+                subscriptions.add(new EventSourceSubscription(spec.eventSource, listener));
             }
+            return subscriptions;
         }
 
         public ProcessingGroupSpec processingGroup(String processingGroup) {
             validateProcessingGroupIsNotYetConfigured(processingGroup);
-            var spec = new ProcessingGroupSpec(this);
+            var spec = new ProcessingGroupSpec(this, processingGroup);
             processingGroupSpecByName.put(processingGroup, spec);
             return spec;
         }
@@ -134,7 +162,7 @@ public class EventBusSpec {
 
         private void validateProcessingGroupIsNotYetConfigured(String processingGroup) {
             if (processingGroupSpecByName.containsKey(processingGroup)) {
-                throw new IllegalArgumentException("ProcessingGroup " + processingGroup + " is already configured");
+                throw new IllegalArgumentException("Processing group '" + processingGroup + "' is already configured");
             }
         }
     }
@@ -142,37 +170,62 @@ public class EventBusSpec {
     public static class ProcessingGroupSpec {
 
         private final ProcessingGroupsSpec parent;
-        private final SynchronousEventChannel synchronousEventChannel;
-        private ChannelSubscription<?> channelSubscription;
+        private final String name;
+        private EventSource eventSource;
+        private EventSink eventSink;
         private boolean disabled;
 
-        private ProcessingGroupSpec(ProcessingGroupsSpec parent) {
+        private ProcessingGroupSpec(ProcessingGroupsSpec parent, String name) {
             this.parent = requireNonNull(parent);
-            this.synchronousEventChannel = new SynchronousEventChannel();
+            this.name = requireNonNull(name);
         }
 
         public ProcessingGroupsSpec disabled() {
+            validateNotConfigured();
             this.disabled = true;
-            this.channelSubscription = null;
             return parent;
         }
 
         public ProcessingGroupsSpec sync() {
-            return channel(synchronousEventChannel);
+            return channel(new SynchronousEventChannel());
         }
 
         public ProcessingGroupAsyncChannelSpec async() {
+            validateNotConfigured();
             return new ProcessingGroupAsyncChannelSpec(this);
         }
 
-        public ProcessingGroupsSpec channel(SubscribableEventChannel channel) {
-            return channel(channel, EventChannelBinding.direct());
+        public ProcessingGroupsSpec source(EventSource source) {
+            validateNotConfigured();
+            this.eventSource = source;
+            return parent;
         }
 
-        public <C extends EventChannel> ProcessingGroupsSpec channel(C channel, EventChannelBinding<? super C> binding) {
-            this.disabled = false;
-            this.channelSubscription = new ChannelSubscription<>(channel, binding);
+        public ProcessingGroupsSpec channel(EventChannel channel) {
+            validateNotConfigured();
+            this.eventSource = channel;
+            this.eventSink = channel;
             return parent;
+        }
+
+        private void validateNotConfigured() {
+            if (disabled || eventSource != null) {
+                throw new IllegalArgumentException("""
+                    Processing-group configuration '%s' is already configured; choose one source, channel, or disable it.
+                    """.formatted(name));
+            }
+        }
+    }
+
+    private record EventSourceSubscription(EventSource source, EventChannelListener listener) {
+
+        private EventSourceSubscription {
+            requireNonNull(source);
+            requireNonNull(listener);
+        }
+
+        private void subscribe() {
+            source.subscribe(listener);
         }
     }
 
@@ -214,18 +267,6 @@ public class EventBusSpec {
 
         public ProcessingGroupsSpec fireAndForget(ExecutorService executorService, List<EventInterceptor> interceptors) {
             return parent.channel(AsyncFireAndForgetEventChannel.using(executorService, interceptors));
-        }
-    }
-
-    private record ChannelSubscription<C extends EventChannel>(C eventChannel, EventChannelBinding<? super C> binding) {
-
-        private ChannelSubscription {
-            requireNonNull(eventChannel);
-            requireNonNull(binding);
-        }
-
-        private void subscribe(EventChannelListener listener) {
-            binding.bind(eventChannel, listener);
         }
     }
 }

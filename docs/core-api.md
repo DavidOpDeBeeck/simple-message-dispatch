@@ -121,10 +121,45 @@ var eventBus = EventBusSpec.withDefaults()
 - `sync()` runs handlers on the publishing thread.
 - `async().await()` uses virtual threads and waits for all handlers.
 - `async().fireAndForget()` returns immediately; failures cannot be reported to the publisher.
-- `channel(channel)` attaches a custom `SubscribableEventChannel`.
+- `source(source)` subscribes the group to incoming events without registering a publication destination.
+- `channel(channel)` subscribes the group and registers the `EventChannel` as a publication destination.
 - `disabled()` intentionally skips the group.
 
-When you provide custom group configuration, every discovered group must be named explicitly, covered by `anyProcessingGroup()`, or disabled. Bus creation fails when a group is left unconfigured.
+When you provide custom group configuration, every discovered group must be named explicitly, covered by `anyProcessingGroup()`, or disabled. Unknown group names, missing configuration, and
+conflicting choices for the same group are rejected before any source is subscribed.
+
+## Event Sinks and Sources
+
+The contracts in `app.dodb.smd.api.event.channel` separate publication from subscription:
+
+| Contract       | Responsibility                                                                                |
+|----------------|-----------------------------------------------------------------------------------------------|
+| `EventSink`    | Accept an existing `EventMessage<E>` through `send(message)`                                  |
+| `EventSource`  | Deliver incoming messages to processing-group listeners registered with `subscribe(listener)` |
+| `EventChannel` | Combine `EventSink` and `EventSource`                                                         |
+
+Application code continues to use `EventPublisher`, which constructs message envelopes, establishes metadata, and runs publication interceptors. Sinks receive those envelopes, while sources deliver
+incoming messages directly to their subscribed processing groups.
+
+Register outbound destinations independently of processing-group inputs:
+
+```java
+var eventBus = EventBusSpec.withDefaults()
+        .sinks(auditSink)
+        .processingGroups(locator, groups -> groups
+                .processingGroup("billing").source(incomingEvents)
+                .anyProcessingGroup().sync())
+        .create();
+```
+
+Publishing sends to `auditSink` and the synchronous groups. Billing receives only messages delivered by `incomingEvents`. Using `.source(channel)` does not add that channel to the bus's outbound
+destinations.
+
+Use `.channel(channel)` when one component should participate in both directions, or register its sink and source roles separately. The built-in synchronous and asynchronous channels implement both
+contracts; `.sync()` and `.async()` connect them in both directions.
+
+A sink defines what `send()` completion means, such as completed local handling, asynchronous submission, or deferred storage. A source owns its delivery threads, ordering, retries, failures, and
+lifecycle. Custom sources must invoke listeners inside `MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata and lineage.
 
 ## Interceptors and Transactions
 

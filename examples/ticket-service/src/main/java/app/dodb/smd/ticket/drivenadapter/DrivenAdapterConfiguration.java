@@ -1,7 +1,7 @@
 package app.dodb.smd.ticket.drivenadapter;
 
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
-import app.dodb.smd.eventstore.channel.EventStoreChannel;
+import app.dodb.smd.eventstore.channel.EventStore;
 import app.dodb.smd.eventstore.store.serialization.EventTypeResolver;
 import app.dodb.smd.eventstore.store.serialization.StaticEventTypeResolver;
 import app.dodb.smd.spring.EnableSMD;
@@ -22,11 +22,11 @@ public class DrivenAdapterConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(name = "ticketProcessingGroups")
-    public ProcessingGroupsConfigurer ticketProcessingGroups(EventStoreChannel eventStoreChannel) {
+    public ProcessingGroupsConfigurer ticketProcessingGroups(EventStore eventStore) {
         return spec -> spec
             .processingGroup("ticket-view").sync()
             .processingGroup("notifications").async().await()
-            .processingGroup("ticket-activity").channel(eventStoreChannel);
+            .processingGroup("ticket-activity").source(eventStore);
     }
 
     @Bean

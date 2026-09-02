@@ -5,7 +5,7 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.principal.SimplePrincipal;
-import app.dodb.smd.eventstore.channel.EventStoreChannelConfig;
+import app.dodb.smd.eventstore.channel.EventStoreConfig;
 import app.dodb.smd.eventstore.store.SerializedEvent;
 import app.dodb.smd.eventstore.store.serialization.EventSerializer;
 import app.dodb.smd.eventstore.store.serialization.EventTypeResolver;
@@ -51,7 +51,7 @@ class EventSerializerAutoConfigurationIntegrationTest {
 
             assertThat(serializer).isInstanceOf(CustomEventSerializer.class);
             assertThat(fixture.beansOfType(EventSerializer.class)).hasSize(1);
-            assertThat(fixture.bean(EventStoreChannelConfig.class).getEventSerializer()).isSameAs(serializer);
+            assertThat(fixture.bean(EventStoreConfig.class).getEventSerializer()).isSameAs(serializer);
         }
     }
 
