@@ -7,13 +7,13 @@ import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.event.bus.EventBus;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.eventstore.channel.EventStore;
-import app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig;
+import app.dodb.smd.eventstore.EventStore;
+import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
-import app.dodb.smd.eventstore.store.TokenState;
+import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.spring.EnableSMD;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
-import app.dodb.smd.test.EventChannelListenerStub;
+import app.dodb.smd.test.EventSubscriberStub;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,7 +22,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.fixed;
+import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SCHEDULING_DISABLED;
@@ -58,7 +58,7 @@ class SequencedEventProcessingIntegrationTest {
                 .retryBackoffStrategy(fixed(Duration.ZERO))
                 .gapTimeout(ofSeconds(1))
                 .build())) {
-                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
                     if ("1".equals(sequenceNumber)) {
                         throw new IllegalStateException("global sequence is stuck");
@@ -85,7 +85,7 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             try (var eventStore = fixture.createEventStore()) {
-                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     invoked.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
                     if ("subjectId-1".equals(metadata.get(SUBJECT))) {
@@ -123,7 +123,7 @@ class SequencedEventProcessingIntegrationTest {
                 .retryBackoffStrategy(fixed(Duration.ofDays(1)))
                 .gapTimeout(ofSeconds(1))
                 .build())) {
-                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     if ("subjectId-1".equals(metadata.get(SUBJECT))) {
                         throw new IllegalStateException("subjectId 1 is in backoff");
@@ -158,7 +158,7 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             try (var eventStore = fixture.createEventStore()) {
-                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
                 }));
@@ -207,7 +207,7 @@ class SequencedEventProcessingIntegrationTest {
         @Bean
         ProcessingGroupsConfigurer typedSequenceProcessingGroupsConfigurer(EventStore eventStore) {
             return spec -> spec.processingGroup(TYPED_SEQUENCE_PROCESSING_GROUP)
-                .source(eventStore);
+                .source(eventStore.outlet());
         }
     }
 

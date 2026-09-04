@@ -1,20 +1,20 @@
 package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.eventstore.channel.EventStore;
-import app.dodb.smd.eventstore.channel.EventStoreConfig;
-import app.dodb.smd.eventstore.framework.ConnectionProvider;
+import app.dodb.smd.eventstore.EventStore;
+import app.dodb.smd.eventstore.EventStoreConfig;
+import app.dodb.smd.eventstore.serialization.ClassNameEventTypeResolver;
+import app.dodb.smd.eventstore.serialization.EventSerializer;
+import app.dodb.smd.eventstore.serialization.EventTypeResolver;
+import app.dodb.smd.eventstore.serialization.JacksonEventSerializer;
+import app.dodb.smd.eventstore.serialization.SMDJacksonModule;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
-import app.dodb.smd.eventstore.store.EventStorage;
-import app.dodb.smd.eventstore.store.TokenStore;
-import app.dodb.smd.eventstore.store.postgres.PostgresEventStorage;
-import app.dodb.smd.eventstore.store.postgres.PostgresEventSubjectSequenceStore;
-import app.dodb.smd.eventstore.store.postgres.PostgresTokenStore;
-import app.dodb.smd.eventstore.store.serialization.ClassNameEventTypeResolver;
-import app.dodb.smd.eventstore.store.serialization.EventSerializer;
-import app.dodb.smd.eventstore.store.serialization.EventTypeResolver;
-import app.dodb.smd.eventstore.store.serialization.JacksonEventSerializer;
-import app.dodb.smd.eventstore.store.serialization.SMDJacksonModule;
+import app.dodb.smd.eventstore.storage.ConnectionProvider;
+import app.dodb.smd.eventstore.storage.EventStorage;
+import app.dodb.smd.eventstore.storage.TokenStore;
+import app.dodb.smd.eventstore.storage.postgres.PostgresEventStorage;
+import app.dodb.smd.eventstore.storage.postgres.PostgresEventSubjectSequenceStore;
+import app.dodb.smd.eventstore.storage.postgres.PostgresTokenStore;
 import app.dodb.smd.spring.EventBusSpecCustomizer;
 import app.dodb.smd.spring.SMDAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -118,6 +118,6 @@ public class SMDEventStoreAutoConfiguration {
 
     @Bean
     public EventBusSpecCustomizer eventStoreSinkEventBusSpecCustomizer(EventStore eventStore) {
-        return spec -> spec.sinks(eventStore);
+        return spec -> spec.sinks(eventStore.inlet());
     }
 }

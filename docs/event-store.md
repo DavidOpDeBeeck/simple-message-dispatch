@@ -53,13 +53,13 @@ Every stored type and published event class must remain in the mapping. Migrate 
 Spring Boot builds the default serializer with Jackson 3 and registers `SMDJacksonModule`. Add Jackson 3 `JacksonModule` or `JsonMapperBuilderCustomizer` beans for normal customization, or provide
 your own `EventSerializer` bean for full control.
 
-Enabling the store registers it as a sink with the default event publisher, but does not route any handlers. Attach each durable processing group explicitly as a source:
+Enabling the store registers its inlet with the default event publisher. Connect durable processing groups to its outlet:
 
 ```java
 @Bean
 ProcessingGroupsConfigurer processingGroupsConfigurer(EventStore eventStore) {
     return groups -> {
-        groups.processingGroup("ticket-activity").source(eventStore);
+        groups.processingGroup("ticket-activity").source(eventStore.outlet());
         groups.anyProcessingGroup().sync();
     };
 }
@@ -240,7 +240,8 @@ dependencies {
 }
 ```
 
-Provide a `ConnectionProvider`, `TransactionProvider`, and serializer, then construct the event store:
+`EventStore` and its configuration live in `app.dodb.smd.eventstore`; persistence types and serializers use the `storage` and `serialization` subpackages. Supply a `ConnectionProvider` and
+`TransactionProvider`, then construct the store:
 
 ```java
 var mapper = JsonMapper.builder()
@@ -263,13 +264,13 @@ var eventStore = new EventStore(eventStoreConfig);
 
 var eventBus = EventBusSpec.withDefaults()
     .interceptors(new TransactionalEventInterceptor(transactionProvider))
-    .sinks(eventStore)
-    .processingGroups(locator, groups -> groups.anyProcessingGroup().source(eventStore))
+    .sinks(eventStore.inlet())
+    .processingGroups(locator, groups -> groups.anyProcessingGroup().source(eventStore.outlet()))
     .create();
 ```
 
-`EventStore` implements `EventChannel` and owns the polling scheduler. The example registers it separately as a sink and source; `.channel(eventStore)` is equivalent when both directions should always
-be coupled. The transactional interceptor supplies the context required for deferred storage.
+`EventStore` implements `EventMedium`: its inlet defers storage to the publishing transaction, and its outlet polls stored events. Use `.medium(eventStore)` to register both together.
+The transactional interceptor supplies the context required for storage.
 
 Close `EventStore` during application shutdown so its scheduler terminates cleanly. Implement `EventStorage`, `TokenStore`, and `EventSubjectSequenceStore` plus an equivalent schema to support
 another database.

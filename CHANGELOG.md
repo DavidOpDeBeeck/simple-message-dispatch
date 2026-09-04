@@ -2,10 +2,13 @@
 
 ## Unreleased
 
-- Added independent `EventSink` and `EventSource` contracts, with `EventChannel` combining both. `EventBusSpec.sinks(...)` registers outbound destinations, while processing-group `.source(...)`
-  registers incoming events without implicit publication. Removed `SubscribableEventChannel` and `EventChannelBinding` without compatibility aliases.
-- Replaced `EventStoreChannel` and `EventStoreChannelConfig` with the `EventStore` lifecycle owner and `EventStoreConfig`. Spring Boot now registers an enabled event store as a sink with the default
-  event publisher automatically.
+- Added `EventSinkStub` and `EventSourceStub` to `smd-test` with ordered message capture and reset support. Renamed `EventChannelListenerStub` to `EventSubscriberStub`.
+- Added `EventSelector` and `.selecting(...)` on sinks, sources, and media to filter events by type, metadata, or custom predicates.
+- Replaced event channels with `EventSink`, `EventSource`, and `EventMedium` in `app.dodb.smd.api.event.delivery`. Configure outbound delivery with `.sinks(...)`, inbound with `.source(...)`, or both
+  with `.medium(...)`.
+- Renamed the built-in channels to `SynchronousEventDispatcher`, `ConcurrentEventDispatcher`, and `FireAndForgetEventDispatcher`.
+- Replaced `EventStoreChannel` and `EventStoreChannelConfig` with `EventStore` and `EventStoreConfig` in `app.dodb.smd.eventstore`. Spring Boot automatically registers an enabled store's inlet as a sink.
+- Moved persistence types to `eventstore.storage` and serializers to `eventstore.serialization`.
 - Added ordered Spring `CommandBusSpecCustomizer`, `EventBusSpecCustomizer`, and `QueryBusSpecCustomizer` extension points.
 
 ## [0.0.10] - 2026-08-30

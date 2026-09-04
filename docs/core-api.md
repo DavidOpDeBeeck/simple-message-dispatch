@@ -73,7 +73,7 @@ Every message carries:
 - immutable `Map<String, String>` properties
 
 When a handler sends another message, SMD preserves the principal and properties, sets the current message as the parent, and generates a fresh timestamp. This context also crosses SMD's built-in
-asynchronous event channels.
+asynchronous dispatchers.
 
 The gateways also accept `CommandMessage`, `QueryMessage`, and `EventMessage` when you need to supply metadata explicitly. Supplied metadata replaces provider-generated metadata, so include every
 principal, timestamp, parent, and property value that the receiving handler needs.
@@ -122,24 +122,24 @@ var eventBus = EventBusSpec.withDefaults()
 - `async().await()` uses virtual threads and waits for all handlers.
 - `async().fireAndForget()` returns immediately; failures cannot be reported to the publisher.
 - `source(source)` subscribes the group to incoming events without registering a publication destination.
-- `channel(channel)` subscribes the group and registers the `EventChannel` as a publication destination.
+- `medium(medium)` subscribes the group to the medium's outlet and registers its inlet as a publication destination.
 - `disabled()` intentionally skips the group.
 
 When you provide custom group configuration, every discovered group must be named explicitly, covered by `anyProcessingGroup()`, or disabled. Unknown group names, missing configuration, and
 conflicting choices for the same group are rejected before any source is subscribed.
 
-## Event Sinks and Sources
+## Event Delivery
 
-The contracts in `app.dodb.smd.api.event.channel` separate publication from subscription:
+The contracts in `app.dodb.smd.api.event.delivery` separate publication from subscription:
 
-| Contract       | Responsibility                                                                                |
-|----------------|-----------------------------------------------------------------------------------------------|
-| `EventSink`    | Accept an existing `EventMessage<E>` through `send(message)`                                  |
-| `EventSource`  | Deliver incoming messages to processing-group listeners registered with `subscribe(listener)` |
-| `EventChannel` | Combine `EventSink` and `EventSource`                                                         |
+| Contract      | Role                                                    |
+|---------------|---------------------------------------------------------|
+| `EventSink`   | Receives event messages through `send(message)`          |
+| `EventSource` | Registers subscribers through `subscribe(subscriber)`   |
+| `EventMedium` | Pairs an `inlet()` sink with an `outlet()` source         |
 
-Application code continues to use `EventPublisher`, which constructs message envelopes, establishes metadata, and runs publication interceptors. Sinks receive those envelopes, while sources deliver
-incoming messages directly to their subscribed processing groups.
+Application code publishes through `EventPublisher`, which creates message envelopes, establishes metadata, and runs publication interceptors. The bus sends to sinks in registration order;
+If a sink throws, the bus skips the remaining sinks.
 
 Register outbound destinations independently of processing-group inputs:
 
@@ -152,14 +152,25 @@ var eventBus = EventBusSpec.withDefaults()
         .create();
 ```
 
-Publishing sends to `auditSink` and the synchronous groups. Billing receives only messages delivered by `incomingEvents`. Using `.source(channel)` does not add that channel to the bus's outbound
-destinations.
+Publishing sends to `auditSink` and the synchronous groups. Billing receives only messages from `incomingEvents`.
 
-Use `.channel(channel)` when one component should participate in both directions, or register its sink and source roles separately. The built-in synchronous and asynchronous channels implement both
-contracts; `.sync()` and `.async()` connect them in both directions.
+The built-in media are `SynchronousEventDispatcher`, `ConcurrentEventDispatcher`, and `FireAndForgetEventDispatcher`; `.sync()` and `.async()` configure them.
 
-A sink defines what `send()` completion means, such as completed local handling, asynchronous submission, or deferred storage. A source owns its delivery threads, ordering, retries, failures, and
-lifecycle. Custom sources must invoke listeners inside `MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata and lineage.
+Use `.selecting(selector)` to filter a sink, source, or both directions of a medium. `EventSelector` supports assignable event types, metadata-property presence or values, and custom lambdas.
+Combine selectors with `and(...)`, `or(...)`, and `negate()`:
+
+```java
+EventSelector auditEvents = EventSelector.eventType(AuditEvent.class)
+        .and(EventSelector.metadataProperty("audit", "true"));
+
+var auditSink = externalAuditSink.selecting(auditEvents);
+var auditSource = externalAuditSource.selecting(auditEvents);
+```
+
+Nonmatching messages are ignored. Matching messages and processing-group names are preserved; selector failures follow the underlying delivery's failure handling.
+
+A sink defines what completion of `send()` means. A source owns delivery threads, ordering, retries, failures, and lifecycle. Custom sources must invoke subscribers inside
+`MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata.
 
 ## Interceptors and Transactions
 

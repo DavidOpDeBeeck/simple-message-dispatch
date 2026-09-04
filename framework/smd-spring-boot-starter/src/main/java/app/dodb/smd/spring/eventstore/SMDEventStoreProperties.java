@@ -1,25 +1,25 @@
 package app.dodb.smd.spring.eventstore;
 
-import app.dodb.smd.eventstore.channel.RetryBackoffStrategy;
+import app.dodb.smd.eventstore.RetryBackoffStrategy;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_BATCH_SIZE;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_GAP_TIMEOUT;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_MAX_RETRIES;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_BASE_DELAY;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_FIXED_DELAY;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_INCREMENT;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_MAX_DELAY;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_MULTIPLIER;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig.DEFAULT_ENABLED;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig.DEFAULT_INITIAL_DELAY;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig.DEFAULT_POLLING_DELAY;
-import static app.dodb.smd.eventstore.channel.EventStoreConfig.SchedulingConfig.DEFAULT_THREAD_POOL_SIZE;
-import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.exponential;
-import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.fixed;
-import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.linear;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_BATCH_SIZE;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_GAP_TIMEOUT;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_MAX_RETRIES;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_BASE_DELAY;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_FIXED_DELAY;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_INCREMENT;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_MAX_DELAY;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_MULTIPLIER;
+import static app.dodb.smd.eventstore.EventStoreConfig.SchedulingConfig.DEFAULT_ENABLED;
+import static app.dodb.smd.eventstore.EventStoreConfig.SchedulingConfig.DEFAULT_INITIAL_DELAY;
+import static app.dodb.smd.eventstore.EventStoreConfig.SchedulingConfig.DEFAULT_POLLING_DELAY;
+import static app.dodb.smd.eventstore.EventStoreConfig.SchedulingConfig.DEFAULT_THREAD_POOL_SIZE;
+import static app.dodb.smd.eventstore.RetryBackoffStrategy.exponential;
+import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
+import static app.dodb.smd.eventstore.RetryBackoffStrategy.linear;
 import static app.dodb.smd.spring.eventstore.SMDEventStoreProperties.ProcessingProperties.Strategy.*;
 
 @ConfigurationProperties(prefix = "smd.event-store")

@@ -2,13 +2,13 @@ package app.dodb.smd.api.event.bus;
 
 import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.ProcessingGroupLocator;
-import app.dodb.smd.api.event.channel.AsyncAwaitingEventChannel;
-import app.dodb.smd.api.event.channel.AsyncFireAndForgetEventChannel;
-import app.dodb.smd.api.event.channel.EventChannel;
-import app.dodb.smd.api.event.channel.EventChannelListener;
-import app.dodb.smd.api.event.channel.EventSink;
-import app.dodb.smd.api.event.channel.EventSource;
-import app.dodb.smd.api.event.channel.SynchronousEventChannel;
+import app.dodb.smd.api.event.delivery.ConcurrentEventDispatcher;
+import app.dodb.smd.api.event.delivery.EventMedium;
+import app.dodb.smd.api.event.delivery.EventSink;
+import app.dodb.smd.api.event.delivery.EventSource;
+import app.dodb.smd.api.event.delivery.EventSubscriber;
+import app.dodb.smd.api.event.delivery.FireAndForgetEventDispatcher;
+import app.dodb.smd.api.event.delivery.SynchronousEventDispatcher;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
@@ -187,12 +187,12 @@ public class EventBusSpec {
         }
 
         public ProcessingGroupsSpec sync() {
-            return channel(new SynchronousEventChannel());
+            return medium(new SynchronousEventDispatcher());
         }
 
-        public ProcessingGroupAsyncChannelSpec async() {
+        public ProcessingGroupAsyncSpec async() {
             validateNotConfigured();
-            return new ProcessingGroupAsyncChannelSpec(this);
+            return new ProcessingGroupAsyncSpec(this);
         }
 
         public ProcessingGroupsSpec source(EventSource source) {
@@ -201,10 +201,10 @@ public class EventBusSpec {
             return parent;
         }
 
-        public ProcessingGroupsSpec channel(EventChannel channel) {
+        public ProcessingGroupsSpec medium(EventMedium medium) {
             validateNotConfigured();
-            this.eventSource = channel;
-            this.eventSink = channel;
+            this.eventSource = medium.outlet();
+            this.eventSink = medium.inlet();
             return parent;
         }
 
@@ -217,56 +217,56 @@ public class EventBusSpec {
         }
     }
 
-    private record EventSourceSubscription(EventSource source, EventChannelListener listener) {
+    private record EventSourceSubscription(EventSource source, EventSubscriber subscriber) {
 
         private EventSourceSubscription {
             requireNonNull(source);
-            requireNonNull(listener);
+            requireNonNull(subscriber);
         }
 
         private void subscribe() {
-            source.subscribe(listener);
+            source.subscribe(subscriber);
         }
     }
 
-    public static class ProcessingGroupAsyncChannelSpec {
+    public static class ProcessingGroupAsyncSpec {
 
         private final ProcessingGroupSpec parent;
 
-        private ProcessingGroupAsyncChannelSpec(ProcessingGroupSpec parent) {
+        private ProcessingGroupAsyncSpec(ProcessingGroupSpec parent) {
             this.parent = requireNonNull(parent);
         }
 
         public ProcessingGroupsSpec await() {
-            return parent.channel(AsyncAwaitingEventChannel.usingVirtualThreads());
+            return parent.medium(ConcurrentEventDispatcher.usingVirtualThreads());
         }
 
         public ProcessingGroupsSpec await(List<EventInterceptor> interceptors) {
-            return parent.channel(AsyncAwaitingEventChannel.usingVirtualThreads(interceptors));
+            return parent.medium(ConcurrentEventDispatcher.usingVirtualThreads(interceptors));
         }
 
         public ProcessingGroupsSpec await(ExecutorService executorService) {
-            return parent.channel(AsyncAwaitingEventChannel.using(executorService));
+            return parent.medium(ConcurrentEventDispatcher.using(executorService));
         }
 
         public ProcessingGroupsSpec await(ExecutorService executorService, List<EventInterceptor> interceptors) {
-            return parent.channel(AsyncAwaitingEventChannel.using(executorService, interceptors));
+            return parent.medium(ConcurrentEventDispatcher.using(executorService, interceptors));
         }
 
         public ProcessingGroupsSpec fireAndForget() {
-            return parent.channel(AsyncFireAndForgetEventChannel.usingVirtualThreads());
+            return parent.medium(FireAndForgetEventDispatcher.usingVirtualThreads());
         }
 
         public ProcessingGroupsSpec fireAndForget(List<EventInterceptor> interceptors) {
-            return parent.channel(AsyncFireAndForgetEventChannel.usingVirtualThreads(interceptors));
+            return parent.medium(FireAndForgetEventDispatcher.usingVirtualThreads(interceptors));
         }
 
         public ProcessingGroupsSpec fireAndForget(ExecutorService executorService) {
-            return parent.channel(AsyncFireAndForgetEventChannel.using(executorService));
+            return parent.medium(FireAndForgetEventDispatcher.using(executorService));
         }
 
         public ProcessingGroupsSpec fireAndForget(ExecutorService executorService, List<EventInterceptor> interceptors) {
-            return parent.channel(AsyncFireAndForgetEventChannel.using(executorService, interceptors));
+            return parent.medium(FireAndForgetEventDispatcher.using(executorService, interceptors));
         }
     }
 }

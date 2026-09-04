@@ -2,15 +2,15 @@ package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.event.bus.EventBus;
-import app.dodb.smd.eventstore.channel.EventStoreConfig.ProcessingConfig;
+import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
-import app.dodb.smd.eventstore.store.SerializedEvent;
-import app.dodb.smd.eventstore.store.TokenState;
+import app.dodb.smd.eventstore.storage.SerializedEvent;
+import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.spring.eventstore.EventStoreTestFixture.SequencedEvent;
 import app.dodb.smd.spring.eventstore.processing.FailableTestEventHandler;
 import app.dodb.smd.spring.eventstore.processing.SideEffectTestEventWithSubjectId;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
-import app.dodb.smd.test.EventChannelListenerStub;
+import app.dodb.smd.test.EventSubscriberStub;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 
@@ -22,7 +22,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static app.dodb.smd.eventstore.channel.RetryBackoffStrategy.fixed;
+import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SCHEDULING_DISABLED;
@@ -78,7 +78,7 @@ class EventStoreProcessingIntegrationTest {
             );
 
             try (var eventStore = fixture.createEventStore()) {
-                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     processingIds.add(metadata.get(PROCESSING_ID));
                     processedSequences.add(metadata.get(SEQUENCE_NUMBER));
@@ -101,20 +101,20 @@ class EventStoreProcessingIntegrationTest {
             .start()) {
             var processingGroup = "restart-processing-group";
             var processedSequences = new CopyOnWriteArrayList<String>();
-            var listener = new EventChannelListenerStub(processingGroup, eventMessage ->
+            var listener = new EventSubscriberStub(processingGroup, eventMessage ->
                 processedSequences.add(eventMessage.metadata().properties().get(SEQUENCE_NUMBER))
             );
 
             fixture.storeEvents(new SequencedEvent<>(1L, new TestEventWithSubjectId(TEST_SUBJECT_ID)));
             try (var eventStore = fixture.createEventStore()) {
-                eventStore.subscribe(listener);
+                eventStore.outlet().subscribe(listener);
 
                 await().untilAsserted(() -> assertThat(processedSequences).containsExactly("1"));
             }
 
             fixture.storeEvents(new SequencedEvent<>(2L, new TestEventWithSubjectId(TEST_SUBJECT_ID)));
             try (var eventStore = fixture.createEventStore()) {
-                eventStore.subscribe(listener);
+                eventStore.outlet().subscribe(listener);
 
                 await().untilAsserted(() -> assertThat(processedSequences).containsExactly("1", "2"));
             }
@@ -142,7 +142,7 @@ class EventStoreProcessingIntegrationTest {
                 .build();
 
             try (var eventStore = fixture.createEventStore(processingConfig)) {
-                eventStore.subscribe(new EventChannelListenerStub(processingGroup, eventMessage -> {
+                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
                     if ("1".equals(sequenceNumber)) {
                         insertTransactionalSideEffect(fixture, "event 1 committed");
@@ -252,7 +252,7 @@ class EventStoreProcessingIntegrationTest {
     }
 
     @Test
-    void sameProcessingGroup_whenTwoChannelsPollConcurrently_processesEventOnce() {
+    void sameProcessingGroup_whenTwoMediaPollConcurrently_processesEventOnce() {
         try (var fixture = eventStoreTestFixture()
             .properties(SCHEDULING_DISABLED)
             .start()) {
@@ -264,13 +264,13 @@ class EventStoreProcessingIntegrationTest {
 
             try (var firstEventStore = fixture.createEventStore();
                  var secondEventStore = fixture.createEventStore()) {
-                var listener = new EventChannelListenerStub(processingGroup, _ -> {
+                var listener = new EventSubscriberStub(processingGroup, _ -> {
                     handledCount.incrementAndGet();
                     sleep(ofMillis(300));
                 });
 
-                firstEventStore.subscribe(listener);
-                secondEventStore.subscribe(listener);
+                firstEventStore.outlet().subscribe(listener);
+                secondEventStore.outlet().subscribe(listener);
 
                 await().untilAsserted(() -> {
                     assertThat(fixture.tokenState(processingGroup)

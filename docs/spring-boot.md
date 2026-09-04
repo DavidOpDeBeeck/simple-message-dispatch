@@ -63,17 +63,17 @@ ProcessingGroupsConfigurer processingGroupsConfigurer() {
 | `sync()`                  | Publishing thread      | Waits; handler failure reaches the publisher     | Participates in the publisher's thread-bound transaction           |
 | `async().await()`         | Virtual worker threads | Waits; handler failures reach the publisher      | Does not inherit the publisher's thread-bound transaction          |
 | `async().fireAndForget()` | Virtual worker threads | Returns immediately; handler failures are logged | Does not inherit the publisher's transaction and is not durable    |
-| `channel(channel)`        | Defined by the channel | Defined by the channel                           | Defined by the channel                                             |
+| `medium(medium)`          | Defined by the medium  | Defined by the medium                            | Defined by the medium                                              |
 | `source(source)`          | Defined by the source  | Delivers incoming events only                    | Does not register a publication destination                        |
 | `disabled()`              | No execution           | Returns without invoking the group               | No state change                                                    |
 
 Once custom routing is present, every discovered group must be configured, covered by `anyProcessingGroup()`, or disabled. Multiple configurer beans are applied in Spring order; do not configure the
 same named group twice.
 
-Use `.source(eventSource)` to attach an independent input to a group. Use `.channel(eventChannel)` when the same component should also receive published events. See
-[Event Sinks and Sources](core-api.md#event-sinks-and-sources) for the underlying contracts.
+Use `.source(eventSource)` to attach an input to a group, or `.medium(eventMedium)` to also send published events to its inlet. See
+[Event Delivery](core-api.md#event-delivery) for the underlying contracts.
 
-Enabling the event store automatically registers `eventStore` as a sink with the default publisher. Route durable groups explicitly through `.source(eventStore)` as shown in
+Enabling the event store automatically registers `eventStore.inlet()` as a sink with the default publisher. Route durable groups explicitly through `.source(eventStore.outlet())` as shown in
 [Event Store](event-store.md); enabling storage does not select processing groups.
 
 ## Customize Bus Specs
@@ -103,7 +103,7 @@ CommandBusInterceptor loggingInterceptor() {
 ```
 
 The starter registers transactional command, query, and event-publication interceptors at highest precedence. They use Spring transactions through `TransactionProvider`. Synchronous handlers execute
-inside that transaction. Work moved to an asynchronous channel does not inherit Spring's thread-bound transaction. With `async().await()`, a failure can roll back the publisher's transaction even
+inside that transaction. Work moved to an asynchronous dispatcher does not inherit Spring's thread-bound transaction. With `async().await()`, a failure can roll back the publisher's transaction even
 though worker-thread side effects cannot be rolled back with it. Use idempotent or independently transactional side effects when configuring asynchronous delivery.
 
 ## Override Infrastructure
@@ -141,4 +141,4 @@ complete parameter list.
 
 - [Event Store](event-store.md) for durable PostgreSQL-backed event processing
 - [Testing](testing.md) for Spring test-scope stubs
-- [Core API](core-api.md) for manual construction and channel behavior
+- [Core API](core-api.md) for manual construction and event delivery

@@ -4,7 +4,7 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.EventPublisher;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.eventstore.channel.EventStore;
+import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.ticket.drivenadapter.IntegrationTest;
 import app.dodb.smd.ticket.drivingport.event.TicketAssignedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketOpenedEvent;
@@ -37,7 +37,7 @@ class TicketActivityIntegrationTest {
         @Bean
         ProcessingGroupsConfigurer ticketProcessingGroups(EventStore eventStore) {
             return spec -> spec
-                .processingGroup("ticket-activity").source(eventStore)
+                .processingGroup("ticket-activity").source(eventStore.outlet())
                 .anyProcessingGroup().disabled();
         }
     }

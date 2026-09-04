@@ -5,7 +5,7 @@ import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.EventPublisher;
-import app.dodb.smd.api.event.channel.EventSink;
+import app.dodb.smd.api.event.delivery.EventSink;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.MetadataFactory;
 

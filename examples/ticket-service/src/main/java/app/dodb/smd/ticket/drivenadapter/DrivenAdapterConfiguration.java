@@ -1,9 +1,9 @@
 package app.dodb.smd.ticket.drivenadapter;
 
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
-import app.dodb.smd.eventstore.channel.EventStore;
-import app.dodb.smd.eventstore.store.serialization.EventTypeResolver;
-import app.dodb.smd.eventstore.store.serialization.StaticEventTypeResolver;
+import app.dodb.smd.eventstore.EventStore;
+import app.dodb.smd.eventstore.serialization.EventTypeResolver;
+import app.dodb.smd.eventstore.serialization.StaticEventTypeResolver;
 import app.dodb.smd.spring.EnableSMD;
 import app.dodb.smd.ticket.drivingport.event.TicketAssignedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketOpenedEvent;
@@ -26,7 +26,7 @@ public class DrivenAdapterConfiguration {
         return spec -> spec
             .processingGroup("ticket-view").sync()
             .processingGroup("notifications").async().await()
-            .processingGroup("ticket-activity").source(eventStore);
+            .processingGroup("ticket-activity").source(eventStore.outlet());
     }
 
     @Bean

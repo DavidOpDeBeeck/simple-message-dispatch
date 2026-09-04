@@ -131,10 +131,15 @@ Available framework-independent utilities include:
 - `CommandGatewayStub`
 - `QueryGatewayStub`
 - `EventPublisherStub`
-- `EventChannelListenerStub`
+- `EventSinkStub`
+- `EventSourceStub`
+- `EventSubscriberStub`
 - `PrincipalProviderStub`
 - `TimeProviderStub`
 - `NoOpTransactionProvider`
+
+`EventSinkStub` and `EventSourceStub` capture messages in send order. `getEventMessages()` returns an immutable snapshot; `reset()` clears captures but preserves source subscriptions.
+`EventSourceStub.send(message)` also delivers synchronously in subscription order within the message's metadata scope, stopping on the first subscriber failure.
 
 Command and query stubs match messages by `equals`, so records make convenient test messages:
 
@@ -153,7 +158,7 @@ assertThat(queries.send(query)).contains(ticket);
 
 - Use `@EnableSMDStubs` for a focused handler flow with real discovery, binding, metadata, and application repositories.
 - Test a handler directly when only its decisions and immediate collaborators matter.
-- Use real integration infrastructure for transaction boundaries, asynchronous channels, serialization, JDBC, or PostgreSQL event processing.
+- Use real integration infrastructure for transaction boundaries, asynchronous delivery, serialization, JDBC, or PostgreSQL event processing.
 - Use an acceptance test for the complete external entry point and its observable projections.
 
 The runnable [ticket service](../examples/ticket-service/README.md#tests) contains examples of all three application-level boundaries.
