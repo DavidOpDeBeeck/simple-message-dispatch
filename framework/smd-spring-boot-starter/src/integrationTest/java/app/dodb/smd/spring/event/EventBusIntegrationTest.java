@@ -8,7 +8,6 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
 import static org.springframework.boot.WebApplicationType.NONE;
 
 class EventBusIntegrationTest {
@@ -18,42 +17,54 @@ class EventBusIntegrationTest {
         EventIntegrationTestConfigurationWithDefaults.class,
         EventIntegrationTestConfigurationWithoutDefaults.class
     })
-    void publish(Class<?> configClass) {
+    void publish_withSynchronousDelivery_handlesEventBeforeReturning(Class<?> configClass) {
+        // Given
         try (var context = createContext(configClass)) {
             var eventBus = context.getBean(EventBus.class);
             var testEventHandler = context.getBean(TestEventHandler.class);
 
             var event = new TestEvent();
 
+            // When
             eventBus.publish(event);
 
+            // Then
             assertThat(testEventHandler.getHandledEvents()).containsExactly(event);
         }
     }
 
     @Test
-    void publish_withAsyncAwait() {
+    void publish_withAsyncAwait_handlesEventBeforeReturning() {
+        // Given
         try (var context = createContext(EventIntegrationTestConfigurationWithAsyncAwait.class)) {
             var eventBus = context.getBean(EventBus.class);
             var testEventHandler = context.getBean(TestEventHandler.class);
 
             var event = new TestEvent();
+
+            // When
             eventBus.publish(event);
 
-            assertThat(testEventHandler.getHandledEvents()).contains(event);
+            // Then
+            assertThat(testEventHandler.getHandledEvents()).containsExactly(event);
         }
     }
 
     @Test
-    void publish_withAsyncFireAndForget() {
+    void publish_withAsyncFireAndForget_handlesEventEventually() throws InterruptedException {
+        // Given
         try (var context = createContext(EventIntegrationTestConfigurationWithAsyncFireAndForget.class)) {
             var eventBus = context.getBean(EventBus.class);
             var testEventHandler = context.getBean(TestEventHandler.class);
 
             var event = new TestEvent();
+
+            // When
             eventBus.publish(event);
 
-            await().untilAsserted(() -> assertThat(testEventHandler.getHandledEvents()).contains(event));
+            // Then
+            testEventHandler.awaitEvent();
+            assertThat(testEventHandler.getHandledEvents()).containsExactly(event);
         }
     }
 

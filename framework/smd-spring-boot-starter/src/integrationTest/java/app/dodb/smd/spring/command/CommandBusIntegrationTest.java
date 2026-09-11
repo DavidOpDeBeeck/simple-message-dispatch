@@ -15,15 +15,18 @@ class CommandBusIntegrationTest {
         CommandIntegrationTestConfigurationWithDefaults.class,
         CommandIntegrationTestConfigurationWithoutDefaults.class
     })
-    void send(Class<?> configClass) {
+    void send_withDiscoveredHandler_returnsResult(Class<?> configClass) {
+        // Given
         try (var context = new SpringApplicationBuilder(configClass).web(NONE).run()) {
             var commandBus = context.getBean(CommandBus.class);
             var incrementCommandHandler = context.getBean(IncrementCommandHandler.class);
 
             var command = new IncrementCommand(0);
 
+            // When
             var result = commandBus.send(command);
 
+            // Then
             assertThat(result).isEqualTo(1);
             assertThat(incrementCommandHandler.getHandledCommands()).containsExactly(command);
         }

@@ -22,12 +22,15 @@ class SMDTestExtensionTest {
     private SMDTestExtension smd;
 
     @Test
-    void transferSucceeds() {
+    void send_whenBothAccountsAcceptTransfer_publishesEvent() {
+        // Given
         smd.stubCommand(new SubtractMoneyCommand(ACCOUNT_1, 100), true);
         smd.stubCommand(new AddMoneyCommand(ACCOUNT_2, 100), true);
 
+        // When
         boolean actual = smd.send(new TransferMoneyCommand(ACCOUNT_1, ACCOUNT_2, 100));
 
+        // Then
         assertThat(actual).isTrue();
         assertThat(smd.getEvents()).containsExactly(
             new MoneyTransferredEvent(ACCOUNT_1, ACCOUNT_2, 100)
@@ -35,23 +38,29 @@ class SMDTestExtensionTest {
     }
 
     @Test
-    void transferFails_fromAccountSubtractionFails() {
+    void send_whenSubtractionFails_doesNotPublishEvent() {
+        // Given
         smd.stubCommand(new SubtractMoneyCommand(ACCOUNT_1, 100), false);
         smd.stubCommand(new AddMoneyCommand(ACCOUNT_2, 100), true);
 
+        // When
         boolean actual = smd.send(new TransferMoneyCommand(ACCOUNT_1, ACCOUNT_2, 100));
 
+        // Then
         assertThat(actual).isFalse();
         assertThat(smd.getEvents()).isEmpty();
     }
 
     @Test
-    void transferFails_toAccountAdditionFails() {
+    void send_whenAdditionFails_doesNotPublishEvent() {
+        // Given
         smd.stubCommand(new SubtractMoneyCommand(ACCOUNT_1, 100), true);
         smd.stubCommand(new AddMoneyCommand(ACCOUNT_2, 100), false);
 
+        // When
         boolean actual = smd.send(new TransferMoneyCommand(ACCOUNT_1, ACCOUNT_2, 100));
 
+        // Then
         assertThat(actual).isFalse();
         assertThat(smd.getEvents()).isEmpty();
     }

@@ -3,6 +3,7 @@ package app.dodb.smd.spring.eventstore.processing;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.ProcessingGroup;
+import app.dodb.smd.api.metadata.MetadataValue;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -13,13 +14,15 @@ public class FailableTestEventHandler {
 
     private final AtomicInteger failuresRemaining = new AtomicInteger(0);
     private final List<Event> handledEvents = new CopyOnWriteArrayList<>();
+    private final List<String> attemptedErrorCounts = new CopyOnWriteArrayList<>();
 
     public void failNextNAttempts(int n) {
         failuresRemaining.set(n);
     }
 
     @EventHandler
-    public void on(TestEventWithSubjectId event) {
+    public void on(TestEventWithSubjectId event, @MetadataValue("errorCount") String errorCount) {
+        attemptedErrorCounts.add(errorCount);
         if (failuresRemaining.getAndDecrement() > 0) {
             throw new RuntimeException("Simulated failure");
         }
@@ -28,5 +31,9 @@ public class FailableTestEventHandler {
 
     public List<Event> getHandledEvents() {
         return List.copyOf(handledEvents);
+    }
+
+    public List<String> getAttemptedErrorCounts() {
+        return List.copyOf(attemptedErrorCounts);
     }
 }

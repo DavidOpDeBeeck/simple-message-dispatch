@@ -8,8 +8,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
-import static java.lang.Thread.sleep;
-
 @Component
 public class CreateAccountCommandHandler {
 
@@ -22,9 +20,7 @@ public class CreateAccountCommandHandler {
     }
 
     @CommandHandler
-    public UUID handle(CreateAccountCommand command, Metadata metadata, @MetadataValue("key") String value) throws InterruptedException {
-        // We sleep to force a different timestamp for the AccountCreatedEvent
-        sleep(100);
+    public UUID handle(CreateAccountCommand command, Metadata metadata, @MetadataValue("key") String value) {
         metadataRecorder.recordCommand(metadata, value);
         eventPublisher.publish(new AccountCreatedEvent(command.name()));
         return UUID.randomUUID();

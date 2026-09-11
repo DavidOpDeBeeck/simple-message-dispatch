@@ -33,22 +33,29 @@ class EventSerializerAutoConfigurationIntegrationTest {
     private static final Instant TIMESTAMP = Instant.parse("2026-04-22T10:15:30Z");
 
     @Test
-    void createsJacksonEventSerializerWhenNoCustomEventSerializerBean() {
-        try (var fixture = eventStoreTestFixture()
-            .properties(SCHEDULING_DISABLED)
-            .start()) {
+    void start_withoutCustomSerializer_createsJacksonEventSerializer() {
+        // Given
+        var configuration = eventStoreTestFixture().properties(SCHEDULING_DISABLED);
+
+        // When
+        try (var fixture = configuration.start()) {
+            // Then
             assertThat(fixture.bean(EventSerializer.class)).isInstanceOf(JacksonEventSerializer.class);
         }
     }
 
     @Test
-    void usesCustomEventSerializerBean() {
-        try (var fixture = eventStoreTestFixture()
+    void start_withCustomSerializer_usesCustomBean() {
+        // Given
+        var configuration = eventStoreTestFixture()
             .configuration(CustomEventSerializerConfiguration.class)
-            .properties(SCHEDULING_DISABLED)
-            .start()) {
+            .properties(SCHEDULING_DISABLED);
+
+        // When
+        try (var fixture = configuration.start()) {
             var serializer = fixture.bean(EventSerializer.class);
 
+            // Then
             assertThat(serializer).isInstanceOf(CustomEventSerializer.class);
             assertThat(fixture.beansOfType(EventSerializer.class)).hasSize(1);
             assertThat(fixture.bean(EventStoreConfig.class).getEventSerializer()).isSameAs(serializer);
@@ -56,7 +63,8 @@ class EventSerializerAutoConfigurationIntegrationTest {
     }
 
     @Test
-    void usesCustomEventTypeResolverBean() {
+    void serialize_withCustomTypeResolver_usesCustomEventType() {
+        // Given
         try (var fixture = eventStoreTestFixture()
             .configuration(CustomEventTypeResolverConfiguration.class)
             .properties(SCHEDULING_DISABLED)
@@ -64,16 +72,19 @@ class EventSerializerAutoConfigurationIntegrationTest {
             var serializer = fixture.bean(EventSerializer.class);
             var eventMessage = eventMessage();
 
+            // When
             var serialized = serializer.serialize(eventMessage);
             var deserialized = serializer.deserialize(serialized);
 
+            // Then
             assertThat(serialized.eventType()).isEqualTo(CustomEventTypeResolverConfiguration.EVENT_TYPE);
             assertThat(deserialized.payload()).isEqualTo(new SerializerTestEvent("value"));
         }
     }
 
     @Test
-    void registersSmdJacksonModule() {
+    void serialize_withSmdJacksonModule_preservesPrincipal() {
+        // Given
         try (var fixture = eventStoreTestFixture()
             .properties(SCHEDULING_DISABLED)
             .start()) {
@@ -84,9 +95,11 @@ class EventSerializerAutoConfigurationIntegrationTest {
                 new Metadata(principal, TIMESTAMP, null)
             );
 
+            // When
             var serialized = serializer.serialize(eventMessage);
             var deserialized = serializer.deserialize(serialized);
 
+            // Then
             assertThat(new String(serialized.serializedMetadata(), UTF_8))
                 .contains("\"type\":\"" + SimplePrincipal.class.getName() + "\"");
             assertThat(deserialized.metadata().principal()).isEqualTo(principal);
@@ -94,13 +107,16 @@ class EventSerializerAutoConfigurationIntegrationTest {
     }
 
     @Test
-    void appliesJacksonModuleBeans() {
+    void serialize_withJacksonModuleBean_appliesCustomPropertyName() {
+        // Given
         try (var fixture = eventStoreTestFixture()
             .configuration(EventSerializerJacksonModuleConfiguration.class)
             .properties(SCHEDULING_DISABLED)
             .start()) {
+            // When
             var serialized = fixture.bean(EventSerializer.class).serialize(eventMessage());
 
+            // Then
             assertThat(new String(serialized.serializedPayload(), UTF_8))
                 .contains("\"customValue\":\"value\"")
                 .doesNotContain("\"value\":\"value\"");
@@ -108,13 +124,16 @@ class EventSerializerAutoConfigurationIntegrationTest {
     }
 
     @Test
-    void appliesJsonMapperBuilderCustomizerBeans() {
+    void serialize_withJsonMapperCustomizer_appliesIndentation() {
+        // Given
         try (var fixture = eventStoreTestFixture()
             .configuration(EventSerializerJsonMapperBuilderCustomizerConfiguration.class)
             .properties(SCHEDULING_DISABLED)
             .start()) {
+            // When
             var serialized = fixture.bean(EventSerializer.class).serialize(eventMessage());
 
+            // Then
             assertThat(new String(serialized.serializedPayload(), UTF_8)).contains("\n");
         }
     }

@@ -22,14 +22,17 @@ class EventStoreSendingIntegrationTest {
 
     @Test
     void send_withoutExistingTransaction_commitsBeforeReturning() {
+        // Given
         try (var fixture = eventStoreTestFixture().properties(SCHEDULING_DISABLED).start()) {
             var eventStore = fixture.bean(EventStore.class);
             var eventSerializer = fixture.bean(EventSerializer.class);
             var message = EventMessage.from(new TestEventWithSubjectId("direct-send"),
                 new Metadata(null, Instant.parse("2026-04-22T10:15:30Z"), null));
 
+            // When
             eventStore.send(message);
 
+            // Then
             assertThat(fixture.storedEvents()).singleElement().satisfies(stored ->
                 assertThat(eventSerializer.deserialize(stored)).isEqualTo(message));
         }
@@ -37,6 +40,7 @@ class EventStoreSendingIntegrationTest {
 
     @Test
     void send_withExistingTransaction_defersStorageUntilTransactionCompletes() {
+        // Given
         try (var fixture = eventStoreTestFixture().properties(SCHEDULING_DISABLED).start()) {
             var eventStore = fixture.bean(EventStore.class);
             var transactions = fixture.bean(TransactionProvider.class);
@@ -44,12 +48,14 @@ class EventStoreSendingIntegrationTest {
             var message = EventMessage.from(new TestEventWithSubjectId("deferred-send"),
                 new Metadata(null, Instant.parse("2026-04-22T10:15:30Z"), null));
 
+            // When
             transactions.doInTransaction(() -> {
                 eventStore.send(message);
 
                 assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM smd_event_store", Integer.class)).isZero();
             });
 
+            // Then
             assertThat(fixture.storedEvents()).singleElement().satisfies(stored ->
                 assertThat(fixture.bean(EventSerializer.class).deserialize(stored)).isEqualTo(message));
         }
@@ -57,6 +63,7 @@ class EventStoreSendingIntegrationTest {
 
     @Test
     void send_whenLaterDeferredWorkFails_rollsBackStoredEventAndPreservesFailure() {
+        // Given
         try (var fixture = eventStoreTestFixture().properties(SCHEDULING_DISABLED).start()) {
             var eventStore = fixture.bean(EventStore.class);
             var transactions = fixture.bean(TransactionProvider.class);
@@ -65,6 +72,7 @@ class EventStoreSendingIntegrationTest {
             var message = EventMessage.from(new TestEventWithSubjectId("rolled-back-send"),
                 new Metadata(null, Instant.parse("2026-04-22T10:15:30Z"), null));
 
+            // When / Then
             assertThatThrownBy(() -> transactions.doInTransaction(() -> {
                 eventStore.send(message);
                 transactions.defer(() -> {

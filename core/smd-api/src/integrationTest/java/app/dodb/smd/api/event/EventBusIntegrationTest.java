@@ -18,21 +18,26 @@ class EventBusIntegrationTest {
     }
 
     @Test
-    void publish() {
+    void publish_withDiscoveredHandlers_handlesEventsInOrder() {
+        // Given
         var eventBus = EventBusSpec.withDefaults()
             .processingGroups(new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()))
             .create();
 
         var event = new TestEvent();
         var anotherEvent = new AnotherTestEvent();
+
+        // When
         eventBus.publish(event);
         eventBus.publish(anotherEvent);
 
+        // Then
         assertThat(TestEventHandler.handledEvents).containsExactly(event, anotherEvent);
     }
 
     @Test
-    void publish_withInterceptor() {
+    void publish_withInterceptor_interceptsEventsInOrder() {
+        // Given
         var interceptor = new EventInterceptorForTest();
         var eventBus = EventBusSpec.withDefaults()
             .processingGroups(new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()))
@@ -41,14 +46,18 @@ class EventBusIntegrationTest {
 
         var event = new TestEvent();
         var anotherEvent = new AnotherTestEvent();
+
+        // When
         eventBus.publish(event);
         eventBus.publish(anotherEvent);
 
+        // Then
         assertThat(interceptor.getInterceptedEvents()).containsExactly(event, anotherEvent);
     }
 
     @Test
     void create_withDisabledProcessingGroup_skipsProcessingGroup() {
+        // Given
         var eventBus = EventBusSpec.withDefaults()
             .processingGroups(
                 new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()),
@@ -60,20 +69,26 @@ class EventBusIntegrationTest {
 
         var event = new TestEvent();
         var anotherEvent = new AnotherTestEvent();
+
+        // When
         eventBus.publish(event);
         eventBus.publish(anotherEvent);
 
+        // Then
         assertThat(TestEventHandler.handledEvents).containsExactly(anotherEvent);
     }
 
     @Test
     void create_withUnconfiguredProcessingGroup_throwsException() {
-        assertThatThrownBy(() -> EventBusSpec.withDefaults()
+        // Given
+        var spec = EventBusSpec.withDefaults()
             .processingGroups(
                 new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()),
-                spec -> spec.processingGroup("1").sync()
-            )
-            .create())
+                groups -> groups.processingGroup("1").sync()
+            );
+
+        // When / Then
+        assertThatThrownBy(spec::create)
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Processing group '2' has no configuration");
     }

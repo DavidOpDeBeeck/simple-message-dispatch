@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
 import static java.time.Duration.ZERO;
@@ -63,11 +63,11 @@ final class EventStoreTestFixture implements AutoCloseable {
         return context.getBeansOfType(type);
     }
 
-    EventStore createEventStore() {
-        return createEventStore(defaultProcessingConfig());
+    EventStore createEventStore(ScheduledExecutorService scheduler) {
+        return createEventStore(defaultProcessingConfig(), scheduler);
     }
 
-    EventStore createEventStore(ProcessingConfig processingConfig) {
+    EventStore createEventStore(ProcessingConfig processingConfig, ScheduledExecutorService scheduler) {
         return new EventStore(EventStoreConfig.withoutDefaults()
             .transactionProvider(bean(TransactionProvider.class))
             .interceptors(List.of())
@@ -77,7 +77,7 @@ final class EventStoreTestFixture implements AutoCloseable {
             .eventSequenceStore(bean(EventSubjectSequenceStore.class))
             .schedulingConfig(EventStoreConfig.SchedulingConfig.withoutDefaults()
                 .enabled(true)
-                .scheduler(Executors.newScheduledThreadPool(4))
+                .scheduler(scheduler)
                 .initialDelay(ZERO)
                 .pollingDelay(POLLING_DELAY)
                 .build())

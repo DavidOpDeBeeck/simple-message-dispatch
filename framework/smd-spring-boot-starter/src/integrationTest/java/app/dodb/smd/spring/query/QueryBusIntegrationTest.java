@@ -15,15 +15,18 @@ class QueryBusIntegrationTest {
         QueryIntegrationTestConfigurationWithDefaults.class,
         QueryIntegrationTestConfigurationWithoutDefaults.class
     })
-    void send(Class<?> configClass) {
+    void send_withDiscoveredHandler_returnsResult(Class<?> configClass) {
+        // Given
         try (var context = new SpringApplicationBuilder(configClass).web(NONE).run()) {
             var queryBus = context.getBean(QueryBus.class);
             var helloQueryHandler = context.getBean(HelloQueryHandler.class);
 
             var query = new HelloQuery("World");
 
+            // When
             var result = queryBus.send(query);
 
+            // Then
             assertThat(result).isEqualTo("Hello World");
             assertThat(helloQueryHandler.getHandledQueries()).containsExactly(query);
         }

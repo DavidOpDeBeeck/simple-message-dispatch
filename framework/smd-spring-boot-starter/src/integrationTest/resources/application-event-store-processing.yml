@@ -10,8 +10,8 @@ smd:
     enabled: true
     scheduling:
       enabled: true
-      initial-delay: 500ms
-      polling-delay: 200ms
+      initial-delay: 0ms
+      polling-delay: 50ms
     processing:
       max-retries: 2
       batch-size: 10

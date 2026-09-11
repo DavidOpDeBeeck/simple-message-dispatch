@@ -6,89 +6,81 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+
+import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @Component
 public class MetadataRecorder {
 
-    private final List<Metadata> commandMetadata = new CopyOnWriteArrayList<>();
-    private final List<String> commandMetadataValues = new CopyOnWriteArrayList<>();
-    private final List<Metadata> queryMetadata = new CopyOnWriteArrayList<>();
-    private final List<String> queryMetadataValues = new CopyOnWriteArrayList<>();
-    private final List<Metadata> accountCreatedEventMetadata = new CopyOnWriteArrayList<>();
-    private final List<MessageId> accountCreatedEventMessageIds = new CopyOnWriteArrayList<>();
-    private final List<String> accountCreatedEventValues = new CopyOnWriteArrayList<>();
-    private final List<Metadata> nestedQueryMetadata = new CopyOnWriteArrayList<>();
-    private final List<String> nestedQueryMetadataValues = new CopyOnWriteArrayList<>();
-    private final List<Metadata> nestedEventMetadata = new CopyOnWriteArrayList<>();
-    private final List<String> nestedEventMetadataValues = new CopyOnWriteArrayList<>();
+    private final CountDownLatch nestedEventRecorded = new CountDownLatch(1);
+    private final List<RecordedMetadata> commands = new CopyOnWriteArrayList<>();
+    private final List<RecordedMetadata> queries = new CopyOnWriteArrayList<>();
+    private final List<RecordedEventMetadata> accountCreatedEvents = new CopyOnWriteArrayList<>();
+    private final List<RecordedMetadata> nestedQueries = new CopyOnWriteArrayList<>();
+    private final List<RecordedMetadata> nestedEvents = new CopyOnWriteArrayList<>();
 
     public void recordCommand(Metadata metadata, String value) {
-        commandMetadata.add(metadata);
-        commandMetadataValues.add(value);
+        commands.add(new RecordedMetadata(metadata, value));
     }
 
     public void recordQuery(Metadata metadata, String value) {
-        queryMetadata.add(metadata);
-        queryMetadataValues.add(value);
+        queries.add(new RecordedMetadata(metadata, value));
     }
 
     public void recordAccountCreatedEvent(Metadata metadata, MessageId messageId, String value) {
-        accountCreatedEventMetadata.add(metadata);
-        accountCreatedEventMessageIds.add(messageId);
-        accountCreatedEventValues.add(value);
+        accountCreatedEvents.add(new RecordedEventMetadata(messageId, metadata, value));
     }
 
     public void recordNestedQuery(Metadata metadata, String value) {
-        nestedQueryMetadata.add(metadata);
-        nestedQueryMetadataValues.add(value);
+        nestedQueries.add(new RecordedMetadata(metadata, value));
     }
 
     public void recordNestedEvent(Metadata metadata, String value) {
-        nestedEventMetadata.add(metadata);
-        nestedEventMetadataValues.add(value);
+        nestedEvents.add(new RecordedMetadata(metadata, value));
+        nestedEventRecorded.countDown();
     }
 
-    public List<Metadata> commandMetadata() {
-        return commandMetadata;
+    public void awaitNestedEvent() throws InterruptedException {
+        assertThat(nestedEventRecorded.await(5, SECONDS)).as("nested event recorded").isTrue();
     }
 
-    public List<String> commandMetadataValues() {
-        return commandMetadataValues;
+    public List<RecordedMetadata> commands() {
+        return List.copyOf(commands);
     }
 
-    public List<Metadata> queryMetadata() {
-        return queryMetadata;
+    public List<RecordedMetadata> queries() {
+        return List.copyOf(queries);
     }
 
-    public List<String> queryMetadataValues() {
-        return queryMetadataValues;
+    public List<RecordedEventMetadata> accountCreatedEvents() {
+        return List.copyOf(accountCreatedEvents);
     }
 
-    public List<Metadata> accountCreatedEventMetadata() {
-        return accountCreatedEventMetadata;
+    public List<RecordedMetadata> nestedQueries() {
+        return List.copyOf(nestedQueries);
     }
 
-    public List<MessageId> accountCreatedEventMessageIds() {
-        return accountCreatedEventMessageIds;
+    public List<RecordedMetadata> nestedEvents() {
+        return List.copyOf(nestedEvents);
     }
 
-    public List<String> accountCreatedEventValues() {
-        return accountCreatedEventValues;
+    public record RecordedMetadata(Metadata metadata, String value) {
+
+        public RecordedMetadata {
+            requireNonNull(metadata);
+            requireNonNull(value);
+        }
     }
 
-    public List<Metadata> nestedQueryMetadata() {
-        return nestedQueryMetadata;
-    }
+    public record RecordedEventMetadata(MessageId messageId, Metadata metadata, String value) {
 
-    public List<String> nestedQueryMetadataValues() {
-        return nestedQueryMetadataValues;
-    }
-
-    public List<Metadata> nestedEventMetadata() {
-        return nestedEventMetadata;
-    }
-
-    public List<String> nestedEventMetadataValues() {
-        return nestedEventMetadataValues;
+        public RecordedEventMetadata {
+            requireNonNull(messageId);
+            requireNonNull(metadata);
+            requireNonNull(value);
+        }
     }
 }

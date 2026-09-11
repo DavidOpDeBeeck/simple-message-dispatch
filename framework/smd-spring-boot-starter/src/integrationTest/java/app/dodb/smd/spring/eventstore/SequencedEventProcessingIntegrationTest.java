@@ -40,7 +40,9 @@ class SequencedEventProcessingIntegrationTest {
     private static final String SEQUENCE_NUMBER = "sequenceNumber";
 
     @Test
-    void subjectlessFailure_blocksGlobalSequenceButNotSubjectSequence() {
+    void poll_withSubjectlessFailure_blocksGlobalSequenceButNotSubjectSequence() throws Exception {
+        // Given
+        var scheduler = new ManualPollingScheduler();
         try (var fixture = eventStoreTestFixture()
             .properties(SCHEDULING_DISABLED)
             .start()) {
@@ -52,27 +54,40 @@ class SequencedEventProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new TestEventWithSubjectId("subjectId-1"))
             );
 
-            try (var eventStore = fixture.createEventStore(ProcessingConfig.withoutDefaults()
+            var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
+                var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
+                if ("1".equals(sequenceNumber)) {
+                    throw new IllegalStateException("global sequence is stuck");
+                }
+                handled.add(sequenceNumber);
+            });
+
+            var processingConfig = ProcessingConfig.withoutDefaults()
                 .maxRetries(0)
                 .batchSize(BATCH_SIZE)
                 .retryBackoffStrategy(fixed(Duration.ZERO))
                 .gapTimeout(ofSeconds(1))
-                .build())) {
-                try (var _ = eventStore.subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
-                    var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
-                    if ("1".equals(sequenceNumber)) {
-                        throw new IllegalStateException("global sequence is stuck");
-                    }
-                    handled.add(sequenceNumber);
-                }))) {
-                    await().untilAsserted(() -> assertThat(handled).containsExactly("3"));
-                }
+                .build();
+
+            try (var eventStore = fixture.createEventStore(processingConfig, scheduler);
+                 var _ = eventStore.subscribe(subscriber)) {
+                scheduler.poll();
+
+                // When
+                scheduler.poll();
+
+                // Then
+                assertThat(handled).containsExactly("3");
+                assertThat(fixture.tokenState(processingGroup)
+                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
             }
         }
     }
 
     @Test
-    void abandonedSubject_doesNotInvokeLaterEventsWithSameSubject() {
+    void poll_withAbandonedSubject_doesNotInvokeLaterEventsWithSameSubject() throws Exception {
+        // Given
+        var scheduler = new ManualPollingScheduler();
         try (var fixture = eventStoreTestFixture()
             .properties(SCHEDULING_DISABLED)
             .start()) {
@@ -84,28 +99,42 @@ class SequencedEventProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new DifferentTestEvent("subjectId-1"))
             );
 
-            try (var eventStore = fixture.createEventStore()) {
-                try (var _ = eventStore.subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
-                    var metadata = eventMessage.metadata().properties();
-                    invoked.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
-                    if ("subjectId-1".equals(metadata.get(SUBJECT))) {
-                        throw new IllegalStateException("subjectId 1 is stuck");
-                    }
-                }))) {
-                    await().untilAsserted(() -> {
-                        assertThat(invoked).containsExactly("subjectId-1:1", "subjectId-1:1", "subjectId-2:2");
-                        assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
-                            .map(EventSequenceState::status)).contains(ABANDONED);
-                        assertThat(fixture.tokenState(processingGroup)
-                            .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
-                    });
+            var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
+                var metadata = eventMessage.metadata().properties();
+                invoked.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
+                if ("subjectId-1".equals(metadata.get(SUBJECT))) {
+                    throw new IllegalStateException("subjectId 1 is stuck");
                 }
+            });
+
+            var processingConfig = ProcessingConfig.withoutDefaults()
+                .maxRetries(0)
+                .batchSize(BATCH_SIZE)
+                .retryBackoffStrategy(fixed(Duration.ZERO))
+                .gapTimeout(ofSeconds(1))
+                .build();
+
+            try (var eventStore = fixture.createEventStore(processingConfig, scheduler);
+                 var _ = eventStore.subscribe(subscriber)) {
+                scheduler.poll();
+                assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                    .map(EventSequenceState::status)).contains(ABANDONED);
+
+                // When
+                scheduler.poll();
+
+                // Then
+                assertThat(invoked).containsExactly("subjectId-1:1", "subjectId-2:2");
+                assertThat(fixture.tokenState(processingGroup)
+                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
             }
         }
     }
 
     @Test
-    void failedSubject_doesNotBlockOtherSubjects() {
+    void poll_withFailedSubject_doesNotBlockOtherSubjects() throws Exception {
+        // Given
+        var scheduler = new ManualPollingScheduler();
         try (var fixture = eventStoreTestFixture()
             .properties(SCHEDULING_DISABLED)
             .start()) {
@@ -117,35 +146,44 @@ class SequencedEventProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new TestEventWithSubjectId("subjectId-1"))
             );
 
-            try (var eventStore = fixture.createEventStore(ProcessingConfig.withoutDefaults()
+            var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
+                var metadata = eventMessage.metadata().properties();
+                if ("subjectId-1".equals(metadata.get(SUBJECT))) {
+                    throw new IllegalStateException("subjectId 1 is in backoff");
+                }
+                handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
+            });
+
+            var processingConfig = ProcessingConfig.withoutDefaults()
                 .maxRetries(5)
                 .batchSize(BATCH_SIZE)
                 .retryBackoffStrategy(fixed(Duration.ofDays(1)))
                 .gapTimeout(ofSeconds(1))
-                .build())) {
-                try (var _ = eventStore.subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
-                    var metadata = eventMessage.metadata().properties();
-                    if ("subjectId-1".equals(metadata.get(SUBJECT))) {
-                        throw new IllegalStateException("subjectId 1 is in backoff");
-                    }
-                    handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
-                }))) {
-                    await().untilAsserted(() -> {
-                        assertThat(handled).containsExactly("subjectId-2:2");
-                        assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
-                            .map(EventSequenceState::status)).contains(FAILED);
-                        assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
-                            .map(EventSequenceState::errorCount)).contains(1);
-                        assertThat(fixture.tokenState(processingGroup)
-                            .flatMap(TokenState::lastProcessedSequenceNumber)).isEmpty();
-                    });
-                }
+                .build();
+
+            try (var eventStore = fixture.createEventStore(processingConfig, scheduler);
+                 var _ = eventStore.subscribe(subscriber)) {
+                scheduler.poll();
+
+                // When
+                scheduler.poll();
+
+                // Then
+                assertThat(handled).containsExactly("subjectId-2:2");
+                assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                    .map(EventSequenceState::status)).contains(FAILED);
+                assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                    .map(EventSequenceState::errorCount)).contains(1);
+                assertThat(fixture.tokenState(processingGroup)
+                    .flatMap(TokenState::lastProcessedSequenceNumber)).isEmpty();
             }
         }
     }
 
     @Test
-    void sequencedEvents_processAllEventsInSequence() {
+    void poll_withSequencedEvents_processesAllEventsInSequence() throws Exception {
+        // Given
+        var scheduler = new ManualPollingScheduler();
         try (var fixture = eventStoreTestFixture()
             .properties(SCHEDULING_DISABLED)
             .start()) {
@@ -157,33 +195,39 @@ class SequencedEventProcessingIntegrationTest {
                 new SequencedEvent<>(3L, new TestEventWithSubjectId("subjectId-1"))
             );
 
-            try (var eventStore = fixture.createEventStore()) {
-                try (var _ = eventStore.subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
-                    var metadata = eventMessage.metadata().properties();
-                    handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
-                }))) {
-                    await().untilAsserted(() -> {
-                        assertThat(handled).containsExactly("subjectId-1:1", "subjectId-2:2", "subjectId-1:3");
-                        assertThat(fixture.tokenState(processingGroup)
-                            .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
-                    });
-                }
+            var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
+                var metadata = eventMessage.metadata().properties();
+                handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
+            });
+
+            try (var eventStore = fixture.createEventStore(scheduler);
+                 var _ = eventStore.subscribe(subscriber)) {
+                // When
+                scheduler.poll();
+
+                // Then
+                assertThat(handled).containsExactly("subjectId-1:1", "subjectId-2:2", "subjectId-1:3");
+                assertThat(fixture.tokenState(processingGroup)
+                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
             }
         }
     }
 
     @Test
-    void autoConfiguration_wiresSubjectSequencingWithoutCustomBinding() {
+    void publish_withAutoConfiguration_sequencesSubjectsWithoutCustomBinding() {
+        // Given
         try (var fixture = eventStoreTestFixture()
             .configuration(TypedEventSequenceConfiguration.class)
             .start()) {
             var eventBus = fixture.bean(EventBus.class);
             var handler = fixture.bean(TypedSequenceEventHandler.class);
 
+            // When
             eventBus.publish(new TestEventWithSubjectId("subjectId-1"));
             eventBus.publish(new TestEventWithSubjectId("subjectId-2"));
             eventBus.publish(new TestEventWithSubjectId("subjectId-1"));
 
+            // Then
             await().untilAsserted(() -> {
                 assertThat(handler.handledSubjects()).containsExactly("subjectId-2");
                 assertThat(handler.invokedSequenceNumbers()).contains("1", "2").doesNotContain("3");
