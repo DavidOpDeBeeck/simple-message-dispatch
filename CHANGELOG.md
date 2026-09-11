@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.0.11] - 2026-09-12
 
 - Added `EventSinkStub` and `EventSourceStub` to `smd-test` with ordered message capture and reset support. Renamed `EventChannelListenerStub` to `EventSubscriberStub`.
 - Added `EventSelector` and `.selecting(...)` on sinks, sources, and media to filter events by type, metadata, or custom predicates.
@@ -10,6 +10,11 @@
 - Replaced `EventStoreChannel` and `EventStoreChannelConfig` with `EventStore` and `EventStoreConfig` in `app.dodb.smd.eventstore`. Spring Boot automatically registers an enabled store's inlet as a sink.
 - Moved persistence types to `eventstore.storage` and serializers to `eventstore.serialization`.
 - Added ordered Spring `CommandBusSpecCustomizer`, `EventBusSpecCustomizer`, and `QueryBusSpecCustomizer` extension points.
+- Added closeable `EventSubscription` handles and `EventMedium.send(...)` and `subscribe(...)` conveniences.
+- Direct sends to the Spring-managed event store now work without an existing transaction.
+
+When upgrading, update all SMD modules together and replace `.channel(...)` with `.medium(...)` or `.source(...)`. See [event delivery](docs/core-api.md#event-delivery) for the new contracts.
+The PostgreSQL schema is unchanged from 0.0.10.
 
 ## [0.0.10] - 2026-08-30
 

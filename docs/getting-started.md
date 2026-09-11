@@ -15,7 +15,7 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-spring-boot-starter:0.0.10")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.11")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 }
@@ -184,7 +184,7 @@ SMD requires exactly one handler for each command or query type. The handler ret
 
 ## 5. Add an Event Handler
 
-Every event handler belongs to a processing group. A published event is delivered once to each group that has a matching handler.
+Every event handler belongs to a processing group. An event can have matching handlers in several groups.
 
 ```java
 @Component

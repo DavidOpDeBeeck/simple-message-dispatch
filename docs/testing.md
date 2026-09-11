@@ -9,7 +9,7 @@ Add the Spring test module alongside Spring Boot's test starter:
 ```kotlin
 dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.10")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.11")
 }
 ```
 
@@ -97,7 +97,7 @@ Use `smd-test` when package discovery, interceptors, and the Spring context are 
 
 ```kotlin
 dependencies {
-    testImplementation("app.dodb:smd-test:0.0.10")
+    testImplementation("app.dodb:smd-test:0.0.11")
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
     testImplementation("org.assertj:assertj-core:3.27.7")
 }
@@ -140,6 +140,7 @@ Available framework-independent utilities include:
 
 `EventSinkStub` and `EventSourceStub` capture messages in send order. `getEventMessages()` returns an immutable snapshot; `reset()` clears captures but preserves source subscriptions.
 `EventSourceStub.send(message)` also delivers synchronously in subscription order within the message's metadata scope, stopping on the first subscriber failure.
+Close the returned `EventSubscription` to unsubscribe.
 
 Command and query stubs match messages by `equals`, so records make convenient test messages:
 

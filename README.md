@@ -27,8 +27,8 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-spring-boot-starter:0.0.10")
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.10")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.11")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.11")
 }
 ```
 
@@ -36,9 +36,9 @@ Without Spring Boot, add the core API and opt into the event store only when dur
 
 ```kotlin
 dependencies {
-    implementation("app.dodb:smd-api:0.0.10")
-    implementation("app.dodb:smd-event-store:0.0.10") // Optional
-    testImplementation("app.dodb:smd-test:0.0.10")
+    implementation("app.dodb:smd-api:0.0.11")
+    implementation("app.dodb:smd-event-store:0.0.11") // Optional
+    testImplementation("app.dodb:smd-test:0.0.11")
 }
 ```
 

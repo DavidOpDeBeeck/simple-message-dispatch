@@ -10,7 +10,7 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-api:0.0.10")
+    implementation("app.dodb:smd-api:0.0.11")
 }
 ```
 
@@ -61,7 +61,7 @@ Context types other than `@MetadataValue` may appear at most once. Multiple meta
 Command and query return types must exactly match `Command<R>` or `Query<R>`. Event handlers return `void` and require `@ProcessingGroup` on the method or class. A method-level processing group
 overrides the class-level value. `@ProcessingGroup` without a value uses `default`.
 
-Within one processing group, matching event handlers run in ascending `@EventHandler(order = ...)` order. Different processing groups have independent delivery.
+Within one processing group, handlers run in ascending `@EventHandler(order = ...)` order and stop on failure. Order between groups is not guaranteed.
 
 ## Metadata and Message Lineage
 
@@ -119,8 +119,8 @@ var eventBus = EventBusSpec.withDefaults()
 ```
 
 - `sync()` runs handlers on the publishing thread.
-- `async().await()` uses virtual threads and waits for all handlers.
-- `async().fireAndForget()` returns immediately; failures cannot be reported to the publisher.
+- `async().await()` uses virtual threads and waits for completion; handlers within a group remain sequential.
+- `async().fireAndForget()` returns after submission; handler exceptions are logged and cannot be reported to the publisher.
 - `source(source)` subscribes the group to incoming events without registering a publication destination.
 - `medium(medium)` subscribes the group to the medium's outlet and registers its inlet as a publication destination.
 - `disabled()` intentionally skips the group.
@@ -139,7 +139,7 @@ The contracts in `app.dodb.smd.api.event.delivery` separate publication from sub
 | `EventMedium` | Pairs an `inlet()` sink with an `outlet()` source         |
 
 Application code publishes through `EventPublisher`, which creates message envelopes, establishes metadata, and runs publication interceptors. The bus sends to sinks in registration order;
-If a sink throws, the bus skips the remaining sinks.
+if a sink throws, the bus skips the remaining sinks. Reusing the same sink does not duplicate publication.
 
 Register outbound destinations independently of processing-group inputs:
 
@@ -171,6 +171,20 @@ Nonmatching messages are ignored. Matching messages and processing-group names a
 
 A sink defines what completion of `send()` means. A source owns delivery threads, ordering, retries, failures, and lifecycle. Custom sources must invoke subscribers inside
 `MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata.
+
+### Subscriptions
+
+`subscribe(...)` returns a closeable `EventSubscription`:
+
+```java
+var dispatcher = new SynchronousEventDispatcher();
+try (var subscription = dispatcher.subscribe(subscriber)) {
+    dispatcher.send(eventMessage);
+}
+```
+
+Closing a built-in subscription removes only that registration and is safe to repeat. Work already underway may finish. Bus-created subscriptions currently last for the application's lifetime;
+manage handles directly for temporary subscriptions.
 
 ## Interceptors and Transactions
 

@@ -46,6 +46,29 @@ class EventSourceStubTest {
         }
     }
 
+    @Test
+    void close_withDuplicateSubscriber_removesOnlyOwnRegistrationIdempotently() {
+        var deliveries = new ArrayList<EventMessage<?>>();
+        var source = new EventSourceStub();
+        var subscriber = new EventSubscriberStub("test", deliveries::add);
+        var message = EventMessage.from(new EventForTest(), METADATA);
+
+        try (var first = source.subscribe(subscriber);
+             var second = source.subscribe(subscriber)) {
+            first.close();
+            first.close();
+            source.send(message);
+
+            assertThat(deliveries).containsExactly(message);
+
+            second.close();
+            source.send(message);
+
+            assertThat(deliveries).containsExactly(message);
+            assertThat(source.getEventMessages()).containsExactly(message, message);
+        }
+    }
+
     private record EventForTest() implements Event {
     }
 }

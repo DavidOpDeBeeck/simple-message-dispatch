@@ -60,6 +60,12 @@ This keeps the domain and use cases independent of the REST and JDBC adapters wh
 
 You need Java 25 and Docker with the Compose plugin.
 
+To use local SMD changes, publish them from the repository root before running the example:
+
+```bash
+./gradlew publishToMavenLocal
+```
+
 From this directory, start PostgreSQL and the application:
 
 ```bash

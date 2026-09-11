@@ -67,6 +67,16 @@ ProcessingGroupsConfigurer processingGroupsConfigurer(EventStore eventStore) {
 
 Publishing stores events inside the publishing transaction. The scheduler polls and delivers them to `ticket-activity` in new transactions.
 
+## Publication and Subscriptions
+
+An enabled store saves every event sent through Spring's default publisher, even with no durable groups or with polling disabled. The serializer must support every published event type.
+
+With Spring, `eventStore.send(message)` joins an existing transaction or commits before returning when none exists. Within an SMD transaction, storage is deferred and rolls back with the transaction.
+
+Closing a subscription stops its future polls and lets an active delivery finish. Close the store to shut down its scheduler; Spring handles this automatically.
+
+An outlet filter skips nonmatching events and advances past them. Changing the filter later does not replay those events.
+
 ## Identify Event Subjects
 
 A subject identifies an ordered sequence within each processing group:
@@ -134,8 +144,8 @@ Each processing group has a scan token and independent state for every subject:
 - The group token advances only across contiguous positions that are no longer blocked.
 - A missing store position pauses the token. After `gap-timeout`, processing skips the missing range and continues.
 
-A fetched batch runs in one transaction. If a later handler fails, the batch rolls back and SMD replays the successful prefix in a smaller transaction before recording the failing subject. Process
-crashes and transaction rollbacks can still cause redelivery.
+A fetched batch runs in one transaction. If a later handler fails, the batch rolls back and SMD replays the successful prefix in a smaller transaction. The failing event is retried on a later poll.
+Crashes and rollbacks can cause redelivery, so handlers must remain idempotent.
 
 `batch-size` limits the number of stored events inspected per poll. A subject beyond that window waits for a later poll even when an earlier subject is in backoff.
 
@@ -234,7 +244,7 @@ Without Spring Boot, add the module directly:
 
 ```kotlin
 dependencies {
-    implementation("app.dodb:smd-event-store:0.0.10")
+    implementation("app.dodb:smd-event-store:0.0.11")
     implementation("tools.jackson.core:jackson-databind:3.0.4")
     runtimeOnly("org.postgresql:postgresql:42.7.10")
 }
@@ -269,8 +279,7 @@ var eventBus = EventBusSpec.withDefaults()
     .create();
 ```
 
-`EventStore` implements `EventMedium`: its inlet defers storage to the publishing transaction, and its outlet polls stored events. Use `.medium(eventStore)` to register both together.
-The transactional interceptor supplies the context required for storage.
+`EventStore` implements `EventMedium`: its inlet stores events through the transaction provider, and its outlet polls them. Use `.medium(eventStore)` to register both together.
 
 Close `EventStore` during application shutdown so its scheduler terminates cleanly. Implement `EventStorage`, `TokenStore`, and `EventSubjectSequenceStore` plus an equivalent schema to support
 another database.
