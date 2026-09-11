@@ -8,8 +8,8 @@ import app.dodb.smd.api.metadata.MetadataFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 
 import static java.util.Objects.requireNonNull;
@@ -44,7 +44,7 @@ public class FireAndForgetEventDispatcher implements EventMedium {
     private FireAndForgetEventDispatcher(ExecutorService executorService, List<EventInterceptor> interceptors) {
         this.executorService = requireNonNull(executorService);
         this.interceptors = requireNonNull(interceptors);
-        this.subscribers = new ArrayList<>();
+        this.subscribers = new CopyOnWriteArrayList<>();
     }
 
     @Override
@@ -77,8 +77,10 @@ public class FireAndForgetEventDispatcher implements EventMedium {
     private class Outlet implements EventSource {
 
         @Override
-        public void subscribe(EventSubscriber subscriber) {
-            subscribers.add(subscriber);
+        public EventSubscription subscribe(EventSubscriber subscriber) {
+            var registration = new EventSubscriberRegistration(subscriber, subscribers);
+            subscribers.add(registration);
+            return registration;
         }
     }
 }

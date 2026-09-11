@@ -4,6 +4,7 @@ import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.delivery.EventSource;
 import app.dodb.smd.api.event.delivery.EventSubscriber;
+import app.dodb.smd.api.event.delivery.EventSubscription;
 import app.dodb.smd.api.metadata.MetadataFactory;
 
 import java.util.List;
@@ -17,8 +18,10 @@ public class EventSourceStub implements EventSource {
     private final List<EventMessage<?>> eventMessages = new CopyOnWriteArrayList<>();
 
     @Override
-    public void subscribe(EventSubscriber subscriber) {
-        subscribers.add(subscriber);
+    public EventSubscription subscribe(EventSubscriber subscriber) {
+        var registration = new EventSubscriberStub(subscriber.processingGroup(), subscriber::on);
+        subscribers.add(registration);
+        return () -> subscribers.remove(registration);
     }
 
     public <E extends Event> void send(EventMessage<E> eventMessage) {

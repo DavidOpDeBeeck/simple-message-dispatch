@@ -16,8 +16,8 @@ public class SelectingEventSource implements EventSource {
     }
 
     @Override
-    public void subscribe(EventSubscriber subscriber) {
-        delegate.subscribe(new SelectingEventSubscriber(subscriber));
+    public EventSubscription subscribe(EventSubscriber subscriber) {
+        return delegate.subscribe(new SelectingEventSubscriber(subscriber));
     }
 
     private class SelectingEventSubscriber implements EventSubscriber {

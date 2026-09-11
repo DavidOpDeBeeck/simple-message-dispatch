@@ -36,15 +36,15 @@ class FireAndForgetEventDispatcherTest {
         var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(processingGroupOne);
-        dispatcher.outlet().subscribe(processingGroupTwo);
+        try (var _ = dispatcher.subscribe(processingGroupOne);
+             var _ = dispatcher.subscribe(processingGroupTwo)) {
+            EventForTest event = new EventForTest("Hello world");
+            dispatcher.send(EventMessage.from(event, METADATA));
 
-        EventForTest event = new EventForTest("Hello world");
-        dispatcher.inlet().send(EventMessage.from(event, METADATA));
-
-        await().untilAsserted(() ->
-            assertThat(eventHandler.getMethodCalled())
-                .containsOnly(1, 2));
+            await().untilAsserted(() ->
+                assertThat(eventHandler.getMethodCalled())
+                    .containsOnly(1, 2));
+        }
     }
 
     @Test
@@ -53,14 +53,14 @@ class FireAndForgetEventDispatcherTest {
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(registry);
+        try (var _ = dispatcher.subscribe(registry)) {
+            EventForTest event = new EventForTest("Hello world");
+            dispatcher.send(EventMessage.from(event, METADATA));
 
-        EventForTest event = new EventForTest("Hello world");
-        dispatcher.inlet().send(EventMessage.from(event, METADATA));
-
-        await().untilAsserted(() ->
-            assertThat(eventHandler.getMethodCalled())
-                .containsOnly(1, 2, 3));
+            await().untilAsserted(() ->
+                assertThat(eventHandler.getMethodCalled())
+                    .containsOnly(1, 2, 3));
+        }
     }
 
     @Test
@@ -69,14 +69,14 @@ class FireAndForgetEventDispatcherTest {
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(registry);
+        try (var _ = dispatcher.subscribe(registry)) {
+            EventForTest event = new EventForTest("Hello world");
+            dispatcher.send(EventMessage.from(event, METADATA));
 
-        EventForTest event = new EventForTest("Hello world");
-        dispatcher.inlet().send(EventMessage.from(event, METADATA));
-
-        await().untilAsserted(() ->
-            assertThat(eventHandler.getMethodCalled())
-                .containsOnly(1));
+            await().untilAsserted(() ->
+                assertThat(eventHandler.getMethodCalled())
+                    .containsOnly(1));
+        }
     }
 
     @Test
@@ -86,15 +86,15 @@ class FireAndForgetEventDispatcherTest {
         var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(processingGroupOne);
-        dispatcher.outlet().subscribe(processingGroupTwo);
+        try (var _ = dispatcher.subscribe(processingGroupOne);
+             var _ = dispatcher.subscribe(processingGroupTwo)) {
+            EventForTest event = new EventForTest("Hello world");
+            dispatcher.send(EventMessage.from(event, METADATA));
 
-        EventForTest event = new EventForTest("Hello world");
-        dispatcher.inlet().send(EventMessage.from(event, METADATA));
-
-        await().untilAsserted(() ->
-            assertThat(eventHandler.getMethodCalled())
-                .containsOnly(1, 2));
+            await().untilAsserted(() ->
+                assertThat(eventHandler.getMethodCalled())
+                    .containsOnly(1, 2));
+        }
     }
 
     @Test
@@ -105,21 +105,21 @@ class FireAndForgetEventDispatcherTest {
             .create();
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(new NestedCommandDispatchingListener(commandBus));
+        try (var _ = dispatcher.subscribe(new NestedCommandDispatchingListener(commandBus))) {
+            var eventMetadata = new Metadata(PRINCIPAL, TIMESTAMP, null, Map.of("key", "value"));
+            var eventMessage = EventMessage.from(new EventForTest("Hello world"), eventMetadata);
 
-        var eventMetadata = new Metadata(PRINCIPAL, TIMESTAMP, null, Map.of("key", "value"));
-        var eventMessage = EventMessage.from(new EventForTest("Hello world"), eventMetadata);
+            dispatcher.send(eventMessage);
 
-        dispatcher.inlet().send(eventMessage);
-
-        await().untilAsserted(() -> {
-            var nestedMetadata = commandHandler.handledMetadata.get();
-            assertThat(nestedMetadata).isNotNull();
-            assertThat(nestedMetadata.principal()).isEqualTo(eventMetadata.principal());
-            assertThat(nestedMetadata.properties()).containsEntry("key", "value");
-            assertThat(nestedMetadata.parentMessageId()).isEqualTo(eventMessage.messageId());
-            assertThat(nestedMetadata.timestamp()).isNotEqualTo(eventMetadata.timestamp());
-        });
+            await().untilAsserted(() -> {
+                var nestedMetadata = commandHandler.handledMetadata.get();
+                assertThat(nestedMetadata).isNotNull();
+                assertThat(nestedMetadata.principal()).isEqualTo(eventMetadata.principal());
+                assertThat(nestedMetadata.properties()).containsEntry("key", "value");
+                assertThat(nestedMetadata.parentMessageId()).isEqualTo(eventMessage.messageId());
+                assertThat(nestedMetadata.timestamp()).isNotEqualTo(eventMetadata.timestamp());
+            });
+        }
     }
 
     public record EventForTest(String value) implements Event {

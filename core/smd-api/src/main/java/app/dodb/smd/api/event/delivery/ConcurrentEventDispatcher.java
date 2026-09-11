@@ -8,6 +8,7 @@ import app.dodb.smd.api.metadata.MetadataFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -43,7 +44,7 @@ public class ConcurrentEventDispatcher implements EventMedium {
     private ConcurrentEventDispatcher(ExecutorService executorService, List<EventInterceptor> interceptors) {
         this.executorService = requireNonNull(executorService);
         this.interceptors = requireNonNull(interceptors);
-        this.subscribers = new ArrayList<>();
+        this.subscribers = new CopyOnWriteArrayList<>();
     }
 
     @Override
@@ -102,8 +103,10 @@ public class ConcurrentEventDispatcher implements EventMedium {
     private class Outlet implements EventSource {
 
         @Override
-        public void subscribe(EventSubscriber subscriber) {
-            subscribers.add(subscriber);
+        public EventSubscription subscribe(EventSubscriber subscriber) {
+            var registration = new EventSubscriberRegistration(subscriber, subscribers);
+            subscribers.add(registration);
+            return registration;
         }
     }
 }

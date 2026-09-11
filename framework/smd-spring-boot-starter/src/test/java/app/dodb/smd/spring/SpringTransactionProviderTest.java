@@ -123,13 +123,13 @@ class SpringTransactionProviderTest {
     }
 
     @Test
-    void defer_outsideScope_throwsIllegalStateException() {
+    void defer_outsideScope_runsCallback() {
         var provider = new SpringTransactionProvider();
+        var deferredCallbacks = new ArrayList<String>();
 
-        assertThatThrownBy(() -> provider.defer(() -> {
-        }))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessage("No active transaction context present");
+        provider.defer(() -> deferredCallbacks.add("deferred callback"));
+
+        assertThat(deferredCallbacks).containsExactly("deferred callback");
     }
 
     @Test

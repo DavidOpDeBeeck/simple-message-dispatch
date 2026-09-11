@@ -4,14 +4,14 @@ import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.metadata.MetadataFactory;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 
 public class SynchronousEventDispatcher implements EventMedium {
 
-    private final List<EventSubscriber> subscribers = new ArrayList<>();
+    private final List<EventSubscriber> subscribers = new CopyOnWriteArrayList<>();
     private final EventSink inlet = new Inlet();
     private final EventSource outlet = new Outlet();
 
@@ -44,8 +44,10 @@ public class SynchronousEventDispatcher implements EventMedium {
     private class Outlet implements EventSource {
 
         @Override
-        public void subscribe(EventSubscriber subscriber) {
-            subscribers.add(subscriber);
+        public EventSubscription subscribe(EventSubscriber subscriber) {
+            var registration = new EventSubscriberRegistration(subscriber, subscribers);
+            subscribers.add(registration);
+            return registration;
         }
     }
 }

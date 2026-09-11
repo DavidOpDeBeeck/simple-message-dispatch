@@ -62,12 +62,7 @@ class SelectingEventSinkTest {
     }
 
     private static EventSink recordingSink(List<EventMessage<?>> eventMessages) {
-        return new EventSink() {
-            @Override
-            public <E extends Event> void send(EventMessage<E> eventMessage) {
-                eventMessages.add(eventMessage);
-            }
-        };
+        return eventMessages::add;
     }
 
     private record SelectedEvent() implements Event {

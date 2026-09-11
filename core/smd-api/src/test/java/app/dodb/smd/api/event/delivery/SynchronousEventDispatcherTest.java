@@ -24,14 +24,14 @@ class SynchronousEventDispatcherTest {
         var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
 
         var dispatcher = new SynchronousEventDispatcher();
-        dispatcher.outlet().subscribe(processingGroupOne);
-        dispatcher.outlet().subscribe(processingGroupTwo);
+        try (var _ = dispatcher.subscribe(processingGroupOne);
+             var _ = dispatcher.subscribe(processingGroupTwo)) {
+            EventForTest event = new EventForTest("Hello world");
+            dispatcher.send(EventMessage.from(event, METADATA));
 
-        EventForTest event = new EventForTest("Hello world");
-        dispatcher.inlet().send(EventMessage.from(event, METADATA));
-
-        assertThat(eventHandler.getMethodCalled())
-            .containsOnly(1, 2);
+            assertThat(eventHandler.getMethodCalled())
+                .containsOnly(1, 2);
+        }
     }
 
     @Test
@@ -40,13 +40,13 @@ class SynchronousEventDispatcherTest {
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
         var dispatcher = new SynchronousEventDispatcher();
-        dispatcher.outlet().subscribe(registry);
+        try (var _ = dispatcher.subscribe(registry)) {
+            EventForTest event = new EventForTest("Hello world");
+            dispatcher.send(EventMessage.from(event, METADATA));
 
-        EventForTest event = new EventForTest("Hello world");
-        dispatcher.inlet().send(EventMessage.from(event, METADATA));
-
-        assertThat(eventHandler.getMethodCalled())
-            .containsExactly(1, 2, 3);
+            assertThat(eventHandler.getMethodCalled())
+                .containsExactly(1, 2, 3);
+        }
     }
 
     @Test
@@ -55,13 +55,13 @@ class SynchronousEventDispatcherTest {
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
         var dispatcher = new SynchronousEventDispatcher();
-        dispatcher.outlet().subscribe(registry);
+        try (var _ = dispatcher.subscribe(registry)) {
+            EventForTest event = new EventForTest("Hello world");
 
-        EventForTest event = new EventForTest("Hello world");
-
-        assertThatThrownBy(() -> dispatcher.inlet().send(EventMessage.from(event, METADATA)))
-            .isInstanceOf(RuntimeException.class)
-            .hasMessage("this is an exception");
+            assertThatThrownBy(() -> dispatcher.send(EventMessage.from(event, METADATA)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("this is an exception");
+        }
     }
 
     public record EventForTest(String value) implements Event {

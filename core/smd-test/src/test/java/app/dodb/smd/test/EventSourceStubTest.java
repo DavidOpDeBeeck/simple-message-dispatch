@@ -18,30 +18,32 @@ class EventSourceStubTest {
     void send_withSubscribers_thenCapturesAndDeliversMessageInSubscriptionOrder() {
         var deliveries = new ArrayList<String>();
         var source = new EventSourceStub();
-        source.subscribe(new EventSubscriberStub("first", eventMessage -> deliveries.add("first")));
-        source.subscribe(new EventSubscriberStub("second", eventMessage -> deliveries.add("second")));
-        var eventMessage = EventMessage.from(new EventForTest(), METADATA);
+        try (var _ = source.subscribe(new EventSubscriberStub("first", eventMessage -> deliveries.add("first")));
+             var _ = source.subscribe(new EventSubscriberStub("second", eventMessage -> deliveries.add("second")))) {
+            var eventMessage = EventMessage.from(new EventForTest(), METADATA);
 
-        source.send(eventMessage);
+            source.send(eventMessage);
 
-        assertThat(source.getEventMessages()).containsExactly(eventMessage);
-        assertThat(deliveries).containsExactly("first", "second");
+            assertThat(source.getEventMessages()).containsExactly(eventMessage);
+            assertThat(deliveries).containsExactly("first", "second");
+        }
     }
 
     @Test
     void reset_withSubscription_thenClearsMessagesAndPreservesSubscription() {
         var deliveries = new ArrayList<EventMessage<?>>();
         var source = new EventSourceStub();
-        source.subscribe(new EventSubscriberStub("test", deliveries::add));
-        source.send(EventMessage.from(new EventForTest(), METADATA));
+        try (var _ = source.subscribe(new EventSubscriberStub("test", deliveries::add))) {
+            source.send(EventMessage.from(new EventForTest(), METADATA));
 
-        source.reset();
-        var eventMessageAfterReset = EventMessage.from(new EventForTest(), METADATA);
-        source.send(eventMessageAfterReset);
+            source.reset();
+            var eventMessageAfterReset = EventMessage.from(new EventForTest(), METADATA);
+            source.send(eventMessageAfterReset);
 
-        assertThat(source.getEventMessages()).containsExactly(eventMessageAfterReset);
-        assertThat(deliveries).hasSize(2);
-        assertThat(deliveries.getLast()).isSameAs(eventMessageAfterReset);
+            assertThat(source.getEventMessages()).containsExactly(eventMessageAfterReset);
+            assertThat(deliveries).hasSize(2);
+            assertThat(deliveries.getLast()).isSameAs(eventMessageAfterReset);
+        }
     }
 
     private record EventForTest() implements Event {

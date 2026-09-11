@@ -51,6 +51,10 @@ subprojects {
         shouldRunAfter(tasks.test)
     }
 
+    tasks.withType<Test>().configureEach {
+        maxParallelForks = Runtime.getRuntime().availableProcessors()
+    }
+
     tasks.named("check") {
         dependsOn(integrationTestTask)
     }

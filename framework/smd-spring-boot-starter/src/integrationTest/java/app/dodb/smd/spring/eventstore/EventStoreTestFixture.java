@@ -35,6 +35,7 @@ import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
 import static java.time.Duration.ZERO;
 import static java.time.Duration.ofMillis;
 import static java.time.Duration.ofSeconds;
+import static java.util.Objects.requireNonNull;
 import static org.springframework.boot.WebApplicationType.NONE;
 
 final class EventStoreTestFixture implements AutoCloseable {
@@ -47,7 +48,7 @@ final class EventStoreTestFixture implements AutoCloseable {
     private final ConfigurableApplicationContext context;
 
     private EventStoreTestFixture(ConfigurableApplicationContext context) {
-        this.context = context;
+        this.context = requireNonNull(context);
     }
 
     static Builder eventStoreTestFixture() {
@@ -165,10 +166,6 @@ final class EventStoreTestFixture implements AutoCloseable {
 
     Optional<EventSequenceState> eventSequenceState(String processingGroup, String subjectId) {
         return bean(EventSubjectSequenceStore.class).eventSequenceState(processingGroup, subjectId);
-    }
-
-    Optional<EventSequenceState> globalEventSequenceState(String processingGroup) {
-        return bean(EventSubjectSequenceStore.class).globalEventSequenceState(processingGroup);
     }
 
     @Override

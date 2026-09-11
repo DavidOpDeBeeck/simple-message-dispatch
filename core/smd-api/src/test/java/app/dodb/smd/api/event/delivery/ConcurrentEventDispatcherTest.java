@@ -40,14 +40,14 @@ class ConcurrentEventDispatcherTest {
         var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(processingGroupOne);
-        dispatcher.outlet().subscribe(processingGroupTwo);
+        try (var _ = dispatcher.subscribe(processingGroupOne);
+             var _ = dispatcher.subscribe(processingGroupTwo)) {
+            EventForTest event = new EventForTest("Hello world");
+            dispatcher.send(EventMessage.from(event, METADATA));
 
-        EventForTest event = new EventForTest("Hello world");
-        dispatcher.inlet().send(EventMessage.from(event, METADATA));
-
-        assertThat(eventHandler.getMethodCalled())
-            .containsOnly(1, 2);
+            assertThat(eventHandler.getMethodCalled())
+                .containsOnly(1, 2);
+        }
     }
 
     @Test
@@ -56,13 +56,13 @@ class ConcurrentEventDispatcherTest {
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(registry);
+        try (var _ = dispatcher.subscribe(registry)) {
+            EventForTest event = new EventForTest("Hello world");
+            dispatcher.send(EventMessage.from(event, METADATA));
 
-        EventForTest event = new EventForTest("Hello world");
-        dispatcher.inlet().send(EventMessage.from(event, METADATA));
-
-        assertThat(eventHandler.getMethodCalled())
-            .containsExactly(1, 2, 3);
+            assertThat(eventHandler.getMethodCalled())
+                .containsExactly(1, 2, 3);
+        }
     }
 
     @Test
@@ -71,13 +71,13 @@ class ConcurrentEventDispatcherTest {
         var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(registry);
+        try (var _ = dispatcher.subscribe(registry)) {
+            EventForTest event = new EventForTest("Hello world");
 
-        EventForTest event = new EventForTest("Hello world");
-
-        assertThatThrownBy(() -> dispatcher.inlet().send(EventMessage.from(event, METADATA)))
-            .isInstanceOf(RuntimeException.class)
-            .hasMessage("this is an exception");
+            assertThatThrownBy(() -> dispatcher.send(EventMessage.from(event, METADATA)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("this is an exception");
+        }
     }
 
     @Test
@@ -85,42 +85,42 @@ class ConcurrentEventDispatcherTest {
         var completed = new CountDownLatch(1);
         var allowCompletion = new CountDownLatch(1);
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(new FailingListener("fast failure"));
-        dispatcher.outlet().subscribe(new AwaitingListener(completed, allowCompletion));
+        try (var _ = dispatcher.subscribe(new FailingListener("fast failure"));
+             var _ = dispatcher.subscribe(new AwaitingListener(completed, allowCompletion))) {
+            var sendThreadFailure = new AtomicReference<Throwable>();
+            var sendThread = Thread.ofPlatform().start(() -> {
+                try {
+                    dispatcher.send(EventMessage.from(new EventForTest("Hello world"), METADATA));
+                } catch (Throwable throwable) {
+                    sendThreadFailure.set(throwable);
+                }
+            });
 
-        var sendThreadFailure = new AtomicReference<Throwable>();
-        var sendThread = Thread.ofPlatform().start(() -> {
-            try {
-                dispatcher.inlet().send(EventMessage.from(new EventForTest("Hello world"), METADATA));
-            } catch (Throwable throwable) {
-                sendThreadFailure.set(throwable);
-            }
-        });
+            assertThat(completed.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(sendThread.isAlive()).isTrue();
 
-        assertThat(completed.await(5, TimeUnit.SECONDS)).isTrue();
-        assertThat(sendThread.isAlive()).isTrue();
+            allowCompletion.countDown();
+            sendThread.join(5000);
 
-        allowCompletion.countDown();
-        sendThread.join(5000);
-
-        assertThat(sendThread.isAlive()).isFalse();
-        assertThat(sendThreadFailure.get())
-            .isInstanceOf(RuntimeException.class)
-            .hasMessage("fast failure");
+            assertThat(sendThread.isAlive()).isFalse();
+            assertThat(sendThreadFailure.get())
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("fast failure");
+        }
     }
 
     @Test
     void dispatch_whenMultipleListenersFail_addsSuppressedFailures() {
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
-        dispatcher.outlet().subscribe(new FailingListener("first failure"));
-        dispatcher.outlet().subscribe(new FailingListener("second failure"));
-
-        assertThatThrownBy(() -> dispatcher.inlet().send(EventMessage.from(new EventForTest("Hello world"), METADATA)))
-            .isInstanceOf(RuntimeException.class)
-            .hasMessage("first failure")
-            .satisfies(throwable -> assertThat(throwable.getSuppressed())
-                .singleElement()
-                .satisfies(suppressed -> assertThat(suppressed).hasMessage("second failure")));
+        try (var _ = dispatcher.subscribe(new FailingListener("first failure"));
+             var _ = dispatcher.subscribe(new FailingListener("second failure"))) {
+            assertThatThrownBy(() -> dispatcher.send(EventMessage.from(new EventForTest("Hello world"), METADATA)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("first failure")
+                .satisfies(throwable -> assertThat(throwable.getSuppressed())
+                    .singleElement()
+                    .satisfies(suppressed -> assertThat(suppressed).hasMessage("second failure")));
+        }
     }
 
     @Test
@@ -138,19 +138,19 @@ class ConcurrentEventDispatcherTest {
         };
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads(List.of(interceptor));
-        dispatcher.outlet().subscribe(new NoopListener());
+        try (var _ = dispatcher.subscribe(new NoopListener())) {
+            var eventMetadata = new Metadata(PRINCIPAL, TIMESTAMP, null, Map.of("key", "value"));
+            var eventMessage = EventMessage.from(new EventForTest("Hello world"), eventMetadata);
 
-        var eventMetadata = new Metadata(PRINCIPAL, TIMESTAMP, null, Map.of("key", "value"));
-        var eventMessage = EventMessage.from(new EventForTest("Hello world"), eventMetadata);
+            dispatcher.send(eventMessage);
 
-        dispatcher.inlet().send(eventMessage);
-
-        var nestedMetadata = queryHandler.handledMetadata.get();
-        assertThat(nestedMetadata).isNotNull();
-        assertThat(nestedMetadata.principal()).isEqualTo(eventMetadata.principal());
-        assertThat(nestedMetadata.properties()).containsEntry("key", "value");
-        assertThat(nestedMetadata.parentMessageId()).isEqualTo(eventMessage.messageId());
-        assertThat(nestedMetadata.timestamp()).isNotEqualTo(eventMetadata.timestamp());
+            var nestedMetadata = queryHandler.handledMetadata.get();
+            assertThat(nestedMetadata).isNotNull();
+            assertThat(nestedMetadata.principal()).isEqualTo(eventMetadata.principal());
+            assertThat(nestedMetadata.properties()).containsEntry("key", "value");
+            assertThat(nestedMetadata.parentMessageId()).isEqualTo(eventMessage.messageId());
+            assertThat(nestedMetadata.timestamp()).isNotEqualTo(eventMetadata.timestamp());
+        }
     }
 
     public record EventForTest(String value) implements Event {

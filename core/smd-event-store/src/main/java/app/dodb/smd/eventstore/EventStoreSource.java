@@ -2,6 +2,7 @@ package app.dodb.smd.eventstore;
 
 import app.dodb.smd.api.event.delivery.EventSource;
 import app.dodb.smd.api.event.delivery.EventSubscriber;
+import app.dodb.smd.api.event.delivery.EventSubscription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,19 +27,20 @@ class EventStoreSource implements EventSource, AutoCloseable {
     }
 
     @Override
-    public void subscribe(EventSubscriber listener) {
+    public EventSubscription subscribe(EventSubscriber listener) {
         if (!schedulingConfig.isEnabled()) {
             LOGGER.info("Event store polling disabled: processingGroup={}", listener.processingGroup());
-            return;
+            return EventSubscription.EMPTY;
         }
 
         var scheduler = schedulingConfig.getScheduler();
-        scheduler.scheduleWithFixedDelay(
+        var polling = scheduler.scheduleWithFixedDelay(
             () -> tokenProcessor.poll(listener),
             schedulingConfig.getInitialDelay().toMillis(),
             schedulingConfig.getPollingDelay().toMillis(),
             MILLISECONDS
         );
+        return () -> polling.cancel(false);
     }
 
     @Override

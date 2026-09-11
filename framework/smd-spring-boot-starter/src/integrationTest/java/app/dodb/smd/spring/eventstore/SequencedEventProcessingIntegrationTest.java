@@ -58,15 +58,15 @@ class SequencedEventProcessingIntegrationTest {
                 .retryBackoffStrategy(fixed(Duration.ZERO))
                 .gapTimeout(ofSeconds(1))
                 .build())) {
-                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
+                try (var _ = eventStore.subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
                     if ("1".equals(sequenceNumber)) {
                         throw new IllegalStateException("global sequence is stuck");
                     }
                     handled.add(sequenceNumber);
-                }));
-
-                await().untilAsserted(() -> assertThat(handled).containsExactly("3"));
+                }))) {
+                    await().untilAsserted(() -> assertThat(handled).containsExactly("3"));
+                }
             }
         }
     }
@@ -85,21 +85,21 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             try (var eventStore = fixture.createEventStore()) {
-                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
+                try (var _ = eventStore.subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     invoked.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
                     if ("subjectId-1".equals(metadata.get(SUBJECT))) {
                         throw new IllegalStateException("subjectId 1 is stuck");
                     }
-                }));
-
-                await().untilAsserted(() -> {
-                    assertThat(invoked).containsExactly("subjectId-1:1", "subjectId-1:1", "subjectId-2:2");
-                    assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
-                        .map(EventSequenceState::status)).contains(ABANDONED);
-                    assertThat(fixture.tokenState(processingGroup)
-                        .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
-                });
+                }))) {
+                    await().untilAsserted(() -> {
+                        assertThat(invoked).containsExactly("subjectId-1:1", "subjectId-1:1", "subjectId-2:2");
+                        assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                            .map(EventSequenceState::status)).contains(ABANDONED);
+                        assertThat(fixture.tokenState(processingGroup)
+                            .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    });
+                }
             }
         }
     }
@@ -123,23 +123,23 @@ class SequencedEventProcessingIntegrationTest {
                 .retryBackoffStrategy(fixed(Duration.ofDays(1)))
                 .gapTimeout(ofSeconds(1))
                 .build())) {
-                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
+                try (var _ = eventStore.subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     if ("subjectId-1".equals(metadata.get(SUBJECT))) {
                         throw new IllegalStateException("subjectId 1 is in backoff");
                     }
                     handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
-                }));
-
-                await().untilAsserted(() -> {
-                    assertThat(handled).containsExactly("subjectId-2:2");
-                    assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
-                        .map(EventSequenceState::status)).contains(FAILED);
-                    assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
-                        .map(EventSequenceState::errorCount)).contains(1);
-                    assertThat(fixture.tokenState(processingGroup)
-                        .flatMap(TokenState::lastProcessedSequenceNumber)).isEmpty();
-                });
+                }))) {
+                    await().untilAsserted(() -> {
+                        assertThat(handled).containsExactly("subjectId-2:2");
+                        assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                            .map(EventSequenceState::status)).contains(FAILED);
+                        assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                            .map(EventSequenceState::errorCount)).contains(1);
+                        assertThat(fixture.tokenState(processingGroup)
+                            .flatMap(TokenState::lastProcessedSequenceNumber)).isEmpty();
+                    });
+                }
             }
         }
     }
@@ -158,16 +158,16 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             try (var eventStore = fixture.createEventStore()) {
-                eventStore.outlet().subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
+                try (var _ = eventStore.subscribe(new EventSubscriberStub(processingGroup, eventMessage -> {
                     var metadata = eventMessage.metadata().properties();
                     handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
-                }));
-
-                await().untilAsserted(() -> {
-                    assertThat(handled).containsExactly("subjectId-1:1", "subjectId-2:2", "subjectId-1:3");
-                    assertThat(fixture.tokenState(processingGroup)
-                        .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
-                });
+                }))) {
+                    await().untilAsserted(() -> {
+                        assertThat(handled).containsExactly("subjectId-1:1", "subjectId-2:2", "subjectId-1:3");
+                        assertThat(fixture.tokenState(processingGroup)
+                            .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    });
+                }
             }
         }
     }

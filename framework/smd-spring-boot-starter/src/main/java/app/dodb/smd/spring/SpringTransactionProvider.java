@@ -16,11 +16,13 @@ public class SpringTransactionProvider implements TransactionProvider {
     private static final ScopedValue<TransactionContext> TRANSACTION_CONTEXT = newInstance();
 
     @Override
+    @Transactional
     public void defer(Runnable runnable) {
-        if (!TRANSACTION_CONTEXT.isBound()) {
-            throw new IllegalStateException("No active transaction context present");
+        if (TRANSACTION_CONTEXT.isBound()) {
+            TRANSACTION_CONTEXT.get().addDeferredWork(runnable);
+            return;
         }
-        TRANSACTION_CONTEXT.get().addDeferredWork(runnable);
+        runnable.run();
     }
 
     @Override

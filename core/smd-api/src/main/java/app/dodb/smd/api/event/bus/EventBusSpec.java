@@ -7,6 +7,7 @@ import app.dodb.smd.api.event.delivery.EventMedium;
 import app.dodb.smd.api.event.delivery.EventSink;
 import app.dodb.smd.api.event.delivery.EventSource;
 import app.dodb.smd.api.event.delivery.EventSubscriber;
+import app.dodb.smd.api.event.delivery.EventSubscription;
 import app.dodb.smd.api.event.delivery.FireAndForgetEventDispatcher;
 import app.dodb.smd.api.event.delivery.SynchronousEventDispatcher;
 import app.dodb.smd.api.metadata.MetadataFactory;
@@ -94,6 +95,7 @@ public class EventBusSpec {
     public EventBus create() {
         var subscriptions = processingGroupsSpec.configure(this);
         for (var subscription : subscriptions) {
+            // These subscriptions need to be closed when the application shuts down, but for now we just subscribe to them and let the application exit.
             subscription.subscribe();
         }
         return new EventBus(new MetadataFactory(principalProvider, timeProvider), interceptors, eventSinks);
@@ -224,8 +226,8 @@ public class EventBusSpec {
             requireNonNull(subscriber);
         }
 
-        private void subscribe() {
-            source.subscribe(subscriber);
+        private EventSubscription subscribe() {
+            return source.subscribe(subscriber);
         }
     }
 
