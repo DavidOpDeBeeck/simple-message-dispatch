@@ -21,4 +21,9 @@ public class SelectingEventSink implements EventSink {
             delegate.send(eventMessage);
         }
     }
+
+    @Override
+    public EventDelivery delivery() {
+        return delegate.delivery();
+    }
 }

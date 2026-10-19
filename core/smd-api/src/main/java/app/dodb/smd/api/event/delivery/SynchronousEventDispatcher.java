@@ -39,6 +39,11 @@ public class SynchronousEventDispatcher implements EventMedium {
                 throw rethrow(e);
             }
         }
+
+        @Override
+        public EventDelivery delivery() {
+            return EventDelivery.SYNC;
+        }
     }
 
     private class Outlet implements EventSource {
@@ -48,6 +53,11 @@ public class SynchronousEventDispatcher implements EventMedium {
             var registration = new EventSubscriberRegistration(subscriber, subscribers);
             subscribers.add(registration);
             return registration;
+        }
+
+        @Override
+        public EventDelivery delivery() {
+            return EventDelivery.SYNC;
         }
     }
 }

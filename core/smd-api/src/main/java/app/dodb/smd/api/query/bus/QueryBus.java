@@ -27,7 +27,7 @@ public class QueryBus implements QueryGateway {
 
     @Override
     public <R, Q extends Query<R>> R send(Q query) {
-        var chain = QueryBusInterceptorChain.<R, Q>create(dispatcher::dispatch, interceptors);
+        var chain = QueryBusInterceptorChain.<R, Q>create(this::dispatch, interceptors);
         return metadataFactory.createScope().run(
             metadata -> QueryMessage.from(query, metadata),
             chain::proceed
@@ -36,7 +36,7 @@ public class QueryBus implements QueryGateway {
 
     @Override
     public <R, Q extends Query<R>> R send(Q query, Metadata queryMetadata) {
-        var chain = QueryBusInterceptorChain.<R, Q>create(dispatcher::dispatch, interceptors);
+        var chain = QueryBusInterceptorChain.<R, Q>create(this::dispatch, interceptors);
         return metadataFactory.createScope(queryMetadata).run(
             metadata -> QueryMessage.from(query, metadata),
             chain::proceed
@@ -45,10 +45,14 @@ public class QueryBus implements QueryGateway {
 
     @Override
     public <R, Q extends Query<R>> R send(QueryMessage<R, Q> queryMessage) {
-        var chain = QueryBusInterceptorChain.<R, Q>create(dispatcher::dispatch, interceptors);
+        var chain = QueryBusInterceptorChain.<R, Q>create(this::dispatch, interceptors);
         return metadataFactory.createScope(queryMessage.metadata()).run(
             queryMessage::withMetadata,
             chain::proceed
         );
+    }
+
+    private <R, Q extends Query<R>> R dispatch(QueryMessage<R, Q> queryMessage) {
+        return MetadataFactory.callInScope(queryMessage, () -> dispatcher.dispatch(queryMessage));
     }
 }

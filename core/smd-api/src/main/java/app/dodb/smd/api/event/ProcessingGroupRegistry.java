@@ -1,6 +1,5 @@
 package app.dodb.smd.api.event;
 
-import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.utils.CollectionUtils;
 import app.dodb.smd.api.utils.LoggingUtils;
 
@@ -84,22 +83,21 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
         });
     }
 
-    public record EventHandlerRegistry(String processingGroup, List<AnnotatedEventHandler<?>> eventHandlers) implements EventSubscriber {
+    public record EventHandlerRegistry(String processingGroup, List<AnnotatedEventHandler<?>> eventHandlers) {
 
         public static EventHandlerRegistry empty(String processingGroup) {
             return new EventHandlerRegistry(processingGroup, emptyList());
         }
 
-        @Override
         @SuppressWarnings("unchecked")
-        public <E extends Event> void on(EventMessage<E> eventMessage) {
+        public <E extends Event> List<EventHandlerBehaviour<E>> handlersFor(EventMessage<E> eventMessage) {
             var payload = eventMessage.payload();
 
-            eventHandlers.stream()
+            return eventHandlers.stream()
                 .filter(eventHandler -> eventHandler.eventType().isAssignableFrom(payload.getClass()))
                 .map(eventHandler -> (EventHandlerBehaviour<E>) eventHandler)
                 .sorted(Comparator.comparing(EventHandlerBehaviour::order))
-                .forEach(eventHandler -> eventHandler.handle(eventMessage));
+                .toList();
         }
 
         public EventHandlerRegistry combine(EventHandlerRegistry registry) {

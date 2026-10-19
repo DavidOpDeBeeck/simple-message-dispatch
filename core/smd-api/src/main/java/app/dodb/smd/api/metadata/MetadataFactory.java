@@ -33,8 +33,15 @@ public class MetadataFactory {
     }
 
     public static void runInScope(Message<?, ?> message, Runnable runnable) {
-        ScopedValue.where(PARENT_METADATA, message.metadata())
-            .run(() -> ScopedValue.where(PARENT_MESSAGE_ID, message.messageId()).run(runnable));
+        callInScope(message, () -> {
+            runnable.run();
+            return null;
+        });
+    }
+
+    public static <T> T callInScope(Message<?, ?> message, Supplier<T> supplier) {
+        return ScopedValue.where(PARENT_METADATA, message.metadata())
+            .call(() -> ScopedValue.where(PARENT_MESSAGE_ID, message.messageId()).call(supplier::get));
     }
 
     private Metadata determineMetadata() {

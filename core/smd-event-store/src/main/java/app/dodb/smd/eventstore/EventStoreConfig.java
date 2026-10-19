@@ -1,6 +1,5 @@
 package app.dodb.smd.eventstore;
 
-import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.serialization.EventSerializer;
@@ -8,7 +7,6 @@ import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 
 import static app.dodb.smd.eventstore.RetryBackoffStrategy.exponential;
@@ -20,7 +18,6 @@ import static java.util.concurrent.Executors.newScheduledThreadPool;
 public class EventStoreConfig {
 
     private final TransactionProvider transactionProvider;
-    private final List<EventInterceptor> interceptors;
     private final EventStorage eventStorage;
     private final EventSerializer eventSerializer;
     private final TokenStore tokenStore;
@@ -30,7 +27,6 @@ public class EventStoreConfig {
 
     private EventStoreConfig(Builder builder) {
         this.transactionProvider = requireNonNull(builder.transactionProvider);
-        this.interceptors = requireNonNull(builder.interceptors);
         this.eventStorage = requireNonNull(builder.eventStorage);
         this.eventSerializer = requireNonNull(builder.eventSerializer);
         this.tokenStore = requireNonNull(builder.tokenStore);
@@ -41,10 +37,6 @@ public class EventStoreConfig {
 
     public TransactionProvider getTransactionProvider() {
         return transactionProvider;
-    }
-
-    public List<EventInterceptor> getInterceptors() {
-        return interceptors;
     }
 
     public EventStorage getEventStorage() {
@@ -73,7 +65,6 @@ public class EventStoreConfig {
 
     public static Builder withDefaults() {
         return new Builder()
-            .interceptors(List.of())
             .schedulingConfig(SchedulingConfig.withDefaults().build())
             .processingConfig(ProcessingConfig.withDefaults().build());
     }
@@ -85,7 +76,6 @@ public class EventStoreConfig {
     public static class Builder {
 
         private TransactionProvider transactionProvider;
-        private List<EventInterceptor> interceptors;
         private TokenStore tokenStore;
         private EventSubjectSequenceStore eventSubjectSequenceStore;
         private EventStorage eventStorage;
@@ -98,11 +88,6 @@ public class EventStoreConfig {
 
         public Builder transactionProvider(TransactionProvider transactionProvider) {
             this.transactionProvider = transactionProvider;
-            return this;
-        }
-
-        public Builder interceptors(List<EventInterceptor> interceptors) {
-            this.interceptors = interceptors;
             return this;
         }
 

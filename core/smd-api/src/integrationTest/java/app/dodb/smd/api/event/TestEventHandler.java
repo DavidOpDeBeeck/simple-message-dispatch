@@ -18,4 +18,10 @@ public class TestEventHandler {
     public void on(AnotherTestEvent event) {
         handledEvents.add(event);
     }
+
+    @EventHandler
+    @ProcessingGroup("1")
+    public void on(FailingTestEvent event) {
+        throw new IllegalStateException("handler failed");
+    }
 }

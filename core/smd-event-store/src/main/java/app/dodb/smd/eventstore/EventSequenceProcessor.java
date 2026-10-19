@@ -1,7 +1,5 @@
 package app.dodb.smd.eventstore;
 
-import app.dodb.smd.api.event.EventInterceptor;
-import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
@@ -12,7 +10,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.List;
 import java.util.UUID;
 
 import static app.dodb.smd.api.metadata.Metadata.withProperties;
@@ -30,16 +27,13 @@ class EventSequenceProcessor {
 
     private final EventSubjectSequenceStore eventSubjectSequenceStore;
     private final EventSerializer eventSerializer;
-    private final List<EventInterceptor> interceptors;
     private final RetryBackoffStrategy retryBackoffStrategy;
 
     EventSequenceProcessor(EventSubjectSequenceStore eventSubjectSequenceStore,
                            EventSerializer eventSerializer,
-                           List<EventInterceptor> interceptors,
                            RetryBackoffStrategy retryBackoffStrategy) {
         this.eventSubjectSequenceStore = requireNonNull(eventSubjectSequenceStore);
         this.eventSerializer = requireNonNull(eventSerializer);
-        this.interceptors = requireNonNull(interceptors);
         this.retryBackoffStrategy = requireNonNull(retryBackoffStrategy);
     }
 
@@ -89,10 +83,7 @@ class EventSequenceProcessor {
             subjectIdOpt.ifPresent(subjectId -> eventProcessingMetadata.put("subjectId", subjectId));
             var eventMessageWithProcessingMetadata = eventMessage.andMetadata(withProperties(eventProcessingMetadata));
 
-            MetadataFactory.runInScope(eventMessageWithProcessingMetadata, () -> {
-                var chain = EventInterceptorChain.create(listener::on, interceptors);
-                chain.proceed(eventMessageWithProcessingMetadata);
-            });
+            MetadataFactory.runInScope(eventMessageWithProcessingMetadata, () -> listener.on(eventMessageWithProcessingMetadata));
         } catch (Exception e) {
             return new Failure(sequenceNumber, subjectIdOpt, e);
         }

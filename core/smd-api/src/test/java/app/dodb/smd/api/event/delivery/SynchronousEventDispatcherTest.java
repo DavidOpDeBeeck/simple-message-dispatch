@@ -1,6 +1,5 @@
 package app.dodb.smd.api.event.delivery;
 
-import app.dodb.smd.api.event.AnnotatedEventHandler;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.EventMessage;
@@ -20,8 +19,8 @@ class SynchronousEventDispatcherTest {
     @Test
     void dispatch_withDifferentProcessingGroup() {
         var eventHandler = new EventHandlerWithDifferentProcessingGroup();
-        var processingGroupOne = AnnotatedEventHandler.from(eventHandler).findBy("1");
-        var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
+        var processingGroupOne = EventHandlersSubscriber.from(eventHandler, "1");
+        var processingGroupTwo = EventHandlersSubscriber.from(eventHandler, "2");
 
         var dispatcher = new SynchronousEventDispatcher();
         try (var _ = dispatcher.subscribe(processingGroupOne);
@@ -37,7 +36,7 @@ class SynchronousEventDispatcherTest {
     @Test
     void dispatch_withDifferentOrders() {
         var eventHandler = new EventHandlerWithDifferentOrders();
-        var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
+        var registry = EventHandlersSubscriber.from(eventHandler, DEFAULT);
 
         var dispatcher = new SynchronousEventDispatcher();
         try (var _ = dispatcher.subscribe(registry)) {
@@ -52,7 +51,7 @@ class SynchronousEventDispatcherTest {
     @Test
     void dispatch_whenEventHandlerThrowsException_thenRethrow() {
         var eventHandler = new EventHandlerThatThrowsException();
-        var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
+        var registry = EventHandlersSubscriber.from(eventHandler, DEFAULT);
 
         var dispatcher = new SynchronousEventDispatcher();
         try (var _ = dispatcher.subscribe(registry)) {

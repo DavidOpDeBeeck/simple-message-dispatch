@@ -1,9 +1,10 @@
 [versions]
-smd = "0.0.11"
+smd = "0.0.12"
 
 # Core libraries
 guava = "33.5.0-jre"
 jackson = "3.0.4"
+opentelemetry = "1.55.0"
 reflections = "0.10.2"
 slf4j = "2.0.17"
 
@@ -24,6 +25,8 @@ postgresql = "42.7.10"
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
 reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
+opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api", version.ref = "opentelemetry" }
+opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing", version.ref = "opentelemetry" }
 slf4j = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 
 # Spring Framework

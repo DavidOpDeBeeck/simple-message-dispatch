@@ -1,5 +1,6 @@
 package app.dodb.smd.eventstore;
 
+import app.dodb.smd.api.event.delivery.EventDelivery;
 import app.dodb.smd.api.event.delivery.EventMedium;
 import app.dodb.smd.api.event.delivery.EventSink;
 import app.dodb.smd.api.event.delivery.EventSource;
@@ -7,6 +8,8 @@ import app.dodb.smd.api.event.delivery.EventSource;
 import static java.util.Objects.requireNonNull;
 
 public class EventStore implements EventMedium, AutoCloseable {
+
+    public static final EventDelivery DELIVERY = new EventDelivery("event-store");
 
     private final EventStoreSink sink;
     private final EventStoreSource source;

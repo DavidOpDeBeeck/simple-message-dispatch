@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.12] - 2026-10-19
+
+- Added `smd-opentelemetry`: `MessageTracing` records each dispatch, each send to a sink, and each processing group's handling as an OpenTelemetry span, and carries the
+  trace context in message metadata (`traceparent`). See [OpenTelemetry](docs/opentelemetry.md).
+- The Spring Boot starter includes `smd-opentelemetry` and registers `MessageTracing` when an `OpenTelemetry` bean exists, outside the transactional interceptors. Set
+  `smd.opentelemetry.enabled=false` to turn it off.
+- The starter's transactional interceptors moved from `HIGHEST_PRECEDENCE` to `SMDAutoConfiguration.TRANSACTION_INTERCEPTOR_ORDER`, one step lower. An interceptor bean
+  ordered at `HIGHEST_PRECEDENCE` now runs outside the transaction.
+- Added `EventSinkInterceptor` and `ProcessingGroupInterceptor`, registered with `.sinkInterceptors(...)` and `.processingGroupInterceptors(...)` on the event bus, or as
+  Spring beans. They replace the interceptor overloads of `ConcurrentEventDispatcher` and `FireAndForgetEventDispatcher` and `EventStoreConfig.Builder.interceptors(...)`,
+  which are removed; register a `ProcessingGroupInterceptor` to run around event handling on any source.
+- Renamed `EventInterceptor`, `EventInterceptorChain`, and `TransactionalEventInterceptor` to `EventBusInterceptor`, `EventBusInterceptorChain`, and
+  `TransactionalEventBusInterceptor` in `app.dodb.smd.api.event.bus`.
+- `EventSink` and `EventSource` require `delivery()`, naming the medium they write to and read from.
+- `ProcessingGroupRegistry.EventHandlerRegistry` is no longer an `EventSubscriber`; `handlersFor(eventMessage)` returns the handlers for an event.
+- Messages a handler sends inherit metadata changed by an interceptor before the handler received the message.
+
 ## [0.0.11] - 2026-09-12
 
 - Added `EventSinkStub` and `EventSourceStub` to `smd-test` with ordered message capture and reset support. Renamed `EventChannelListenerStub` to `EventSubscriberStub`.

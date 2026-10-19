@@ -3,12 +3,12 @@ package app.dodb.smd.spring.eventstore;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
+import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.serialization.ClassNameEventTypeResolver;
 import app.dodb.smd.eventstore.serialization.EventSerializer;
 import app.dodb.smd.eventstore.serialization.EventTypeResolver;
 import app.dodb.smd.eventstore.serialization.JacksonEventSerializer;
 import app.dodb.smd.eventstore.serialization.SMDJacksonModule;
-import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.storage.ConnectionProvider;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
@@ -27,7 +27,6 @@ import org.springframework.context.annotation.Bean;
 import tools.jackson.databind.json.JsonMapper;
 
 import javax.sql.DataSource;
-import java.util.List;
 
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static tools.jackson.databind.SerializationFeature.FAIL_ON_EMPTY_BEANS;
@@ -94,7 +93,6 @@ public class SMDEventStoreAutoConfiguration {
             .tokenStore(tokenStore)
             .eventSequenceStore(eventSubjectSequenceStore)
             .transactionProvider(transactionProvider)
-            .interceptors(List.of())
             .schedulingConfig(EventStoreConfig.SchedulingConfig.withoutDefaults()
                 .enabled(scheduling.isEnabled())
                 .scheduler(newScheduledThreadPool(scheduling.getThreadPoolSize()))

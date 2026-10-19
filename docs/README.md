@@ -26,5 +26,6 @@ If you are new to SMD, follow this path:
 | Customize Spring Boot wiring and event delivery | [Spring Boot](spring-boot.md)         |
 | Store and process events durably                | [Event Store](event-store.md)         |
 | Test handlers and message flows                 | [Testing](testing.md)                 |
+| Trace commands, queries, and events             | [OpenTelemetry](opentelemetry.md)     |
 
 The project is experimental and may introduce breaking changes while it remains in the `0.0.x` line. Check the [changelog](../CHANGELOG.md) when upgrading.

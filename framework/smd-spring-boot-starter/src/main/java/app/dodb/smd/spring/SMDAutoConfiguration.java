@@ -6,13 +6,15 @@ import app.dodb.smd.api.command.PackageBasedCommandHandlerLocator;
 import app.dodb.smd.api.command.bus.CommandBusInterceptor;
 import app.dodb.smd.api.command.bus.CommandBusSpec;
 import app.dodb.smd.api.command.bus.TransactionalCommandBusInterceptor;
-import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventPublisher;
 import app.dodb.smd.api.event.PackageBasedProcessingGroupLocator;
+import app.dodb.smd.api.event.ProcessingGroupInterceptor;
 import app.dodb.smd.api.event.ProcessingGroupLocator;
-import app.dodb.smd.api.event.TransactionalEventInterceptor;
+import app.dodb.smd.api.event.bus.EventBusInterceptor;
 import app.dodb.smd.api.event.bus.EventBusSpec;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
+import app.dodb.smd.api.event.bus.TransactionalEventBusInterceptor;
+import app.dodb.smd.api.event.delivery.EventSinkInterceptor;
 import app.dodb.smd.api.framework.ObjectCreator;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
@@ -39,6 +41,9 @@ import static org.springframework.core.Ordered.HIGHEST_PRECEDENCE;
 
 @AutoConfiguration
 public class SMDAutoConfiguration {
+
+    public static final int TRACING_INTERCEPTOR_ORDER = HIGHEST_PRECEDENCE;
+    public static final int TRANSACTION_INTERCEPTOR_ORDER = TRACING_INTERCEPTOR_ORDER + 1;
 
     @Bean
     @ConditionalOnMissingBean
@@ -89,19 +94,19 @@ public class SMDAutoConfiguration {
     }
 
     @Bean
-    @Order(HIGHEST_PRECEDENCE)
+    @Order(TRANSACTION_INTERCEPTOR_ORDER)
     public CommandBusInterceptor transactionalCommandBusInterceptor(TransactionProvider transactionProvider) {
         return new TransactionalCommandBusInterceptor(transactionProvider);
     }
 
     @Bean
-    @Order(HIGHEST_PRECEDENCE)
-    public EventInterceptor transactionalEventBusInterceptor(TransactionProvider transactionProvider) {
-        return new TransactionalEventInterceptor(transactionProvider);
+    @Order(TRANSACTION_INTERCEPTOR_ORDER)
+    public EventBusInterceptor transactionalEventBusInterceptor(TransactionProvider transactionProvider) {
+        return new TransactionalEventBusInterceptor(transactionProvider);
     }
 
     @Bean
-    @Order(HIGHEST_PRECEDENCE)
+    @Order(TRANSACTION_INTERCEPTOR_ORDER)
     public QueryBusInterceptor transactionalQueryBusInterceptor(TransactionProvider transactionProvider) {
         return new TransactionalQueryBusInterceptor(transactionProvider);
     }
@@ -128,13 +133,17 @@ public class SMDAutoConfiguration {
                                          PrincipalProvider principalProvider,
                                          ProcessingGroupLocator locator,
                                          List<ProcessingGroupsConfigurer> processingGroupsConfigurers,
-                                         List<EventInterceptor> interceptors,
+                                         List<EventBusInterceptor> interceptors,
+                                         List<EventSinkInterceptor> sinkInterceptors,
+                                         List<ProcessingGroupInterceptor> processingGroupInterceptors,
                                          List<EventBusSpecCustomizer> customizers) {
         var spec = EventBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
             .processingGroups(locator, multi(processingGroupsConfigurers))
-            .interceptors(interceptors);
+            .interceptors(interceptors)
+            .sinkInterceptors(sinkInterceptors)
+            .processingGroupInterceptors(processingGroupInterceptors);
         customizers.forEach(customizer -> customizer.customize(spec));
         return spec.create();
     }

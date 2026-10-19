@@ -2,6 +2,7 @@ package app.dodb.smd.eventstore;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.delivery.EventDelivery;
 import app.dodb.smd.api.event.delivery.EventSink;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.serialization.EventSerializer;
@@ -25,5 +26,10 @@ class EventStoreSink implements EventSink {
     @Override
     public <E extends Event> void send(EventMessage<E> eventMessage) {
         transactionProvider.defer(() -> eventStorage.store(eventSerializer.serialize(eventMessage)));
+    }
+
+    @Override
+    public EventDelivery delivery() {
+        return EventStore.DELIVERY;
     }
 }

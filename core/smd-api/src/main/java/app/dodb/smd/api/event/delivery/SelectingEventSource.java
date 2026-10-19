@@ -20,6 +20,11 @@ public class SelectingEventSource implements EventSource {
         return delegate.subscribe(new SelectingEventSubscriber(subscriber));
     }
 
+    @Override
+    public EventDelivery delivery() {
+        return delegate.delivery();
+    }
+
     private class SelectingEventSubscriber implements EventSubscriber {
 
         private final EventSubscriber delegate;
