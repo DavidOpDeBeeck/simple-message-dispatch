@@ -7,6 +7,8 @@ public interface EventSink {
 
     <E extends Event> void send(EventMessage<E> eventMessage);
 
+    EventDelivery delivery();
+
     default EventSink selecting(EventSelector selector) {
         return new SelectingEventSink(this, selector);
     }

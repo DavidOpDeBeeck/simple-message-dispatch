@@ -1,5 +1,6 @@
 package app.dodb.smd.eventstore;
 
+import app.dodb.smd.api.event.delivery.EventDelivery;
 import app.dodb.smd.api.event.delivery.EventSource;
 import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.event.delivery.EventSubscription;
@@ -41,6 +42,11 @@ class EventStoreSource implements EventSource, AutoCloseable {
             MILLISECONDS
         );
         return () -> polling.cancel(false);
+    }
+
+    @Override
+    public EventDelivery delivery() {
+        return EventStore.DELIVERY;
     }
 
     @Override

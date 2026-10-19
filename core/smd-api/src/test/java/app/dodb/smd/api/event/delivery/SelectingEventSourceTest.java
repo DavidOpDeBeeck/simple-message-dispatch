@@ -19,11 +19,7 @@ class SelectingEventSourceTest {
     @Test
     void subscribe_thenPreservesListenerProcessingGroup() {
         var subscribedSubscriber = new AtomicReference<EventSubscriber>();
-        EventSource delegate = subscriber -> {
-            subscribedSubscriber.set(subscriber);
-            return EventSubscription.EMPTY;
-        };
-        var source = new SelectingEventSource(delegate, message -> true);
+        var source = new SelectingEventSource(new CapturingSource(subscribedSubscriber), message -> true);
 
         try (var _ = source.subscribe(new RecordingEventSubscriber("ticket-view"))) {
             assertThat(subscribedSubscriber.get().processingGroup()).isEqualTo("ticket-view");
@@ -84,6 +80,20 @@ class SelectingEventSourceTest {
     void construct_withNullSelector_thenRejectsSelector() {
         assertThatNullPointerException()
             .isThrownBy(() -> new SelectingEventSource(new SynchronousEventDispatcher().outlet(), null));
+    }
+
+    private record CapturingSource(AtomicReference<EventSubscriber> subscribed) implements EventSource {
+
+        @Override
+        public EventSubscription subscribe(EventSubscriber subscriber) {
+            subscribed.set(subscriber);
+            return EventSubscription.EMPTY;
+        }
+
+        @Override
+        public EventDelivery delivery() {
+            return new EventDelivery("capturing");
+        }
     }
 
     private static class RecordingEventSubscriber implements EventSubscriber {

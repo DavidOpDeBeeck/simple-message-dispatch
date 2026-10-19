@@ -1,10 +1,11 @@
 package app.dodb.smd.api.event.bus;
 
-import app.dodb.smd.api.event.EventInterceptor;
+import app.dodb.smd.api.event.ProcessingGroupInterceptor;
 import app.dodb.smd.api.event.ProcessingGroupLocator;
 import app.dodb.smd.api.event.delivery.ConcurrentEventDispatcher;
 import app.dodb.smd.api.event.delivery.EventMedium;
 import app.dodb.smd.api.event.delivery.EventSink;
+import app.dodb.smd.api.event.delivery.EventSinkInterceptor;
 import app.dodb.smd.api.event.delivery.EventSource;
 import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.event.delivery.EventSubscription;
@@ -50,7 +51,9 @@ public class EventBusSpec {
 
     private TimeProvider timeProvider;
     private PrincipalProvider principalProvider;
-    private final List<EventInterceptor> interceptors = new ArrayList<>();
+    private final List<EventBusInterceptor> interceptors = new ArrayList<>();
+    private final List<EventSinkInterceptor> sinkInterceptors = new ArrayList<>();
+    private final List<ProcessingGroupInterceptor> processingGroupInterceptors = new ArrayList<>();
     private final Set<EventSink> eventSinks = new LinkedHashSet<>();
     private ProcessingGroupsSpec processingGroupsSpec;
 
@@ -64,12 +67,30 @@ public class EventBusSpec {
         return this;
     }
 
-    public EventBusSpec interceptors(EventInterceptor... interceptors) {
-        return interceptors(asList(interceptors));
+    public EventBusSpec interceptors(EventBusInterceptor... interceptors) {
+        return interceptors(List.of(interceptors));
     }
 
-    public EventBusSpec interceptors(List<EventInterceptor> interceptors) {
+    public EventBusSpec interceptors(List<EventBusInterceptor> interceptors) {
         this.interceptors.addAll(interceptors);
+        return this;
+    }
+
+    public EventBusSpec sinkInterceptors(EventSinkInterceptor... sinkInterceptors) {
+        return sinkInterceptors(List.of(sinkInterceptors));
+    }
+
+    public EventBusSpec sinkInterceptors(List<EventSinkInterceptor> sinkInterceptors) {
+        this.sinkInterceptors.addAll(sinkInterceptors);
+        return this;
+    }
+
+    public EventBusSpec processingGroupInterceptors(ProcessingGroupInterceptor... processingGroupInterceptors) {
+        return processingGroupInterceptors(List.of(processingGroupInterceptors));
+    }
+
+    public EventBusSpec processingGroupInterceptors(List<ProcessingGroupInterceptor> processingGroupInterceptors) {
+        this.processingGroupInterceptors.addAll(processingGroupInterceptors);
         return this;
     }
 
@@ -98,7 +119,7 @@ public class EventBusSpec {
             // These subscriptions need to be closed when the application shuts down, but for now we just subscribe to them and let the application exit.
             subscription.subscribe();
         }
-        return new EventBus(new MetadataFactory(principalProvider, timeProvider), interceptors, eventSinks);
+        return new EventBus(new MetadataFactory(principalProvider, timeProvider), interceptors, sinkInterceptors, eventSinks);
     }
 
     public static class ProcessingGroupsSpec {
@@ -126,7 +147,6 @@ public class EventBusSpec {
 
             var subscriptions = new ArrayList<EventSourceSubscription>();
             for (var processingGroup : allProcessingGroups) {
-                var listener = processingGroupRegistry.findBy(processingGroup);
                 var spec = processingGroupSpecByName.getOrDefault(processingGroup, defaultProcessingGroupSpec);
 
                 if (spec.disabled) {
@@ -146,7 +166,10 @@ public class EventBusSpec {
                     eventBusSpec.sinks(spec.eventSink);
                 }
 
-                subscriptions.add(new EventSourceSubscription(spec.eventSource, listener));
+                var registry = processingGroupRegistry.findBy(processingGroup);
+                var subscriber = new ProcessingGroupSubscriber(registry, spec.eventSource, eventBusSpec.processingGroupInterceptors);
+
+                subscriptions.add(new EventSourceSubscription(spec.eventSource, subscriber));
             }
             return subscriptions;
         }
@@ -243,32 +266,16 @@ public class EventBusSpec {
             return parent.medium(ConcurrentEventDispatcher.usingVirtualThreads());
         }
 
-        public ProcessingGroupsSpec await(List<EventInterceptor> interceptors) {
-            return parent.medium(ConcurrentEventDispatcher.usingVirtualThreads(interceptors));
-        }
-
         public ProcessingGroupsSpec await(ExecutorService executorService) {
             return parent.medium(ConcurrentEventDispatcher.using(executorService));
-        }
-
-        public ProcessingGroupsSpec await(ExecutorService executorService, List<EventInterceptor> interceptors) {
-            return parent.medium(ConcurrentEventDispatcher.using(executorService, interceptors));
         }
 
         public ProcessingGroupsSpec fireAndForget() {
             return parent.medium(FireAndForgetEventDispatcher.usingVirtualThreads());
         }
 
-        public ProcessingGroupsSpec fireAndForget(List<EventInterceptor> interceptors) {
-            return parent.medium(FireAndForgetEventDispatcher.usingVirtualThreads(interceptors));
-        }
-
         public ProcessingGroupsSpec fireAndForget(ExecutorService executorService) {
             return parent.medium(FireAndForgetEventDispatcher.using(executorService));
-        }
-
-        public ProcessingGroupsSpec fireAndForget(ExecutorService executorService, List<EventInterceptor> interceptors) {
-            return parent.medium(FireAndForgetEventDispatcher.using(executorService, interceptors));
         }
     }
 }

@@ -27,7 +27,7 @@ public class CommandBus implements CommandGateway {
 
     @Override
     public <R, C extends Command<R>> R send(C command) {
-        var chain = CommandBusInterceptorChain.<R, C>create(dispatcher::dispatch, interceptors);
+        var chain = CommandBusInterceptorChain.<R, C>create(this::dispatch, interceptors);
         return metadataFactory.createScope().run(
             metadata -> CommandMessage.from(command, metadata),
             chain::proceed
@@ -36,7 +36,7 @@ public class CommandBus implements CommandGateway {
 
     @Override
     public <R, C extends Command<R>> R send(C command, Metadata commandMetadata) {
-        var chain = CommandBusInterceptorChain.<R, C>create(dispatcher::dispatch, interceptors);
+        var chain = CommandBusInterceptorChain.<R, C>create(this::dispatch, interceptors);
         return metadataFactory.createScope(commandMetadata).run(
             metadata -> CommandMessage.from(command, metadata),
             chain::proceed
@@ -45,10 +45,14 @@ public class CommandBus implements CommandGateway {
 
     @Override
     public <R, C extends Command<R>> R send(CommandMessage<R, C> commandMessage) {
-        var chain = CommandBusInterceptorChain.<R, C>create(dispatcher::dispatch, interceptors);
+        var chain = CommandBusInterceptorChain.<R, C>create(this::dispatch, interceptors);
         return metadataFactory.createScope(commandMessage.metadata()).run(
             commandMessage::withMetadata,
             chain::proceed
         );
+    }
+
+    private <R, C extends Command<R>> R dispatch(CommandMessage<R, C> commandMessage) {
+        return MetadataFactory.callInScope(commandMessage, () -> dispatcher.dispatch(commandMessage));
     }
 }

@@ -1,9 +1,7 @@
 package app.dodb.smd.api.event.delivery;
 
-import app.dodb.smd.api.event.AnnotatedEventHandler;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventHandler;
-import app.dodb.smd.api.event.EventInterceptor;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.metadata.Metadata;
@@ -13,6 +11,7 @@ import app.dodb.smd.api.query.Query;
 import app.dodb.smd.api.query.QueryHandler;
 import app.dodb.smd.api.query.QueryHandlerLocator;
 import app.dodb.smd.api.query.QueryHandlerRegistry;
+import app.dodb.smd.api.query.bus.QueryBus;
 import app.dodb.smd.api.query.bus.QueryBusSpec;
 import org.junit.jupiter.api.Test;
 
@@ -36,8 +35,8 @@ class ConcurrentEventDispatcherTest {
     @Test
     void dispatch_withDifferentProcessingGroup() {
         var eventHandler = new EventHandlerWithDifferentProcessingGroup();
-        var processingGroupOne = AnnotatedEventHandler.from(eventHandler).findBy("1");
-        var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
+        var processingGroupOne = EventHandlersSubscriber.from(eventHandler, "1");
+        var processingGroupTwo = EventHandlersSubscriber.from(eventHandler, "2");
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(processingGroupOne);
@@ -53,7 +52,7 @@ class ConcurrentEventDispatcherTest {
     @Test
     void dispatch_withDifferentOrders() {
         var eventHandler = new EventHandlerWithDifferentOrders();
-        var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
+        var registry = EventHandlersSubscriber.from(eventHandler, DEFAULT);
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(registry)) {
@@ -68,7 +67,7 @@ class ConcurrentEventDispatcherTest {
     @Test
     void dispatch_whenEventHandlerThrowsException_thenRethrow() {
         var eventHandler = new EventHandlerThatThrowsException();
-        var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
+        var registry = EventHandlersSubscriber.from(eventHandler, DEFAULT);
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(registry)) {
@@ -124,21 +123,14 @@ class ConcurrentEventDispatcherTest {
     }
 
     @Test
-    void dispatch_withAsyncInterceptor_nestedQueryInheritsEventMetadata() {
+    void dispatch_subscriberSendingAQuery_queryInheritsEventMetadata() {
         var queryHandler = new QueryHandlerForMetadata();
         var queryBus = QueryBusSpec.withDefaults()
             .queryHandlers(new StaticQueryHandlerLocator(AnnotatedQueryHandler.from(queryHandler)))
             .create();
-        EventInterceptor interceptor = new EventInterceptor() {
-            @Override
-            public <E extends Event> void intercept(EventMessage<E> eventMessage, app.dodb.smd.api.event.EventInterceptorChain<E> chain) {
-                queryBus.send(new QueryForMetadata());
-                chain.proceed(eventMessage);
-            }
-        };
 
-        var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads(List.of(interceptor));
-        try (var _ = dispatcher.subscribe(new NoopListener())) {
+        var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
+        try (var _ = dispatcher.subscribe(new QueryingListener(queryBus))) {
             var eventMetadata = new Metadata(PRINCIPAL, TIMESTAMP, null, Map.of("key", "value"));
             var eventMessage = EventMessage.from(new EventForTest("Hello world"), eventMetadata);
 
@@ -211,7 +203,13 @@ class ConcurrentEventDispatcherTest {
         }
     }
 
-    private static class NoopListener implements EventSubscriber {
+    private static class QueryingListener implements EventSubscriber {
+
+        private final QueryBus queryBus;
+
+        private QueryingListener(QueryBus queryBus) {
+            this.queryBus = queryBus;
+        }
 
         @Override
         public String processingGroup() {
@@ -220,6 +218,7 @@ class ConcurrentEventDispatcherTest {
 
         @Override
         public <E extends Event> void on(EventMessage<E> eventMessage) {
+            queryBus.send(new QueryForMetadata());
         }
     }
 

@@ -102,9 +102,45 @@ CommandBusInterceptor loggingInterceptor() {
 }
 ```
 
-The starter registers transactional command, query, and event-publication interceptors at highest precedence. They use Spring transactions through `TransactionProvider`. Synchronous handlers execute
-inside that transaction. Work moved to an asynchronous dispatcher does not inherit Spring's thread-bound transaction. With `async().await()`, a failure can roll back the publisher's transaction even
-though worker-thread side effects cannot be rolled back with it. Use idempotent or independently transactional side effects when configuring asynchronous delivery.
+Every `CommandBusInterceptor`, `QueryBusInterceptor`, `EventBusInterceptor`, `EventSinkInterceptor`, and `ProcessingGroupInterceptor` bean is registered; see
+[Interceptors and Transactions](core-api.md#interceptors-and-transactions) for where each runs.
+
+The starter registers transactional command, query, and event bus interceptors at `SMDAutoConfiguration.TRANSACTION_INTERCEPTOR_ORDER`, one step below highest precedence
+so that `MessageTracing` at `TRACING_INTERCEPTOR_ORDER` wraps them. They use Spring transactions through `TransactionProvider`. Synchronous handlers execute inside that
+transaction. Work moved to an asynchronous dispatcher does not inherit Spring's thread-bound transaction. With `async().await()`, a failure can roll back the publisher's
+transaction even though worker-thread side effects cannot be rolled back with it. Use idempotent or independently transactional side effects when configuring asynchronous
+delivery.
+
+## OpenTelemetry
+
+The starter includes `smd-opentelemetry`. Add an OpenTelemetry setup to record every bus invocation as an OpenTelemetry span:
+
+```kotlin
+implementation("org.springframework.boot:spring-boot-starter-opentelemetry")
+```
+
+`spring-boot-starter-opentelemetry` exports over OTLP and also brings the OTLP metrics registry. For tracing only, add `org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry` and
+`io.micrometer:micrometer-tracing-bridge-otel` instead, with `io.opentelemetry:opentelemetry-exporter-otlp` to export over OTLP.
+
+When an `OpenTelemetry` bean exists, such as the one of Spring Boot's OpenTelemetry SDK auto-configuration, the starter registers a `MessageTracing` bean and installs it on
+the autoconfigured buses, their sinks, and their processing groups; without one, it records nothing. Tracing runs at `TRACING_INTERCEPTOR_ORDER`, outside the transactional
+interceptors, so a span covers the transaction and records a failure raised at its commit, such as deferred work that throws. Set `smd.opentelemetry.enabled=false` to turn it
+off, or declare a `MessageTracing` bean to replace it. Annotate that bean with `@Order(SMDAutoConfiguration.TRACING_INTERCEPTOR_ORDER)`: without it, it runs inside the
+transaction and its spans miss failures at commit. A `CommandGateway`, `QueryGateway`, or `EventPublisher` bean you build yourself needs `MessageTracing` installed explicitly,
+as shown in [Without Spring](opentelemetry.md#without-spring).
+
+The starter does not configure OpenTelemetry. Set the endpoint, sampling, and resource attributes with Spring Boot's `management.*` properties. Spring Boot samples 10% of
+traces by default, so most invocations are not recorded until you raise the probability:
+
+```yaml
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+```
+
+By default, Spring Boot propagates W3C trace context, which SMD's span links need, and exports through a batch span processor, off the message's thread. See
+[OpenTelemetry](opentelemetry.md) for the recorded spans, their attributes, and their links.
 
 ## Override Infrastructure
 
@@ -142,3 +178,4 @@ complete parameter list.
 - [Event Store](event-store.md) for durable PostgreSQL-backed event processing
 - [Testing](testing.md) for Spring test-scope stubs
 - [Core API](core-api.md) for manual construction and event delivery
+- [OpenTelemetry](opentelemetry.md) for the recorded spans

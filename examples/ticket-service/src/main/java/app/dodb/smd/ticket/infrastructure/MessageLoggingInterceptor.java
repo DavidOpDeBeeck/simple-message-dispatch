@@ -5,9 +5,9 @@ import app.dodb.smd.api.command.CommandMessage;
 import app.dodb.smd.api.command.bus.CommandBusInterceptor;
 import app.dodb.smd.api.command.bus.CommandBusInterceptorChain;
 import app.dodb.smd.api.event.Event;
-import app.dodb.smd.api.event.EventInterceptor;
-import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.bus.EventBusInterceptor;
+import app.dodb.smd.api.event.bus.EventBusInterceptorChain;
 import app.dodb.smd.api.message.Message;
 import app.dodb.smd.api.query.Query;
 import app.dodb.smd.api.query.QueryMessage;
@@ -20,37 +20,37 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.TimeUnit;
 
 @Component
-public class MessageLoggingInterceptor implements CommandBusInterceptor, QueryBusInterceptor, EventInterceptor {
+public class MessageLoggingInterceptor implements CommandBusInterceptor, QueryBusInterceptor, EventBusInterceptor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageLoggingInterceptor.class);
 
     @Override
-    public <R, C extends Command<R>> R intercept(CommandMessage<R, C> message, CommandBusInterceptorChain<R, C> chain) {
+    public <R, C extends Command<R>> R intercept(CommandMessage<R, C> commandMessage, CommandBusInterceptorChain<R, C> chain) {
         long started = System.nanoTime();
         try {
-            return chain.proceed(message);
+            return chain.proceed(commandMessage);
         } finally {
-            log("command", message, started);
+            log("command", commandMessage, started);
         }
     }
 
     @Override
-    public <R, Q extends Query<R>> R intercept(QueryMessage<R, Q> message, QueryBusInterceptorChain<R, Q> chain) {
+    public <R, Q extends Query<R>> R intercept(QueryMessage<R, Q> queryMessage, QueryBusInterceptorChain<R, Q> chain) {
         long started = System.nanoTime();
         try {
-            return chain.proceed(message);
+            return chain.proceed(queryMessage);
         } finally {
-            log("query", message, started);
+            log("query", queryMessage, started);
         }
     }
 
     @Override
-    public <E extends Event> void intercept(EventMessage<E> message, EventInterceptorChain<E> chain) {
+    public <E extends Event> void intercept(EventMessage<E> eventMessage, EventBusInterceptorChain<E> chain) {
         long started = System.nanoTime();
         try {
-            chain.proceed(message);
+            chain.proceed(eventMessage);
         } finally {
-            log("event", message, started);
+            log("event", eventMessage, started);
         }
     }
 

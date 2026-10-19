@@ -244,7 +244,7 @@ Without Spring Boot, add the module directly:
 
 ```kotlin
 dependencies {
-    implementation("app.dodb:smd-event-store:0.0.11")
+    implementation("app.dodb:smd-event-store:0.0.12")
     implementation("tools.jackson.core:jackson-databind:3.0.4")
     runtimeOnly("org.postgresql:postgresql:42.7.10")
 }
@@ -273,7 +273,7 @@ var eventStoreConfig = EventStoreConfig.withDefaults()
 var eventStore = new EventStore(eventStoreConfig);
 
 var eventBus = EventBusSpec.withDefaults()
-    .interceptors(new TransactionalEventInterceptor(transactionProvider))
+    .interceptors(new TransactionalEventBusInterceptor(transactionProvider))
     .sinks(eventStore.inlet())
     .processingGroups(locator, groups -> groups.anyProcessingGroup().source(eventStore.outlet()))
     .create();

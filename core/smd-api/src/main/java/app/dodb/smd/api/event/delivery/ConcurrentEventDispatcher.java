@@ -1,8 +1,6 @@
 package app.dodb.smd.api.event.delivery;
 
 import app.dodb.smd.api.event.Event;
-import app.dodb.smd.api.event.EventInterceptor;
-import app.dodb.smd.api.event.EventInterceptorChain;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.metadata.MetadataFactory;
 
@@ -20,30 +18,20 @@ import static java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor;
 public class ConcurrentEventDispatcher implements EventMedium {
 
     public static ConcurrentEventDispatcher usingVirtualThreads() {
-        return new ConcurrentEventDispatcher(newVirtualThreadPerTaskExecutor(), List.of());
-    }
-
-    public static ConcurrentEventDispatcher usingVirtualThreads(List<EventInterceptor> interceptors) {
-        return new ConcurrentEventDispatcher(newVirtualThreadPerTaskExecutor(), interceptors);
+        return new ConcurrentEventDispatcher(newVirtualThreadPerTaskExecutor());
     }
 
     public static ConcurrentEventDispatcher using(ExecutorService executorService) {
-        return new ConcurrentEventDispatcher(executorService, List.of());
-    }
-
-    public static ConcurrentEventDispatcher using(ExecutorService executorService, List<EventInterceptor> interceptors) {
-        return new ConcurrentEventDispatcher(executorService, interceptors);
+        return new ConcurrentEventDispatcher(executorService);
     }
 
     private final ExecutorService executorService;
-    private final List<EventInterceptor> interceptors;
     private final List<EventSubscriber> subscribers;
     private final EventSink inlet = new Inlet();
     private final EventSource outlet = new Outlet();
 
-    private ConcurrentEventDispatcher(ExecutorService executorService, List<EventInterceptor> interceptors) {
+    private ConcurrentEventDispatcher(ExecutorService executorService) {
         this.executorService = requireNonNull(executorService);
-        this.interceptors = requireNonNull(interceptors);
         this.subscribers = new CopyOnWriteArrayList<>();
     }
 
@@ -67,10 +55,7 @@ public class ConcurrentEventDispatcher implements EventMedium {
             try {
                 for (EventSubscriber subscriber : subscribers) {
                     futures.add(executorService.submit(() -> {
-                        MetadataFactory.runInScope(eventMessage, () -> {
-                            var chain = EventInterceptorChain.<E>create(subscriber::on, interceptors);
-                            chain.proceed(eventMessage);
-                        });
+                        MetadataFactory.runInScope(eventMessage, () -> subscriber.on(eventMessage));
                     }));
                 }
 
@@ -98,6 +83,11 @@ public class ConcurrentEventDispatcher implements EventMedium {
 
             throw rethrow(primaryFailure);
         }
+
+        @Override
+        public EventDelivery delivery() {
+            return EventDelivery.ASYNC_AWAIT;
+        }
     }
 
     private class Outlet implements EventSource {
@@ -107,6 +97,11 @@ public class ConcurrentEventDispatcher implements EventMedium {
             var registration = new EventSubscriberRegistration(subscriber, subscribers);
             subscribers.add(registration);
             return registration;
+        }
+
+        @Override
+        public EventDelivery delivery() {
+            return EventDelivery.ASYNC_AWAIT;
         }
     }
 }

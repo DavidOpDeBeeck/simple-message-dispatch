@@ -70,7 +70,6 @@ final class EventStoreTestFixture implements AutoCloseable {
     EventStore createEventStore(ProcessingConfig processingConfig, ScheduledExecutorService scheduler) {
         return new EventStore(EventStoreConfig.withoutDefaults()
             .transactionProvider(bean(TransactionProvider.class))
-            .interceptors(List.of())
             .eventStorage(bean(EventStorage.class))
             .eventSerializer(bean(EventSerializer.class))
             .tokenStore(bean(TokenStore.class))

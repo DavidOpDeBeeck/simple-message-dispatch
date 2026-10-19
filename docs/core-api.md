@@ -10,7 +10,7 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-api:0.0.11")
+    implementation("app.dodb:smd-api:0.0.12")
 }
 ```
 
@@ -73,7 +73,8 @@ Every message carries:
 - immutable `Map<String, String>` properties
 
 When a handler sends another message, SMD preserves the principal and properties, sets the current message as the parent, and generates a fresh timestamp. This context also crosses SMD's built-in
-asynchronous dispatchers.
+asynchronous dispatchers. The current message is the one the handler received: when a bus or processing group interceptor proceeds with changed metadata, the messages its handlers send
+inherit that metadata.
 
 The gateways also accept `CommandMessage`, `QueryMessage`, and `EventMessage` when you need to supply metadata explicitly. Supplied metadata replaces provider-generated metadata, so include every
 principal, timestamp, parent, and property value that the receiving handler needs.
@@ -132,11 +133,11 @@ conflicting choices for the same group are rejected before any source is subscri
 
 The contracts in `app.dodb.smd.api.event.delivery` separate publication from subscription:
 
-| Contract      | Role                                                    |
-|---------------|---------------------------------------------------------|
-| `EventSink`   | Receives event messages through `send(message)`          |
-| `EventSource` | Registers subscribers through `subscribe(subscriber)`   |
-| `EventMedium` | Pairs an `inlet()` sink with an `outlet()` source         |
+| Contract      | Role                                                                             |
+|---------------|----------------------------------------------------------------------------------|
+| `EventSink`   | Receives event messages through `send(message)` and names its `delivery()`       |
+| `EventSource` | Registers subscribers through `subscribe(subscriber)` and names its `delivery()` |
+| `EventMedium` | Pairs an `inlet()` sink with an `outlet()` source                                |
 
 Application code publishes through `EventPublisher`, which creates message envelopes, establishes metadata, and runs publication interceptors. The bus sends to sinks in registration order;
 if a sink throws, the bus skips the remaining sinks. Reusing the same sink does not duplicate publication.
@@ -172,6 +173,19 @@ Nonmatching messages are ignored. Matching messages and processing-group names a
 A sink defines what completion of `send()` means. A source owns delivery threads, ordering, retries, failures, and lifecycle. Custom sources must invoke subscribers inside
 `MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata.
 
+`delivery()` returns an `EventDelivery` naming the medium a sink writes to or a source reads from: `sync`, `async-await`, and `async-fire-and-forget` for the built-in media,
+`event-store` for the event store, and the delivery of the sink or source it selects from for a selecting one. Name a custom sink or source after the medium it uses, such
+as its broker:
+
+```java
+@Override
+public EventDelivery delivery() {
+    return new EventDelivery("kafka");
+}
+```
+
+Tracing records this name as `messaging.smd.delivery`.
+
 ### Subscriptions
 
 `subscribe(...)` returns a closeable `EventSubscription`:
@@ -188,17 +202,17 @@ manage handles directly for temporary subscriptions.
 
 ## Interceptors and Transactions
 
-An interceptor runs around dispatch and must call `proceed` to continue the chain:
+An interceptor runs around one component, receives the message or a context, and must call `proceed` exactly once to continue the chain:
 
 ```java
 public class LoggingCommandInterceptor implements CommandBusInterceptor {
 
     @Override
     public <R, C extends Command<R>> R intercept(
-            CommandMessage<R, C> message,
+            CommandMessage<R, C> commandMessage,
             CommandBusInterceptorChain<R, C> chain) {
-        System.out.println("Sending " + message.payload().getClass().getSimpleName());
-        return chain.proceed(message);
+        System.out.println("Sending " + commandMessage.payload().getClass().getSimpleName());
+        return chain.proceed(commandMessage);
     }
 }
 ```
@@ -212,10 +226,47 @@ var commandBus = CommandBusSpec.withDefaults()
         .create();
 ```
 
-The interceptor types are `CommandBusInterceptor`, `QueryBusInterceptor`, and `EventInterceptor`. Transactional implementations are available when the application supplies a `TransactionProvider`:
+Each interceptor is named after the component it wraps:
+
+| Interceptor                  | Package                           | Wraps                                   | Receives                 | Registered with                                       |
+|------------------------------|-----------------------------------|-----------------------------------------|--------------------------|-------------------------------------------------------|
+| `CommandBusInterceptor`      | `app.dodb.smd.api.command.bus`    | The command bus dispatching a command   | `CommandMessage`         | `.interceptors(...)` on `CommandBusSpec`              |
+| `QueryBusInterceptor`        | `app.dodb.smd.api.query.bus`      | The query bus dispatching a query       | `QueryMessage`           | `.interceptors(...)` on `QueryBusSpec`                |
+| `EventBusInterceptor`        | `app.dodb.smd.api.event.bus`      | The event bus publishing an event       | `EventMessage`           | `.interceptors(...)` on `EventBusSpec`                |
+| `EventSinkInterceptor`       | `app.dodb.smd.api.event.delivery` | Each sink an event is sent to           | `EventSinkContext`       | `.sinkInterceptors(...)` on `EventBusSpec`            |
+| `ProcessingGroupInterceptor` | `app.dodb.smd.api.event`          | Each processing group handling an event | `ProcessingGroupContext` | `.processingGroupInterceptors(...)` on `EventBusSpec` |
+
+The first interceptor registered wraps the ones after it. A context holds the message and what the component knows about it. Proceed with a changed message, or with
+`context.withEventMessage(message)`, to pass it on; the messages a handler sends inherit the metadata of the message it received. Do not swallow an exception thrown by
+`proceed`: the caller, transaction, and source rely on it to see the failure.
+
+- A command or query bus interceptor runs on the sending thread, around the handler; the handler receives the message the interceptors passed on.
+- An `EventSinkContext` holds the sink and the event message. A sink interceptor runs on the publishing thread, inside the event bus interceptors, once for every registered
+  sink, before the sink's `send`. A selecting sink applies its selector inside `send`, so a sink interceptor also sees the events that selector drops.
+- A `ProcessingGroupContext` holds the processing group, the group's source, and the event message. A processing group interceptor runs on the thread that
+  runs the group's handlers, whichever source delivers the event, and is not called for groups without a handler for the event:
+
+```java
+var eventBus = EventBusSpec.withDefaults()
+        .processingGroups(processingGroupLocator)
+        .processingGroupInterceptors(new ProcessingGroupInterceptor() {
+            @Override
+            public <E extends Event> void intercept(ProcessingGroupContext<E> context, ProcessingGroupInterceptorChain<E> chain) {
+                System.out.println(context.processingGroup() + " handles " + context.eventMessage().payload().getClass().getSimpleName());
+                chain.proceed(context);
+            }
+        })
+        .create();
+```
+
+Transactional bus interceptors are available when the application supplies a `TransactionProvider`:
 
 - `TransactionalCommandBusInterceptor`
 - `TransactionalQueryBusInterceptor`
-- `TransactionalEventInterceptor`
+- `TransactionalEventBusInterceptor`
+
+They run each dispatch in a transaction on the dispatching thread. Handlers on an asynchronous dispatcher run on worker threads, outside that transaction.
+
+With Spring, declare interceptors as beans instead; see [Add Interceptors](spring-boot.md#add-interceptors).
 
 See [Event Store](event-store.md) to attach durable event delivery without Spring.

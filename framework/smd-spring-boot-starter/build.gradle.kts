@@ -1,6 +1,7 @@
 dependencies {
     api(project(":smd-api"))
     api(project(":smd-event-store"))
+    api(project(":smd-opentelemetry"))
 
     api(platform(libs.spring.boot.dependencies))
 
@@ -21,4 +22,5 @@ dependencies {
     integrationTestImplementation(libs.testcontainers.postgresql)
     integrationTestImplementation(libs.testcontainers.junit.jupiter)
     integrationTestImplementation(libs.spring.boot.starter.jdbc)
+    integrationTestImplementation(libs.opentelemetry.sdk.testing)
 }

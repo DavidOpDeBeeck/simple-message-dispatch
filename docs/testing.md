@@ -9,7 +9,7 @@ Add the Spring test module alongside Spring Boot's test starter:
 ```kotlin
 dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.11")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.12")
 }
 ```
 
@@ -91,13 +91,16 @@ The extension exposes:
 
 Stub state is isolated per test and reset automatically by `SMDTestScopeLifecycleExtension`. State owned by application fakes or repositories remains the application's responsibility.
 
+The test buses use the context's interceptor beans, including `MessageTracing` when the context has an `OpenTelemetry` bean. Messages then carry trace context such as
+`traceparent` in their metadata properties: assert on the properties your code sets rather than the whole map, or set `smd.opentelemetry.enabled=false` for the test.
+
 ## Test a Handler Directly
 
 Use `smd-test` when package discovery, interceptors, and the Spring context are irrelevant:
 
 ```kotlin
 dependencies {
-    testImplementation("app.dodb:smd-test:0.0.11")
+    testImplementation("app.dodb:smd-test:0.0.12")
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
     testImplementation("org.assertj:assertj-core:3.27.7")
 }
@@ -138,7 +141,8 @@ Available framework-independent utilities include:
 - `TimeProviderStub`
 - `NoOpTransactionProvider`
 
-`EventSinkStub` and `EventSourceStub` capture messages in send order. `getEventMessages()` returns an immutable snapshot; `reset()` clears captures but preserves source subscriptions.
+`EventSinkStub` and `EventSourceStub` capture messages in send order and name the delivery `testing`. `getEventMessages()` returns an immutable snapshot; `reset()` clears captures but preserves source
+subscriptions.
 `EventSourceStub.send(message)` also delivers synchronously in subscription order within the message's metadata scope, stopping on the first subscriber failure.
 Close the returned `EventSubscription` to unsubscribe.
 

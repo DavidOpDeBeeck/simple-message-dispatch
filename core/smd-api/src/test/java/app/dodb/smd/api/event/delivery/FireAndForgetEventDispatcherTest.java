@@ -6,7 +6,6 @@ import app.dodb.smd.api.command.CommandHandler;
 import app.dodb.smd.api.command.CommandHandlerLocator;
 import app.dodb.smd.api.command.CommandHandlerRegistry;
 import app.dodb.smd.api.command.bus.CommandBusSpec;
-import app.dodb.smd.api.event.AnnotatedEventHandler;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.EventMessage;
@@ -32,8 +31,8 @@ class FireAndForgetEventDispatcherTest {
     @Test
     void dispatch_withDifferentProcessingGroup() {
         var eventHandler = new EventHandlerWithDifferentProcessingGroup();
-        var processingGroupOne = AnnotatedEventHandler.from(eventHandler).findBy("1");
-        var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
+        var processingGroupOne = EventHandlersSubscriber.from(eventHandler, "1");
+        var processingGroupTwo = EventHandlersSubscriber.from(eventHandler, "2");
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(processingGroupOne);
@@ -50,7 +49,7 @@ class FireAndForgetEventDispatcherTest {
     @Test
     void dispatch_withDifferentOrders() {
         var eventHandler = new EventHandlerWithDifferentOrders();
-        var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
+        var registry = EventHandlersSubscriber.from(eventHandler, DEFAULT);
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(registry)) {
@@ -66,7 +65,7 @@ class FireAndForgetEventDispatcherTest {
     @Test
     void dispatch_whenEventHandlerThrowsExceptionInSameProcessingGroup_thenStopProcessingGroupExecution() {
         var eventHandler = new EventHandlerThatThrowsExceptionInSameProcessingGroup();
-        var registry = AnnotatedEventHandler.from(eventHandler).findBy(DEFAULT);
+        var registry = EventHandlersSubscriber.from(eventHandler, DEFAULT);
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(registry)) {
@@ -82,8 +81,8 @@ class FireAndForgetEventDispatcherTest {
     @Test
     void dispatch_whenEventHandlerThrowsExceptionInDifferentProcessingGroup_thenStopProcessingGroupExecution() {
         var eventHandler = new EventHandlerThatThrowsExceptionInDifferentProcessingGroup();
-        var processingGroupOne = AnnotatedEventHandler.from(eventHandler).findBy("1");
-        var processingGroupTwo = AnnotatedEventHandler.from(eventHandler).findBy("2");
+        var processingGroupOne = EventHandlersSubscriber.from(eventHandler, "1");
+        var processingGroupTwo = EventHandlersSubscriber.from(eventHandler, "2");
 
         var dispatcher = FireAndForgetEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(processingGroupOne);

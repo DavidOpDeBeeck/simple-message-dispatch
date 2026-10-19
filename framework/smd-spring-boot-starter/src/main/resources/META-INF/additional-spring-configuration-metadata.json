@@ -1,6 +1,12 @@
 {
   "properties": [
     {
+      "name": "smd.opentelemetry.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether to record the buses' invocations as OpenTelemetry spans when an OpenTelemetry bean exists.",
+      "defaultValue": true
+    },
+    {
       "name": "smd.event-store.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether event store support is enabled.",

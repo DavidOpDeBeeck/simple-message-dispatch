@@ -15,7 +15,7 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-spring-boot-starter:0.0.11")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.12")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 }

@@ -2,9 +2,9 @@ package app.dodb.smd.eventstore;
 
 import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.EventSequenceProcessingResult.Failure;
 import app.dodb.smd.eventstore.EventSequenceProcessingResult.Processed;
+import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.Token;
@@ -37,7 +37,6 @@ class EventStoreTokenProcessor {
         this.eventSequenceProcessor = new EventSequenceProcessor(
             eventSubjectSequenceStore,
             config.getEventSerializer(),
-            config.getInterceptors(),
             processingConfig.getRetryBackoffStrategy()
         );
     }

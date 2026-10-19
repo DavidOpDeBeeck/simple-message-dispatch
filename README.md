@@ -12,6 +12,7 @@ integration.
 | `smd-api`                      | Core command, query, event, metadata, and bus APIs        | [Core API](docs/core-api.md)             |
 | `smd-event-store`              | PostgreSQL 15+ event store, polling, sequencing           | [Event Store Guide](docs/event-store.md) |
 | `smd-test`                     | Test helpers and gateway/publisher stubs                  | [Testing Guide](docs/testing.md)         |
+| `smd-opentelemetry`            | OpenTelemetry spans for every bus invocation              | [OpenTelemetry](docs/opentelemetry.md)   |
 | `smd-spring-boot-starter`      | Spring Boot autoconfiguration and event-store integration | [Spring Boot Guide](docs/spring-boot.md) |
 | `smd-spring-boot-starter-test` | Spring Boot test-scope stubs and lifecycle support        | [Testing Guide](docs/testing.md)         |
 
@@ -19,7 +20,7 @@ integration.
 
 Add `mavenCentral()` and choose one of these starting points.
 
-For Spring Boot, add the starter. It already exposes the core API and event-store module:
+For Spring Boot, add the starter. It already exposes the core API, event-store, and OpenTelemetry modules:
 
 ```kotlin
 repositories {
@@ -27,22 +28,25 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-spring-boot-starter:0.0.11")
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.11")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.12")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.12")
 }
 ```
 
-Without Spring Boot, add the core API and opt into the event store only when durable delivery is required:
+Without Spring Boot, add the core API and opt into the event store only when durable delivery is required, and into OpenTelemetry only when you trace:
 
 ```kotlin
 dependencies {
-    implementation("app.dodb:smd-api:0.0.11")
-    implementation("app.dodb:smd-event-store:0.0.11") // Optional
-    testImplementation("app.dodb:smd-test:0.0.11")
+    implementation("app.dodb:smd-api:0.0.12")
+    implementation("app.dodb:smd-event-store:0.0.12") // Optional
+    implementation("app.dodb:smd-opentelemetry:0.0.12") // Optional
+    testImplementation("app.dodb:smd-test:0.0.12")
 }
 ```
 
 Start with [Getting Started](docs/getting-started.md), or browse the [documentation index](docs/README.md).
+
+To watch an application's commands, queries, and events live, see [SMD Monitor](https://github.com/DavidOpDeBeeck/smd-monitor), an optional monitor built on `smd-opentelemetry`.
 
 ## Examples
 

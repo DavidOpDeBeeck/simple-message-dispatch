@@ -17,13 +17,14 @@ Command, query, and event code intentionally stays symmetrical. Share code only 
 
 ## Module Boundaries
 
-| Module | Responsibility |
-| --- | --- |
-| `core/smd-api` | Messages, buses, handlers, channels, metadata, and framework ports |
-| `core/smd-event-store` | PostgreSQL storage, polling, ordering, retries, and tokens |
-| `core/smd-test` | Framework-independent test support |
-| `framework/smd-spring-boot-starter` | Spring Boot wiring and autoconfiguration |
-| `framework/smd-spring-boot-starter-test` | Spring test support |
+| Module                                   | Responsibility                                                     |
+|------------------------------------------|--------------------------------------------------------------------|
+| `core/smd-api`                           | Messages, buses, handlers, channels, metadata, and framework ports |
+| `core/smd-event-store`                   | PostgreSQL storage, polling, ordering, retries, and tokens         |
+| `core/smd-test`                          | Framework-independent test support                                 |
+| `core/smd-opentelemetry`                 | OpenTelemetry instrumentation                                      |
+| `framework/smd-spring-boot-starter`      | Spring Boot wiring and autoconfiguration                           |
+| `framework/smd-spring-boot-starter-test` | Spring test support                                                |
 
 Core modules must not depend on Spring. Define the smallest required core contract, then adapt it in the framework module. Keep classes near the domain concept they use.
 
@@ -75,7 +76,7 @@ Comment only when transaction, locking, concurrency, lifecycle, or ownership int
 - Keep JDBC direct and auditable: nearby SQL, prepared statements, explicit mapping, try-with-resources, row-count checks, and contextual exceptions.
 - Keep Spring bean methods as explicit assembly code; keep policy in core specs.
 - Log operator-relevant state changes once, with useful identifiers.
-- Prefer names and types over comments. Add Javadoc only for public semantics the API cannot express.
+- Prefer names and types over comments. Do not write Javadoc; a comment that must stay follows the rule above as a `//` comment.
 
 Follow `.editorconfig`: four spaces, same-line braces, one top-level type per file, no wildcard imports, and no routine `final` on parameters or locals. Avoid unrelated formatting.
 
