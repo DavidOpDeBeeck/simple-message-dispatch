@@ -64,8 +64,9 @@ The rules:
 2. **An inbox keeps the source contract.** Each subscriber gets exactly what the wrapped source would deliver to it. Each subscriber's processing group gets its own inbox log.
 3. **The event store owns both lifecycles.** `outbox(...)` starts forwarding on the store's scheduler and stops when the store closes. `inbox(source).subscribe(subscriber)` returns one
    `EventSubscription` that closes both the broker subscription and the store cursor.
-4. **Each wrapper reports the delivery of what it wraps.** A selecting sink or source already does this. So the outbox in front of the JMS sink and the inbox behind the JMS source report
-   `jms` (open question 4).
+4. **Both wrappers report `event-store` as their delivery** (`EventStore.DELIVERY`). Unlike a selecting wrapper, which only filters, they change the medium: a send to the outbox writes to
+   the store, and the inbox's subscriber reads from the store. The wrapped medium's name appears where the event store hands an event to it or takes one from it: on the forward span and on
+   the direct outlet.
 
 The existing store stays what it is: `eventStore.inlet()` and `eventStore.outlet()` read and write the store's own log, `events`.
 
@@ -177,7 +178,7 @@ outbox, inbox or medium is autoconfigured.
 ```
 core/smd-jms                       app.dodb.smd.jms         JmsConfig, JmsDestination, JmsEventMedium, JmsEventSink, JmsEventSource
   api(project(":smd-api"))
-  api(project(":smd-event-store"))   // EventSerializer, SerializedEvent; see open question 5
+  api(project(":smd-event-store"))   // EventSerializer, SerializedEvent; see open question 4
   api("jakarta.jms:jakarta.jms-api:3.1.0")
   integrationTestImplementation("org.apache.activemq:artemis-jakarta-client")
   integrationTestImplementation("org.testcontainers:testcontainers-activemq")
@@ -249,7 +250,7 @@ redelivers, and the retry is a no-op.
   action for it in the first version (see [Decisions](#decisions)).
 - **Broker down.** Because nothing is abandoned, an outage loses nothing and preserves order. But each subject records failures and backs off on its own, so recovery can take up to
   `max-delay` after the broker returns, with one log line per subject per attempt. A group-level pause would fix that, but the outbox needs a signal from the sink to tell "medium unavailable"
-  from "this message failed". See open question 9.
+  from "this message failed". See open question 8.
 - **Interceptors and spans.** At publish time, the bus's sink interceptors run around `outbox.send` as around any sink. At forward time, the store runs its own
   `EventStoreConfig.sinkInterceptors(...)` around `sink.send(message)`, on the polling thread and inside the cursor's batch transaction. The `EventSinkContext` holds the wrapped sink, so
   `MessageTracing` records `send … delivery jms`. A forward that fails records the failure on that span (see [Observability](#observability)).
@@ -278,7 +279,7 @@ With the JMS outlet as the wrapped source, each broker message is handled like t
 - **Failures.** The inbox insert fails only when the database is down, and then rollback and redelivery is the right answer. Handler failures happen later with SMD's per-subject semantics,
   not the broker's DLQ, so a failing subject does not let its later events pass.
 - **Isolation.** Inbound events never enter the `events` log. Groups on `eventStore.outlet()` don't see them, and outboxes never forward them. A group that needs both local and inbound events
-  needs a merged source (open question 11).
+  needs a merged source (open question 10).
 - **Attempt metadata** comes from the inbox log (`sequenceNumber`, `errorCount` and so on), so it is local to this application.
 - **Interceptors and spans.** The store runs `EventStoreConfig.sinkInterceptors(...)` around the inbox insert, on the source's thread and inside its transaction. The `EventSinkContext` holds
   the inbox log as an internal sink reporting `event-store`, so `MessageTracing` records `send … delivery event-store`. The insert is deferred to the end of the transaction, so the span
@@ -330,7 +331,7 @@ Not guaranteed:
 - **With a redelivery delay.** *Spike: with `redelivery-delay = 2s`, rolling back message 1 while 2–5 arrive commits 2, 3, 4, 5, 1. With all five already queued, the outcome was
   timing-dependent.* SMD cannot enforce the broker setting, so the docs must state it.
 - **After dead-lettering**, on the direct outlet. The inbox avoids it.
-- **During consumer membership changes.** Not verified (open question 7).
+- **During consumer membership changes.** Not verified (open question 6).
 - **Across two outboxes.** Two outboxes that split one subject's events by type each keep their own order, but not the subject's order across types.
 - **Missing positions.** A position skipped after `gap-timeout` is never forwarded. This is existing store behavior, and the outbox inherits it.
 - **Clustered Artemis**, which needs grouping handlers. The design assumes one live broker with an HA backup.
@@ -382,10 +383,10 @@ The trace across two applications:
 ```text
 publish TicketOpened                       event                                      (app A, request thread)
 ├─ send TicketOpened                       delivery event-store                       (eventStore.inlet())
-├─ send TicketOpened                       delivery jms                               (outbox: stored in the transaction; name per open question 4)
+├─ send TicketOpened                       delivery event-store                       (outbox: stored in the transaction)
 ├─ send TicketOpened                       delivery jms                               (outbox forward, app A polling thread)
 ├─ send TicketOpened                       delivery event-store                       (inbox insert, app B consumer thread)
-└─ process TicketOpened                    group billing-projection, jms              (app B, inbox polling thread)
+└─ process TicketOpened                    group billing-projection, event-store      (app B, inbox polling thread)
 ```
 
 Every span is a child of `publish`, following the existing rules:
@@ -393,8 +394,9 @@ Every span is a child of `publish`, following the existing rules:
 - the stored metadata carries `publish`'s `traceparent`;
 - a `send` never changes the message's trace context.
 
-`messaging.message.id` is the same across both applications. The gaps between the spans show polling and broker latency. A forward that fails while the broker is down records an error span
-for each attempt. That is visible, but it is noisy until open question 9 is settled.
+`messaging.message.id` is the same across both applications. The two `delivery event-store` sends in app A are the inlet and the outbox. Only the forward says `jms`, so the broker hop
+is the one `jms` span in the trace. The gaps between the spans show polling and broker latency. A forward that fails while the broker is down records an error span
+for each attempt. That is visible, but it is noisy until open question 8 is settled.
 
 **Spring Boot.** The starter installs its `MessageTracing` bean on `EventStoreConfig`, as it does on the buses, at `TRACING_INTERCEPTOR_ORDER`. Without an `OpenTelemetry` bean, or with
 `smd.opentelemetry.enabled=false`, nothing is installed. A user-built `EventStoreConfig` must add `.sinkInterceptors(tracing)` explicitly, and the
@@ -486,18 +488,17 @@ delivery API.
 2. **Latency and throughput.** Each hop waits up to one polling delay (5s by default): outbox forward, then inbox delivery. One forwarder runs per outbox cluster-wide, with one synchronous send
    per event. Options are `LISTEN/NOTIFY` wake-ups, and batched transacted JMS sessions committed before the DB.
 3. **Inbound principal.** Trust it, replace it with a configured principal, or restrict it to an allow-list of `Principal` types?
-4. **Delivery name.** Should the outbox and inbox report the wrapped delivery (`jms`, as a selecting wrapper does) or `event-store`, which describes their own immediate step more literally?
-5. **Serialization placement.** `smd-jms` depends on `smd-event-store` only for `EventSerializer` and `SerializedEvent`. Should they move to `smd-api` or a small `smd-serialization` module
+4. **Serialization placement.** `smd-jms` depends on `smd-event-store` only for `EventSerializer` and `SerializedEvent`. Should they move to `smd-api` or a small `smd-serialization` module
    before 0.1? That would be a breaking package move.
-6. **Gap-timeout latency.** A rolled-back publishing transaction leaves a sequence gap that stalls every cursor, outboxes included, for up to `gap-timeout` (5m). This is existing behavior that
+5. **Gap-timeout latency.** A rolled-back publishing transaction leaves a sequence gap that stalls every cursor, outboxes included, for up to `gap-timeout` (5m). This is existing behavior that
    becomes visible externally.
-7. **Order across consumer reassignment.** Needs a spike: stop a consumer mid-group with prefetched and in-flight messages. Consider `consumerWindowSize = 0` for ordered subscriptions.
-8. **Inbound delivery count.** Should the direct JMS outlet expose `JMSXDeliveryCount` as metadata, like the store's `errorCount`?
-9. **Outage signal.** Correctness needs no new API, because an outbox never abandons. A clean group pause (fast recovery, one log line) needs the sink to say "medium unavailable", for example
+6. **Order across consumer reassignment.** Needs a spike: stop a consumer mid-group with prefetched and in-flight messages. Consider `consumerWindowSize = 0` for ordered subscriptions.
+7. **Inbound delivery count.** Should the direct JMS outlet expose `JMSXDeliveryCount` as metadata, like the store's `errorCount`?
+8. **Outage signal.** Correctness needs no new API, because an outbox never abandons. A clean group pause (fast recovery, one log line) needs the sink to say "medium unavailable", for example
    with an `EventDeliveryUnavailableException` in `smd-api` thrown by `JmsEventSink` on JMS failures. Add it, or accept per-subject backoff?
-10. **Other sink interceptors on the store.** The starter installs `MessageTracing` on the store. Should it also install the application's other `EventSinkInterceptor` beans, as it does on the
+9. **Other sink interceptors on the store.** The starter installs `MessageTracing` on the store. Should it also install the application's other `EventSinkInterceptor` beans, as it does on the
     bus? That would be consistent, but those interceptors would then also see forwards and inbox inserts on polling and consumer threads.
-11. **Merged sources.** A group has one source. A group that needs local and inbound events needs a merging `EventSource`. Is that needed?
+10. **Merged sources.** A group has one source. A group that needs local and inbound events needs a merging `EventSource`. Is that needed?
 
 ## Decisions
 
@@ -507,8 +508,8 @@ delivery API.
   - no spans: the hop is invisible in smd-monitor;
   - user-applied `tracing.traced(sink)` wrappers: easy to forget, and they can't reach the inbox insert;
   - relying on the OTel Java agent's JMS instrumentation: it starts a new trace on the polling thread and overwrites the copied `traceparent`. It remains usable alongside.
-
-  With this choice, open question 4 decides whether the publish-time outbox span and the forward span both read `delivery jms`, or read `event-store` and `jms`.
+- **The outbox and inbox report `event-store` as their `delivery()`.** The publish-time outbox span and the forward span are then distinct (`event-store`, then `jms`), and the inbox
+  group's `process` span says where its handlers read from. The selecting-wrapper precedent of reporting the delegate's delivery does not apply, because these wrappers change the medium.
 - **Poison entries in an outbox** get no operator action in code for now. A blocked subject is visible in `EventSequenceState` and in the forwarder's logs. Fixing it is a database
   operation. Revisit once real usage shows what is needed.
 
@@ -519,6 +520,6 @@ delivery API.
    Tested with built-in dispatchers.
 3. `smd-event-store`: `EventStore.inbox(source)`: insert-if-absent, per-group cursor, combined subscription. Then `EventStore.durable(name, medium)`. Tested with built-in dispatchers.
 4. `core/smd-jms`: `JmsConfig`, `JmsDestination`, `JmsEventMedium` (sink, source, wire format). Artemis integration tests, including the outbox and inbox round trip.
-5. Decide open question 9; if accepted, add the outage signal and the group pause.
+5. Decide open question 8; if accepted, add the outage signal and the group pause.
 6. Starter: `MessageTracing` on `EventStoreConfig`, `SMDJmsAutoConfiguration` and properties, `docs/jms.md` and `opentelemetry.md` updates, and a second application in the
    ticket-service example.
