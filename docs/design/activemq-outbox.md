@@ -11,8 +11,8 @@ Status: proposal, 2026-10-22. Nothing here is implemented or released. Existing 
   EventSource eventStore.inbox(EventSource source)             // received = stored with deduplication, delivered to the subscriber later
   EventMedium eventStore.durable(String name, EventMedium medium) // outbox(name, medium.inlet()) + inbox(medium.outlet())
   ```
-  An outbox forwards exactly what was sent to it. An inbox delivers exactly what the wrapped source delivers, to the same subscriber. Only the timing and the guarantees change, the same way
-  `.selecting(...)` changes only which events pass.
+  An outbox forwards exactly what was sent to it. An inbox delivers exactly what the wrapped source delivers, to the same subscriber. The contract (which events, to whom) stays the same.
+  What changes is the timing, the guarantees, and the medium in between: the event store sits between the application and the wrapped sink or source.
 - **ActiveMQ** is a plain `EventMedium`: `JmsEventMedium` pairs a `JmsEventSink` inlet with a `JmsEventSource` outlet. It is usable on its own when you don't need durability, like the
   built-in dispatchers. Durability comes from wrapping it.
 - **Broker and API.** Target **ActiveMQ Artemis** through **Jakarta Messaging 3.1**, in a generic **`core/smd-jms`** module tested against Artemis. The only Artemis-specific piece is the
@@ -20,7 +20,8 @@ Status: proposal, 2026-10-22. Nothing here is implemented or released. Existing 
 - **No new concept on the bus.** Configuration uses `.sinks(...)`, `.source(...)`, `.medium(...)` and `.selecting(...)` as they are today.
 - **Ordering.** `@SubjectId` maps to `JMSXGroupID`. Per-subject order holds from the outbox to the consumer while group ownership is stable and the broker redelivers without delay. A spike
   confirms both the guarantee and the ways it breaks.
-- **Delivery.** At least once in both directions. Duplicates are dropped by Artemis duplicate detection and permanently by the inbox, which deduplicates by `MessageId`.
+- **Delivery.** At least once in both directions. Duplicates are dropped by Artemis duplicate detection and permanently by the inbox, which deduplicates by `MessageId`. The outbox's
+  at-least-once promise depends on a separate fix to the event store's gap handling: today a transaction that commits after `gap-timeout` is skipped for good (see [Gaps](#gaps)).
 
 ## Context
 
@@ -213,6 +214,7 @@ ALTER TABLE smd_event_store          ADD COLUMN log VARCHAR(255) NOT NULL DEFAUL
 ALTER TABLE smd_token_store          ADD COLUMN log VARCHAR(255) NOT NULL DEFAULT 'events';
 ALTER TABLE smd_event_sequence_state ADD COLUMN log VARCHAR(255) NOT NULL DEFAULT 'events';
 -- keys become (log, message_id), (log, processing_group) and (log, processing_group, subject_id)
+CREATE INDEX smd_event_store_log_sequence ON smd_event_store (log, sequence_number);
 ```
 
 | Log                      | Written by                                 | Read by                                    | Consumer key in token/sequence state |
@@ -221,14 +223,50 @@ ALTER TABLE smd_event_sequence_state ADD COLUMN log VARCHAR(255) NOT NULL DEFAUL
 | `outbox:<name>`          | `outbox(name, sink).send(...)`             | that outbox's forwarder                    | outbox name                          |
 | `inbox:<processingGroup>`| `inbox(source)`'s subscription for a group | that group's subscriber                    | processing group                     |
 
-- **One sequence for all logs.** `sequence_number` stays one `BIGSERIAL`. Each cursor walks the shared sequence and skips other logs' rows, the same way an outlet filter skips nonmatching
-  events today. Gap detection is therefore unchanged: a missing number is still a missing number. (A per-log query that checks holes against the shared sequence is a later optimization.)
+- **One sequence, read per log.** `sequence_number` stays one `BIGSERIAL` shared by all logs. Each cursor reads only its own log:
+
+  ```sql
+  SELECT … FROM smd_event_store
+  WHERE log = ? AND sequence_number > ?
+  ORDER BY sequence_number
+  LIMIT ?
+  ```
+
+  It does not walk the whole sequence. The store reads one batch per poll (`batch-size` rows every `polling-delay`), so a cursor that skipped other logs' rows would be limited by the total
+  traffic of every log. A new outbox on a large table would spend days skipping history before forwarding anything, and a quiet outbox could never catch up with a busy `events` log.
+- **Hole checks.** Positions missing between two rows of one log are usually other logs' rows. When the cursor finds positions missing in its own log, it counts the rows in that range
+  across all logs, using the existing unique index on `sequence_number`:
+
+  ```sql
+  SELECT count(*) FROM smd_event_store WHERE sequence_number > ? AND sequence_number < ?
+  ```
+
+  If every missing position exists in another log, there is no gap and the cursor continues. If any position is missing everywhere, it is a real gap and the store's existing gap handling
+  applies. The check runs only when a hole is found, so it costs nothing on a log that receives all the traffic.
 - **Separate keys per log.** An outbox and a processing group with the same name never share state, and a publication sent to both the inlet and an outbox becomes two rows.
-- **Released behavior.** Existing rows migrate to `events`, and the inlet and outlet behave exactly as today.
+- **Released behavior.** Existing rows migrate to `events`. The `events` log is read with the same query plus `log = 'events'`, so the inlet and outlet behave exactly as today.
 
 The inbox stores with `INSERT … SELECT … WHERE NOT EXISTS (… log = ? AND message_id = ?)`, not `ON CONFLICT DO NOTHING`. PostgreSQL evaluates `nextval` before the conflict check, so every
-duplicate would burn a sequence number, and that gap would stall every cursor for `gap-timeout`. A concurrent race for the same ID still raises a unique violation, which rolls back and
-redelivers, and the retry is a no-op.
+duplicate would burn a sequence number and leave a gap. `NOT EXISTS` does not burn a position for an ordinary redelivery. One case still does: two consumers inserting the same message
+concurrently both pass the check, one hits the unique key, and its rolled-back insert leaves a real gap. That only happens when the broker redelivers a message that another consumer is still
+processing, such as after a consumer crash. It then falls under [Gaps](#gaps), like any rolled-back transaction.
+
+### Gaps
+
+Every log shares one sequence, so a real gap stalls every cursor until it is resolved, whichever log it came from. Today a gap is resolved by waiting `gap-timeout` (5m by default) and then
+skipping it. That skip has two consequences:
+
+- **Latency.** Any rolled-back transaction (a publication, an outbox send or an inbox insert) stalls every cursor, including local handler groups and every outbox, for up to `gap-timeout`.
+- **Loss.** A transaction that commits *after* its position was skipped writes a row behind every cursor, and that row is never read. For handler groups, that is an existing silent loss.
+  For an outbox it breaks the outbox's promise: an entry sent in a successful transaction is never forwarded.
+
+**The outbox's at-least-once promise therefore depends on fixing gap handling first.** The leading candidate replaces the timeout with transaction visibility:
+- each row records its writing transaction (`pg_current_xact_id()`);
+- cursors read only rows from transactions older than `pg_snapshot_xmin(pg_current_snapshot())`, ordered by transaction and position.
+
+Every transaction below that point has finished, so a missing position can be skipped safely and nothing waits for a timeout. The cost is that any long-running transaction in the database
+delays cursors: latency rather than loss. This is an event-store change of its own, needed by handler groups as much as by the outbox, and is designed separately. Until it lands, the outbox's
+guarantee holds only for transactions that commit within `gap-timeout` of taking their position.
 
 ## Outbox Semantics
 
@@ -247,7 +285,8 @@ redelivers, and the retry is a no-op.
 
 - **Never abandon.** A handler group abandons a subject after `max-retries`. An outbox does not: dropping is not an acceptable outbox outcome. A failing subject keeps retrying, capped at
   `max-delay`, and stays visible in `EventSequenceState`. Its later entries wait behind it, which preserves order. A poison entry therefore blocks its subject. SMD offers no operator
-  action for it in the first version (see [Decisions](#decisions)).
+  action for it in the first version (see [Decisions](#decisions)). "Never abandon" covers entries the forwarder reads. An entry whose position was skipped as a gap is never read at all,
+  which is why the outbox depends on the [gap fix](#gaps).
 - **Broker down.** Because nothing is abandoned, an outage loses nothing and preserves order. But each subject records failures and backs off on its own, so recovery can take up to
   `max-delay` after the broker returns, with one log line per subject per attempt. A group-level pause would fix that, but the outbox needs a signal from the sink to tell "medium unavailable"
   from "this message failed". See open question 8.
@@ -265,6 +304,15 @@ redelivers, and the retry is a no-op.
 2. Starts a cursor on `inbox:<processingGroup>` that delivers to `subscriber` with the store's normal semantics: subject order, attempt metadata, retry, backoff and abandonment per
    `processing` settings.
 3. Returns an `EventSubscription` that closes both.
+
+**What the inbox requires of its source.** The inbox's guarantee rests on one rule, which the `EventSource` contract does not state today: *a source may acknowledge or discard a message only
+after `subscriber.on(message)` returns normally, and must redeliver it if `on` throws.* `on` returns only after the insert is durable:
+- inside the source's transaction, the deferred insert runs before that transaction commits, and the source commits it before acknowledging;
+- without a transaction, `TransactionProvider.defer` runs the insert immediately, in its own transaction.
+
+The JMS outlet follows the rule (see the table below). The built-in dispatchers follow it trivially, since they never acknowledge anything. A source that acknowledges before calling `on`, such
+as auto-acknowledging JMS or Kafka auto-commit, can lose messages behind an inbox. This proposal adds the rule to the `EventSource` documentation in `core-api.md` ("A source owns delivery
+threads, ordering, retries, failures, and lifecycle").
 
 With the JMS outlet as the wrapped source, each broker message is handled like this:
 
@@ -333,7 +381,8 @@ Not guaranteed:
 - **After dead-lettering**, on the direct outlet. The inbox avoids it.
 - **During consumer membership changes.** Not verified (open question 6).
 - **Across two outboxes.** Two outboxes that split one subject's events by type each keep their own order, but not the subject's order across types.
-- **Missing positions.** A position skipped after `gap-timeout` is never forwarded. This is existing store behavior, and the outbox inherits it.
+- **Late commits, until the gap fix.** A position skipped after `gap-timeout` is never forwarded. This is existing store behavior, and the outbox inherits it until [gap handling](#gaps)
+  changes.
 - **Clustered Artemis**, which needs grouping handlers. The design assumes one live broker with an HA backup.
 
 ## Wire Format
@@ -414,6 +463,7 @@ Unit tests in `smd-event-store` need no broker, because the outbox and inbox wra
 - `inbox_events_notVisibleOnOutletOrOutbox`, `inbox_close_closesSourceSubscriptionAndCursor`
 - `durable_medium_publishesThroughOutboxAndConsumesThroughInbox`
 - `outlet_existingRows_readAsEventsLog` (migration)
+- `outboxCursor_busyEventsLog_readsOnlyOwnRows`, `cursor_holeFilledByOtherLog_continuesWithoutGap`, `cursor_holeMissingFromAllLogs_detectsGap`
 
 `smd-jms` unit tests: `send_eventMessage_mapsWireFormat` (property by property), `receive_unknownWireVersion_rollsBack`, `subscribe_withoutSubscriberName_fails`,
 `subscribe_queueAlreadySubscribed_failsWithBothGroups`.
@@ -473,6 +523,8 @@ delivery API.
   membership too, which amounts to a log column.
 - **Separate tables per outbox and inbox.** Each would need its own contiguous sequence and its own copies of the token and sequence tables. A shared sequence with a `log` column keeps one
   gap model.
+- **Walking the shared sequence and skipping other logs' rows.** It reuses the outlet-filter mechanism, but a cursor's throughput becomes the total traffic of all logs divided into
+  one batch per poll. A new outbox would start by skipping the whole history.
 - **Send to JMS in the publishing transaction, or after commit.** That is a dual write: a rollback after the send leaves a sent message, and a crash after the commit loses it.
 - **XA / two-phase commit.** Heavy, needs a transaction manager, and SMD core does not own the transaction technology.
 - **Artemis core API or an ActiveMQ-only module.** Vendor lock-in for one property.
@@ -490,8 +542,8 @@ delivery API.
 3. **Inbound principal.** Trust it, replace it with a configured principal, or restrict it to an allow-list of `Principal` types?
 4. **Serialization placement.** `smd-jms` depends on `smd-event-store` only for `EventSerializer` and `SerializedEvent`. Should they move to `smd-api` or a small `smd-serialization` module
    before 0.1? That would be a breaking package move.
-5. **Gap-timeout latency.** A rolled-back publishing transaction leaves a sequence gap that stalls every cursor, outboxes included, for up to `gap-timeout` (5m). This is existing behavior that
-   becomes visible externally.
+5. **Gap handling.** Replace `gap-timeout` with transaction visibility, or something else? This is a prerequisite for the outbox's promise and a fix for an existing loss in handler groups
+   (see [Gaps](#gaps)). It is designed separately.
 6. **Order across consumer reassignment.** Needs a spike: stop a consumer mid-group with prefetched and in-flight messages. Consider `consumerWindowSize = 0` for ordered subscriptions.
 7. **Inbound delivery count.** Should the direct JMS outlet expose `JMSXDeliveryCount` as metadata, like the store's `errorCount`?
 8. **Outage signal.** Correctness needs no new API, because an outbox never abandons. A clean group pause (fast recovery, one log line) needs the sink to say "medium unavailable", for example
@@ -515,7 +567,8 @@ delivery API.
 
 ## Implementation Slices
 
-1. `smd-event-store`: `log` column, per-log cursors and state, and a migration script. `events` behavior is unchanged, so existing tests must pass untouched.
+0. Prerequisite, designed separately: [gap handling](#gaps) that never skips a position whose transaction may still commit.
+1. `smd-event-store`: `log` column, per-log reads with hole checks, per-log state, and a migration script. `events` behavior is unchanged, so existing tests must pass untouched.
 2. `smd-event-store`: `EventStoreConfig.sinkInterceptors(...)` and `EventStore.outbox(name, sink)`: deferred insert, intercepted forwarder without attempt metadata, never-abandon policy.
    Tested with built-in dispatchers.
 3. `smd-event-store`: `EventStore.inbox(source)`: insert-if-absent, per-group cursor, combined subscription. Then `EventStore.durable(name, medium)`. Tested with built-in dispatchers.
