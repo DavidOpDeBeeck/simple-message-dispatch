@@ -74,6 +74,11 @@ The existing store stays what it is: `eventStore.inlet()` and `eventStore.outlet
 ### Without Spring
 
 ```java
+var eventStore = new EventStore(EventStoreConfig.withDefaults()
+        // ... storage, serializer and transaction provider as in docs/event-store.md
+        .sinkInterceptors(tracing)                     // spans for the outbox forward and the inbox insert
+        .build());
+
 var jms = JmsConfig.withDefaults()
         .connectionFactory(connectionFactory)          // jakarta.jms.ConnectionFactory
         .eventSerializer(eventSerializer)              // the event store's serializer: same stable type names
@@ -177,7 +182,7 @@ core/smd-jms                       app.dodb.smd.jms         JmsConfig, JmsDestin
   integrationTestImplementation("org.apache.activemq:artemis-jakarta-client")
   integrationTestImplementation("org.testcontainers:testcontainers-activemq")
 
-core/smd-event-store               app.dodb.smd.eventstore  EventStore.outbox(...), EventStore.inbox(...)   // no JMS dependency
+core/smd-event-store               app.dodb.smd.eventstore  EventStore.outbox/inbox/durable(...), EventStoreConfig.sinkInterceptors(...)   // no JMS or OTel dependency
 
 framework/smd-spring-boot-starter  app.dodb.smd.spring.jms  SMDJmsAutoConfiguration, SMDJmsProperties
   compileOnly(project(":smd-jms"))   // apps opt in by adding app.dodb:smd-jms and spring-boot-starter-artemis
@@ -245,8 +250,9 @@ redelivers, and the retry is a no-op.
 - **Broker down.** Because nothing is abandoned, an outage loses nothing and preserves order. But each subject records failures and backs off on its own, so recovery can take up to
   `max-delay` after the broker returns, with one log line per subject per attempt. A group-level pause would fix that, but the outbox needs a signal from the sink to tell "medium unavailable"
   from "this message failed". See open question 9.
-- **Delivery name and spans.** The outbox's `send` at publish time records a `send … delivery jms` span through the bus's sink interceptors. The later forward runs outside the bus and records
-  no span (open question 10).
+- **Interceptors and spans.** At publish time, the bus's sink interceptors run around `outbox.send` as around any sink. At forward time, the store runs its own
+  `EventStoreConfig.sinkInterceptors(...)` around `sink.send(message)`, on the polling thread and inside the cursor's batch transaction. The `EventSinkContext` holds the wrapped sink, so
+  `MessageTracing` records `send … delivery jms`. A forward that fails records the failure on that span (see [Observability](#observability)).
 - **Scheduling disabled.** Entries are stored but not forwarded, the same as durable groups.
 
 ## Inbox Semantics
@@ -274,6 +280,10 @@ With the JMS outlet as the wrapped source, each broker message is handled like t
 - **Isolation.** Inbound events never enter the `events` log. Groups on `eventStore.outlet()` don't see them, and outboxes never forward them. A group that needs both local and inbound events
   needs a merged source (open question 11).
 - **Attempt metadata** comes from the inbox log (`sequenceNumber`, `errorCount` and so on), so it is local to this application.
+- **Interceptors and spans.** The store runs `EventStoreConfig.sinkInterceptors(...)` around the inbox insert, on the source's thread and inside its transaction. The `EventSinkContext` holds
+  the inbox log as an internal sink reporting `event-store`, so `MessageTracing` records `send … delivery event-store`. The insert is deferred to the end of the transaction, so the span
+  covers handing the insert to the transaction, not the commit. The inlet's `send` span works the same way today. The later delivery to the subscriber is an ordinary processing-group
+  handling with the bus's processing-group interceptors.
 
 ### The JMS Outlet Without an Inbox
 
@@ -363,18 +373,32 @@ domain: it names a class to instantiate and claims an identity. The minimum befo
 
 ## Observability
 
-The trace across two applications, with the current interceptors:
+The store reuses the existing `EventSinkInterceptor` contract for the two steps that run outside the bus: the outbox forward and the inbox insert. `EventStoreConfig.sinkInterceptors(...)` takes
+them, applied in registration order with the first wrapping the rest, as on the bus. There is no new interceptor type, span type or attribute. Both steps record ordinary `send` spans, and
+smd-monitor counts them like any other `send`.
+
+The trace across two applications:
 
 ```text
 publish TicketOpened                       event                                      (app A, request thread)
 ├─ send TicketOpened                       delivery event-store                       (eventStore.inlet())
-└─ send TicketOpened                       delivery jms                               (outbox: stored in the transaction)
-     … forwarded on app A's polling thread, received on app B's consumer thread: no spans …
-   process TicketOpened                    group billing-projection, jms              (app B, inbox polling thread)
+├─ send TicketOpened                       delivery jms                               (outbox: stored in the transaction; name per open question 4)
+├─ send TicketOpened                       delivery jms                               (outbox forward, app A polling thread)
+├─ send TicketOpened                       delivery event-store                       (inbox insert, app B consumer thread)
+└─ process TicketOpened                    group billing-projection, jms              (app B, inbox polling thread)
 ```
 
-App B's `process` span continues app A's `publish`, because the stored metadata carries its `traceparent`. `messaging.message.id` is the same in both applications. The broker hop shows up only
-as the time between the spans. Recording spans for the forward and for the inbox insert is open question 10.
+Every span is a child of `publish`, following the existing rules:
+- the polling and consumer threads have no current span, so a span's parent is the span in the message's metadata;
+- the stored metadata carries `publish`'s `traceparent`;
+- a `send` never changes the message's trace context.
+
+`messaging.message.id` is the same across both applications. The gaps between the spans show polling and broker latency. A forward that fails while the broker is down records an error span
+for each attempt. That is visible, but it is noisy until open question 9 is settled.
+
+**Spring Boot.** The starter installs its `MessageTracing` bean on `EventStoreConfig`, as it does on the buses, at `TRACING_INTERCEPTOR_ORDER`. Without an `OpenTelemetry` bean, or with
+`smd.opentelemetry.enabled=false`, nothing is installed. A user-built `EventStoreConfig` must add `.sinkInterceptors(tracing)` explicitly, and the
+[OpenTelemetry](../opentelemetry.md#without-spring) guide must list it next to the buses.
 
 ## Testing Plan
 
@@ -383,6 +407,7 @@ Unit tests in `smd-event-store` need no broker, because the outbox and inbox wra
 - `outbox_send_forwardsAfterCommitInSubjectOrder`, `outbox_rolledBackTransaction_forwardsNothing`, `outbox_createdAfterPublications_forwardsOnlyLaterSends`
 - `outbox_sinkFails_retriesSubjectWithoutAbandoning`, `outbox_sinkFails_otherSubjectsContinue`, `outbox_duplicateName_fails`
 - `outbox_forward_omitsAttemptMetadata`
+- `outbox_forward_runsStoreSinkInterceptorsAroundWrappedSink`, `inbox_insert_runsStoreSinkInterceptorsInSourceTransaction`
 - `inbox_duplicateMessage_deliveredOnce`, `inbox_duplicateMessage_doesNotCreateSequenceGap`, `inbox_handlerFails_retriedBySubject`
 - `inbox_events_notVisibleOnOutletOrOutbox`, `inbox_close_closesSourceSubscriptionAndCursor`
 - `durable_medium_publishesThroughOutboxAndConsumesThroughInbox`
@@ -400,7 +425,9 @@ Integration tests in `smd-jms`, using Testcontainers PostgreSQL and `ArtemisCont
 - `outlet_handlerFails_redeliveredThenDeadLettered`
 - `roundTrip_traceparentAndLineage_preservedAcrossApplications` (two buses, one broker, `opentelemetry-sdk-testing`)
 
-Spring integration test: `SMDJmsAutoConfiguration` creates `JmsConfig` only with `smd.jms.enabled` and a `ConnectionFactory`, and autoconfigures no outbox or inbox.
+Spring integration tests:
+- `SMDJmsAutoConfiguration` creates `JmsConfig` only with `smd.jms.enabled` and a `ConnectionFactory`, and autoconfigures no outbox or inbox.
+- The event-store autoconfiguration installs `MessageTracing` as a store sink interceptor when an `OpenTelemetry` bean exists, and installs nothing when `smd.opentelemetry.enabled=false`.
 
 Use bounded Awaitility waits and a short polling delay. The spike's `ArtemisContainer` setup (`apache/activemq-artemis:2.42.0`, address settings through
 `-Dbrokerconfig.addressSettings.<match>.<property>`) carries over.
@@ -468,32 +495,30 @@ delivery API.
 8. **Inbound delivery count.** Should the direct JMS outlet expose `JMSXDeliveryCount` as metadata, like the store's `errorCount`?
 9. **Outage signal.** Correctness needs no new API, because an outbox never abandons. A clean group pause (fast recovery, one log line) needs the sink to say "medium unavailable", for example
    with an `EventDeliveryUnavailableException` in `smd-api` thrown by `JmsEventSink` on JMS failures. Add it, or accept per-subject backoff?
-10. **Spans for the hidden hops.** The outbox forward (polling thread) and the inbox insert (consumer thread) run outside the bus, so no interceptor sees them. The event store must not
-    depend on OpenTelemetry, so any span has to come through an interceptor. Options:
-    - **A. No spans.** The trace still connects: app B's `process` continues app A's `publish` through the stored `traceparent`. The broker hop shows only as the time between spans. No API.
-    - **B. Store-level sink interceptors (proposed).** `EventStoreConfig.sinkInterceptors(...)` runs the existing `EventSinkInterceptor` chain around the forward (sink: the wrapped JMS sink,
-      `send … delivery jms` on the polling thread) and around the inbox insert (sink: the inbox log, `send … delivery event-store` on the consumer thread). The starter installs
-      `MessageTracing` there as it does on the buses. No new interceptor or span type, so smd-monitor counts them like any other `send`. The cost is a second place to install interceptors,
-      which manual setups can forget.
-    - **C. Tracing decorators.** `tracing.traced(sink)` in `smd-opentelemetry`, applied by the user: `eventStore.outbox("x", tracing.traced(tickets.inlet()))`. No core change, but it is easy
-      to forget, and it cannot reach the inbox insert, which is internal.
-    - **D. OTel Java agent JMS instrumentation.** The agent traces the raw JMS send and receive, but the polling thread has no current span, so its producer span starts a new trace. It also
-      overwrites the copied `traceparent` property. Useful next to A or B, not instead of them.
-
-    With B, choose the delivery names in question 4 together. If the outbox reports `event-store`, the publish-time span reads `delivery event-store` and the forward reads `delivery jms`,
-    which separates the two steps. If it reports `jms`, both spans say `jms` and only the thread tells them apart.
+10. **Other sink interceptors on the store.** The starter installs `MessageTracing` on the store. Should it also install the application's other `EventSinkInterceptor` beans, as it does on the
+    bus? That would be consistent, but those interceptors would then also see forwards and inbox inserts on polling and consumer threads.
 11. **Merged sources.** A group has one source. A group that needs local and inbound events needs a merging `EventSource`. Is that needed?
+
 ## Decisions
 
 - **`eventStore.durable(name, medium)`** is part of the API: an outbox inlet plus an inbox outlet for `.medium(...)` composition.
+- **Tracing the outbox forward and the inbox insert** uses `EventStoreConfig.sinkInterceptors(...)` with the existing `EventSinkInterceptor` contract, and the starter installs
+  `MessageTracing` there (see [Observability](#observability)). Rejected:
+  - no spans: the hop is invisible in smd-monitor;
+  - user-applied `tracing.traced(sink)` wrappers: easy to forget, and they can't reach the inbox insert;
+  - relying on the OTel Java agent's JMS instrumentation: it starts a new trace on the polling thread and overwrites the copied `traceparent`. It remains usable alongside.
+
+  With this choice, open question 4 decides whether the publish-time outbox span and the forward span both read `delivery jms`, or read `event-store` and `jms`.
 - **Poison entries in an outbox** get no operator action in code for now. A blocked subject is visible in `EventSequenceState` and in the forwarder's logs. Fixing it is a database
   operation. Revisit once real usage shows what is needed.
 
 ## Implementation Slices
 
 1. `smd-event-store`: `log` column, per-log cursors and state, and a migration script. `events` behavior is unchanged, so existing tests must pass untouched.
-2. `smd-event-store`: `EventStore.outbox(name, sink)`: deferred insert, forwarder without attempt metadata, never-abandon policy. Tested with built-in dispatchers.
+2. `smd-event-store`: `EventStoreConfig.sinkInterceptors(...)` and `EventStore.outbox(name, sink)`: deferred insert, intercepted forwarder without attempt metadata, never-abandon policy.
+   Tested with built-in dispatchers.
 3. `smd-event-store`: `EventStore.inbox(source)`: insert-if-absent, per-group cursor, combined subscription. Then `EventStore.durable(name, medium)`. Tested with built-in dispatchers.
 4. `core/smd-jms`: `JmsConfig`, `JmsDestination`, `JmsEventMedium` (sink, source, wire format). Artemis integration tests, including the outbox and inbox round trip.
 5. Decide open question 9; if accepted, add the outage signal and the group pause.
-6. Starter: `SMDJmsAutoConfiguration` and properties, `docs/jms.md`, and a second application in the ticket-service example.
+6. Starter: `MessageTracing` on `EventStoreConfig`, `SMDJmsAutoConfiguration` and properties, `docs/jms.md` and `opentelemetry.md` updates, and a second application in the
+   ticket-service example.
