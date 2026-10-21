@@ -130,4 +130,21 @@ class InMemoryEventSubjectSequenceStoreTest {
             assertThat(state.lastErrorAt()).isPresent();
         });
     }
+
+    @Test
+    void deleteSequences_removesOnlySequencesOfProcessingGroup() {
+        var store = new InMemoryEventSubjectSequenceStore();
+        store.claimGlobal("reset-group").orElseThrow().markProcessed(1L);
+        store.claimSubject("reset-group", "first").orElseThrow().markProcessed(2L);
+        store.claimSubject("reset-group", "second").orElseThrow().markAbandoned(3L, new IllegalStateException("failure"));
+        store.claimSubject("other-group", "first").orElseThrow().markProcessed(2L);
+
+        var deleted = store.deleteSequences("reset-group");
+
+        assertThat(deleted).isEqualTo(3);
+        assertThat(store.globalEventSequenceState("reset-group")).isEmpty();
+        assertThat(store.eventSequenceState("reset-group", "first")).isEmpty();
+        assertThat(store.eventSequenceState("reset-group", "second")).isEmpty();
+        assertThat(store.eventSequenceState("other-group", "first")).isPresent();
+    }
 }

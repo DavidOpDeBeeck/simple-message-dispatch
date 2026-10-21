@@ -5,6 +5,7 @@ import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.eventstore.storage.TokenStore;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,6 +32,11 @@ public class InMemoryTokenStore implements TokenStore {
     }
 
     @Override
+    public Optional<Token> claimTokenForReset(String processingGroup, Duration lockTimeout) {
+        return claimToken(processingGroup);
+    }
+
+    @Override
     public Optional<TokenState> tokenState(String processingGroup) {
         var token = tokens.get(processingGroup);
         return token == null
@@ -44,6 +50,7 @@ public class InMemoryTokenStore implements TokenStore {
         private Long lastProcessedSequenceNumber;
         private Instant lastGapDetectedAt;
         private Long gapSequenceNumber;
+        private Long replayUntilSequenceNumber;
 
         private InMemoryToken(Clock clock) {
             this.clock = clock;
@@ -54,7 +61,8 @@ public class InMemoryTokenStore implements TokenStore {
                 processingGroup,
                 Optional.ofNullable(lastProcessedSequenceNumber),
                 Optional.ofNullable(lastGapDetectedAt),
-                Optional.ofNullable(gapSequenceNumber)
+                Optional.ofNullable(gapSequenceNumber),
+                Optional.ofNullable(replayUntilSequenceNumber)
             );
         }
 
@@ -69,6 +77,11 @@ public class InMemoryTokenStore implements TokenStore {
         }
 
         @Override
+        public synchronized Optional<Long> replayUntilSequenceNumber() {
+            return Optional.ofNullable(replayUntilSequenceNumber);
+        }
+
+        @Override
         public synchronized void markProcessed(long sequenceNumber) {
             if (lastProcessedSequenceNumber != null && sequenceNumber < lastProcessedSequenceNumber) {
                 return;
@@ -79,12 +92,23 @@ public class InMemoryTokenStore implements TokenStore {
                 lastGapDetectedAt = null;
                 gapSequenceNumber = null;
             }
+            if (replayUntilSequenceNumber != null && sequenceNumber >= replayUntilSequenceNumber) {
+                replayUntilSequenceNumber = null;
+            }
         }
 
         @Override
         public synchronized void markGapDetected(long sequenceNumber) {
             lastGapDetectedAt = clock.instant();
             gapSequenceNumber = sequenceNumber;
+        }
+
+        @Override
+        public synchronized void markReset(Optional<Long> replayUntilSequenceNumber) {
+            lastProcessedSequenceNumber = 0L;
+            lastGapDetectedAt = null;
+            gapSequenceNumber = null;
+            this.replayUntilSequenceNumber = replayUntilSequenceNumber.orElse(null);
         }
     }
 }

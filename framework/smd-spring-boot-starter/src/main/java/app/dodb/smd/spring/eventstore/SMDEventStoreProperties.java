@@ -8,6 +8,7 @@ import java.time.Duration;
 import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_BATCH_SIZE;
 import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_GAP_TIMEOUT;
 import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_MAX_RETRIES;
+import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RESET_LOCK_TIMEOUT;
 import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_BASE_DELAY;
 import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_FIXED_DELAY;
 import static app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig.DEFAULT_RETRY_INCREMENT;
@@ -98,6 +99,7 @@ public class SMDEventStoreProperties {
         private int maxRetries = DEFAULT_MAX_RETRIES;
         private int batchSize = DEFAULT_BATCH_SIZE;
         private Duration gapTimeout = DEFAULT_GAP_TIMEOUT;
+        private Duration resetLockTimeout = DEFAULT_RESET_LOCK_TIMEOUT;
         private RetryBackoffProperties retryBackoff = new RetryBackoffProperties();
 
         public int getMaxRetries() {
@@ -122,6 +124,14 @@ public class SMDEventStoreProperties {
 
         public void setGapTimeout(Duration gapTimeout) {
             this.gapTimeout = gapTimeout;
+        }
+
+        public Duration getResetLockTimeout() {
+            return resetLockTimeout;
+        }
+
+        public void setResetLockTimeout(Duration resetLockTimeout) {
+            this.resetLockTimeout = resetLockTimeout;
         }
 
         public RetryBackoffProperties getRetryBackoff() {

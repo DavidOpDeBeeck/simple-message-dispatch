@@ -27,7 +27,7 @@
     {
       "name": "smd.event-store.scheduling.polling-delay",
       "type": "java.time.Duration",
-      "description": "Fixed delay between successive polls.",
+      "description": "Delay before the next poll of a processing group that has no full batch of events waiting.",
       "defaultValue": "5s"
     },
     {
@@ -52,6 +52,12 @@
       "type": "java.time.Duration",
       "description": "How long to wait for a gap in sequence numbers to fill before skipping.",
       "defaultValue": "5m"
+    },
+    {
+      "name": "smd.event-store.processing.reset-lock-timeout",
+      "type": "java.time.Duration",
+      "description": "How long a processing group reset waits for the group's token lock before returning TokenClaimed.",
+      "defaultValue": "30s"
     },
     {
       "name": "smd.event-store.processing.retry-backoff.strategy",

@@ -47,6 +47,21 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
         return eventSequenceState(processingGroup, Optional.of(requireNonNull(subjectId)));
     }
 
+    @Override
+    public int deleteSequences(String processingGroup) {
+        return connectionProvider.doWithConnection(connection -> {
+            try (var stmt = connection.prepareStatement("""
+                DELETE FROM smd_event_sequence_state
+                WHERE processing_group = ?
+                """)) {
+                stmt.setString(1, processingGroup);
+                return stmt.executeUpdate();
+            } catch (SQLException e) {
+                throw new TokenStoreException("Failed to delete event sequences: processingGroup=" + processingGroup, e);
+            }
+        });
+    }
+
     private Optional<EventSubjectSequence> claim(String processingGroup, Optional<String> subjectId) {
         return connectionProvider.doWithConnection(connection -> {
             var claimedSequence = claimSequenceRow(connection, processingGroup, subjectId);

@@ -62,6 +62,11 @@ public class InMemoryEventStorage implements EventStorage {
         return cursor(new ArrayDeque<>(eventsToLoad));
     }
 
+    @Override
+    public synchronized long headSequenceNumber() {
+        return events.isEmpty() ? 0L : events.lastKey();
+    }
+
     public synchronized List<SerializedEvent> events() {
         return List.copyOf(events.values());
     }

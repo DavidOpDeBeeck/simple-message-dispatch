@@ -37,7 +37,7 @@ class EventSequenceProcessor {
         this.retryBackoffStrategy = requireNonNull(retryBackoffStrategy);
     }
 
-    EventSequenceProcessingResult process(EventSubscriber listener, SerializedEvent serializedEvent) {
+    EventSequenceProcessingResult process(EventSubscriber listener, SerializedEvent serializedEvent, boolean replay) {
         var processingGroup = listener.processingGroup();
         var sequenceNumber = serializedEvent.sequenceNumber();
         var subjectIdOpt = serializedEvent.subjectId();
@@ -80,6 +80,7 @@ class EventSequenceProcessor {
             eventProcessingMetadata.put("processingId", UUID.randomUUID().toString());
             eventProcessingMetadata.put("sequenceNumber", String.valueOf(sequenceNumber));
             eventProcessingMetadata.put("errorCount", String.valueOf(sequence.errorCount()));
+            eventProcessingMetadata.put("replay", String.valueOf(replay));
             subjectIdOpt.ifPresent(subjectId -> eventProcessingMetadata.put("subjectId", subjectId));
             var eventMessageWithProcessingMetadata = eventMessage.andMetadata(withProperties(eventProcessingMetadata));
 

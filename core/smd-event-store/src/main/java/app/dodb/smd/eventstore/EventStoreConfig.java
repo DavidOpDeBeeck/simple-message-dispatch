@@ -219,6 +219,7 @@ public class EventStoreConfig {
         public static final Duration DEFAULT_RETRY_INCREMENT = ofSeconds(5);
         public static final double DEFAULT_RETRY_MULTIPLIER = 5.0;
         public static final Duration DEFAULT_RETRY_MAX_DELAY = ofMinutes(5);
+        public static final Duration DEFAULT_RESET_LOCK_TIMEOUT = ofSeconds(30);
 
         private static final RetryBackoffStrategy DEFAULT_RETRY_BACKOFF_STRATEGY =
             exponential(DEFAULT_RETRY_BASE_DELAY, DEFAULT_RETRY_MULTIPLIER, DEFAULT_RETRY_MAX_DELAY);
@@ -227,12 +228,14 @@ public class EventStoreConfig {
         private final int batchSize;
         private final RetryBackoffStrategy retryBackoffStrategy;
         private final Duration gapTimeout;
+        private final Duration resetLockTimeout;
 
         private ProcessingConfig(ProcessingConfig.Builder builder) {
             this.maxRetries = requireAtLeastZero(builder.maxRetries);
             this.batchSize = requireGreaterThanZero(builder.batchSize);
             this.retryBackoffStrategy = requireNonNull(builder.retryBackoffStrategy);
             this.gapTimeout = requireAtLeastZero(builder.gapTimeout);
+            this.resetLockTimeout = requireGreaterThanZero(builder.resetLockTimeout);
         }
 
         public int getMaxRetries() {
@@ -251,6 +254,10 @@ public class EventStoreConfig {
             return gapTimeout;
         }
 
+        public Duration getResetLockTimeout() {
+            return resetLockTimeout;
+        }
+
         public static Builder withoutDefaults() {
             return new Builder();
         }
@@ -260,7 +267,8 @@ public class EventStoreConfig {
                 .maxRetries(DEFAULT_MAX_RETRIES)
                 .batchSize(DEFAULT_BATCH_SIZE)
                 .retryBackoffStrategy(DEFAULT_RETRY_BACKOFF_STRATEGY)
-                .gapTimeout(DEFAULT_GAP_TIMEOUT);
+                .gapTimeout(DEFAULT_GAP_TIMEOUT)
+                .resetLockTimeout(DEFAULT_RESET_LOCK_TIMEOUT);
         }
 
         public static class Builder {
@@ -269,6 +277,7 @@ public class EventStoreConfig {
             private Integer batchSize;
             private RetryBackoffStrategy retryBackoffStrategy;
             private Duration gapTimeout;
+            private Duration resetLockTimeout;
 
             private Builder() {
             }
@@ -290,6 +299,11 @@ public class EventStoreConfig {
 
             public Builder gapTimeout(Duration gapTimeout) {
                 this.gapTimeout = gapTimeout;
+                return this;
+            }
+
+            public Builder resetLockTimeout(Duration resetLockTimeout) {
+                this.resetLockTimeout = resetLockTimeout;
                 return this;
             }
 

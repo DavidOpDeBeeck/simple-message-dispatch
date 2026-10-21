@@ -1,7 +1,8 @@
 package app.dodb.smd.spring.eventstore;
 
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayList;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -13,18 +14,19 @@ import java.util.concurrent.TimeUnit;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 // Keep real worker threads and subscription cancellation, but let each test choose when polling happens.
+// Each poll() runs the polls scheduled so far once; polls they schedule in turn wait for the next poll().
 final class ManualPollingScheduler extends ScheduledThreadPoolExecutor {
 
-    private final List<PollingTask> pollingTasks = new CopyOnWriteArrayList<>();
+    private final Queue<PollingTask> scheduledPolls = new ConcurrentLinkedQueue<>();
 
     ManualPollingScheduler() {
         super(1);
     }
 
     @Override
-    public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
+    public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
         var task = new PollingTask(command);
-        pollingTasks.add(task);
+        scheduledPolls.add(task);
         return task;
     }
 
@@ -33,10 +35,16 @@ final class ManualPollingScheduler extends ScheduledThreadPoolExecutor {
     }
 
     Future<?> pollAsync() {
+        // Submit a Callable: submitting a Runnable would route through the overridden schedule(Runnable, ...).
         return submit(() -> {
-            for (var task : pollingTasks) {
+            var polls = new ArrayList<PollingTask>();
+            for (var task = scheduledPolls.poll(); task != null; task = scheduledPolls.poll()) {
+                polls.add(task);
+            }
+            for (var task : polls) {
                 task.run();
             }
+            return null;
         });
     }
 
@@ -48,15 +56,17 @@ final class ManualPollingScheduler extends ScheduledThreadPoolExecutor {
 
         @Override
         public void run() {
-            if (!runAndReset() && !isCancelled()) {
-                try {
-                    get();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new AssertionError("Polling worker interrupted", e);
-                } catch (ExecutionException e) {
-                    throw new AssertionError("Polling worker failed", e.getCause());
-                }
+            super.run();
+            if (isCancelled()) {
+                return;
+            }
+            try {
+                get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Polling worker interrupted", e);
+            } catch (ExecutionException e) {
+                throw new AssertionError("Polling worker failed", e.getCause());
             }
         }
 

@@ -103,6 +103,7 @@ public class SMDEventStoreAutoConfiguration {
                 .maxRetries(processing.getMaxRetries())
                 .batchSize(processing.getBatchSize())
                 .gapTimeout(processing.getGapTimeout())
+                .resetLockTimeout(processing.getResetLockTimeout())
                 .retryBackoffStrategy(processing.getRetryBackoff().createStrategy())
                 .build())
             .build();
