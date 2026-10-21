@@ -9,6 +9,7 @@ Status: proposal, 2026-10-22. Nothing here is implemented or released. Existing 
   ```java
   EventSink   eventStore.outbox(String name, EventSink sink)   // send = stored in the transaction, forwarded to sink later
   EventSource eventStore.inbox(EventSource source)             // received = stored with deduplication, delivered to the subscriber later
+  EventMedium eventStore.durable(String name, EventMedium medium) // outbox(name, medium.inlet()) + inbox(medium.outlet())
   ```
   An outbox forwards exactly what was sent to it. An inbox delivers exactly what the wrapped source delivers, to the same subscriber. Only the timing and the guarantees change, the same way
   `.selecting(...)` changes only which events pass.
@@ -106,8 +107,14 @@ var eventBus = EventBusSpec.withDefaults()
   processing group 'billing-projection'"`.
 - A queue destination (`JmsDestination.queue(...)`) has no per-group copies, so a second group subscribing to the same queue outlet is rejected, naming both groups.
 
-A possible convenience, not part of the first slice: `eventStore.durable(name, medium)` returns an `EventMedium` whose inlet is `outbox(name, medium.inlet())` and whose outlet is
-`inbox(medium.outlet())`, so `.medium(eventStore.durable("tickets", tickets))` works. See open question 12.
+`eventStore.durable(name, medium)` returns an `EventMedium` whose inlet is `outbox(name, medium.inlet())` and whose outlet is `inbox(medium.outlet())`. A group that both publishes to and
+consumes from one broker destination then needs a single line:
+
+```java
+groups.processingGroup("ticket-sync").medium(eventStore.durable("ticket-sync", tickets));
+```
+
+It is plain composition with no extra behavior, so `.selecting(...)` on the result filters both directions, as it does for any medium.
 
 ### Spring Boot
 
@@ -233,8 +240,8 @@ redelivers, and the retry is a no-op.
 | Forward fails or times out                       | That subject backs off and retries; other subjects continue                                                    |
 
 - **Never abandon.** A handler group abandons a subject after `max-retries`. An outbox does not: dropping is not an acceptable outbox outcome. A failing subject keeps retrying, capped at
-  `max-delay`, and stays visible in `EventSequenceState`. Its later entries wait behind it, which preserves order. A poison entry therefore blocks its subject until an operator acts (open
-  question 13).
+  `max-delay`, and stays visible in `EventSequenceState`. Its later entries wait behind it, which preserves order. A poison entry therefore blocks its subject. SMD offers no operator
+  action for it in the first version (see [Decisions](#decisions)).
 - **Broker down.** Because nothing is abandoned, an outage loses nothing and preserves order. But each subject records failures and backs off on its own, so recovery can take up to
   `max-delay` after the broker returns, with one log line per subject per attempt. A group-level pause would fix that, but the outbox needs a signal from the sink to tell "medium unavailable"
   from "this message failed". See open question 9.
@@ -378,6 +385,7 @@ Unit tests in `smd-event-store` need no broker, because the outbox and inbox wra
 - `outbox_forward_omitsAttemptMetadata`
 - `inbox_duplicateMessage_deliveredOnce`, `inbox_duplicateMessage_doesNotCreateSequenceGap`, `inbox_handlerFails_retriedBySubject`
 - `inbox_events_notVisibleOnOutletOrOutbox`, `inbox_close_closesSourceSubscriptionAndCursor`
+- `durable_medium_publishesThroughOutboxAndConsumesThroughInbox`
 - `outlet_existingRows_readAsEventsLog` (migration)
 
 `smd-jms` unit tests: `send_eventMessage_mapsWireFormat` (property by property), `receive_unknownWireVersion_rollsBack`, `subscribe_withoutSubscriberName_fails`,
@@ -460,17 +468,32 @@ delivery API.
 8. **Inbound delivery count.** Should the direct JMS outlet expose `JMSXDeliveryCount` as metadata, like the store's `errorCount`?
 9. **Outage signal.** Correctness needs no new API, because an outbox never abandons. A clean group pause (fast recovery, one log line) needs the sink to say "medium unavailable", for example
    with an `EventDeliveryUnavailableException` in `smd-api` thrown by `JmsEventSink` on JMS failures. Add it, or accept per-subject backoff?
-10. **Spans for the hidden hops.** Should the outbox forward and the inbox insert record spans? Both run outside the bus, so they would need the bus's interceptors or their own `MessageTracing`
-    hook.
+10. **Spans for the hidden hops.** The outbox forward (polling thread) and the inbox insert (consumer thread) run outside the bus, so no interceptor sees them. The event store must not
+    depend on OpenTelemetry, so any span has to come through an interceptor. Options:
+    - **A. No spans.** The trace still connects: app B's `process` continues app A's `publish` through the stored `traceparent`. The broker hop shows only as the time between spans. No API.
+    - **B. Store-level sink interceptors (proposed).** `EventStoreConfig.sinkInterceptors(...)` runs the existing `EventSinkInterceptor` chain around the forward (sink: the wrapped JMS sink,
+      `send … delivery jms` on the polling thread) and around the inbox insert (sink: the inbox log, `send … delivery event-store` on the consumer thread). The starter installs
+      `MessageTracing` there as it does on the buses. No new interceptor or span type, so smd-monitor counts them like any other `send`. The cost is a second place to install interceptors,
+      which manual setups can forget.
+    - **C. Tracing decorators.** `tracing.traced(sink)` in `smd-opentelemetry`, applied by the user: `eventStore.outbox("x", tracing.traced(tickets.inlet()))`. No core change, but it is easy
+      to forget, and it cannot reach the inbox insert, which is internal.
+    - **D. OTel Java agent JMS instrumentation.** The agent traces the raw JMS send and receive, but the polling thread has no current span, so its producer span starts a new trace. It also
+      overwrites the copied `traceparent` property. Useful next to A or B, not instead of them.
+
+    With B, choose the delivery names in question 4 together. If the outbox reports `event-store`, the publish-time span reads `delivery event-store` and the forward reads `delivery jms`,
+    which separates the two steps. If it reports `jms`, both spans say `jms` and only the thread tells them apart.
 11. **Merged sources.** A group has one source. A group that needs local and inbound events needs a merging `EventSource`. Is that needed?
-12. **`eventStore.durable(name, medium)`.** Add the convenience medium (outbox inlet + inbox outlet) for `.medium(...)` composition, or keep the API to the two wrappers?
-13. **Poison entries in an outbox.** A never-abandoning outbox blocks a subject on a poison entry. What operator action is supported: skip the entry, or move it aside, through a store API?
+## Decisions
+
+- **`eventStore.durable(name, medium)`** is part of the API: an outbox inlet plus an inbox outlet for `.medium(...)` composition.
+- **Poison entries in an outbox** get no operator action in code for now. A blocked subject is visible in `EventSequenceState` and in the forwarder's logs. Fixing it is a database
+  operation. Revisit once real usage shows what is needed.
 
 ## Implementation Slices
 
 1. `smd-event-store`: `log` column, per-log cursors and state, and a migration script. `events` behavior is unchanged, so existing tests must pass untouched.
 2. `smd-event-store`: `EventStore.outbox(name, sink)`: deferred insert, forwarder without attempt metadata, never-abandon policy. Tested with built-in dispatchers.
-3. `smd-event-store`: `EventStore.inbox(source)`: insert-if-absent, per-group cursor, combined subscription. Tested with built-in dispatchers.
+3. `smd-event-store`: `EventStore.inbox(source)`: insert-if-absent, per-group cursor, combined subscription. Then `EventStore.durable(name, medium)`. Tested with built-in dispatchers.
 4. `core/smd-jms`: `JmsConfig`, `JmsDestination`, `JmsEventMedium` (sink, source, wire format). Artemis integration tests, including the outbox and inbox round trip.
 5. Decide open question 9; if accepted, add the outage signal and the group pause.
 6. Starter: `SMDJmsAutoConfiguration` and properties, `docs/jms.md`, and a second application in the ticket-service example.
