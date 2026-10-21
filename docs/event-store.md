@@ -48,7 +48,8 @@ EventTypeResolver eventTypeResolver() {
 }
 ```
 
-Every stored type and published event class must remain in the mapping. Migrate existing `event_type` values before changing a resolver used by a live store.
+Map each published event class to exactly one current type name; `StaticEventTypeResolver` rejects a class mapped under two names. Every type name already in the store must either stay in the
+mapping or be upcast to a current name, as described in [Evolve Stored Events](#evolve-stored-events), so stored `event_type` values never need to be rewritten.
 
 Spring Boot builds the default serializer with Jackson 3 and registers `SMDJacksonModule`. Add Jackson 3 `JacksonModule` or `JsonMapperBuilderCustomizer` beans for normal customization, or provide
 your own `EventSerializer` bean for full control.
@@ -66,6 +67,68 @@ ProcessingGroupsConfigurer processingGroupsConfigurer(EventStore eventStore) {
 ```
 
 Publishing stores events inside the publishing transaction. The scheduler polls and delivers them to `ticket-activity` in new transactions.
+
+## Evolve Stored Events
+
+Stored events keep the type name and JSON they were written with. Put the version in the type name, map only the current names in the resolver, and register an `EventUpcaster` for every older
+name:
+
+```java
+@Bean
+EventTypeResolver eventTypeResolver() {
+    return new StaticEventTypeResolver(Map.of(
+        "ticket.opened.v2", TicketOpenedEvent.class,
+        "ticket.assigned.v2", TicketAssignedEvent.class
+    ));
+}
+
+// Rename a type: events stored as ticket.created.v1 continue as ticket.opened.v1.
+@Bean
+EventUpcaster ticketCreatedV1Upcaster() {
+    return EventUpcaster.rename("ticket.created.v1", "ticket.opened.v1");
+}
+
+// Add a field with a default.
+@Bean
+EventUpcaster ticketOpenedV1Upcaster() {
+    return EventUpcaster.transform("ticket.opened.v1", "ticket.opened.v2",
+        payload -> payload.put("priority", "NORMAL"));
+}
+
+// Rename a field.
+@Bean
+EventUpcaster ticketAssignedV1Upcaster() {
+    return EventUpcaster.transform("ticket.assigned.v1", "ticket.assigned.v2", payload -> {
+        payload.set("assignee", payload.remove("agent"));
+        return payload;
+    });
+}
+```
+
+A transformation receives the stored payload as a Jackson 3 `ObjectNode` and may modify and return it. Upcasters chain by type name: an event stored as `ticket.created.v1` is read through
+`ticket.opened.v1` and `ticket.opened.v2`, then resolved to `TicketOpenedEvent`. Registration order does not matter.
+
+- New events are always written under the current name.
+- Events stored under a current name are read without upcasting.
+- The message ID, metadata, and subject come from the stored row. Upcasting never moves an event to another subject, even when the current class annotates a different `@SubjectId`.
+- Upcasters run on every read, including retries. Keep them pure and fast, and do not change the output of a released upcaster.
+- Upcasters cannot drop an event or split it into several events.
+
+Spring Boot passes every `EventUpcaster` bean to the default serializer. A custom `EventSerializer` bean bypasses them. Without Spring, pass the list to
+`new JacksonEventSerializer(mapper, eventTypeResolver, upcasters)`.
+
+The serializer validates upcasters when it is created, so invalid upcasters fail application startup with an `IllegalArgumentException`:
+
+| Rule                     | Example                                                                                     |
+|--------------------------|---------------------------------------------------------------------------------------------|
+| Type names are not blank | `EventUpcaster.rename("", "ticket.opened.v2")`                                              |
+| One upcaster per type    | Two upcasters for `ticket.opened.v1`                                                        |
+| No cycles                | `ticket.opened.v1 -> ticket.opened.v2 -> ticket.opened.v1`                                  |
+| No gaps                  | An upcaster produces `ticket.opened.v2`, which has neither an upcaster nor a mapped class   |
+| No shadowed types        | An upcaster reads `ticket.opened.v1`, which the resolver also maps to a class               |
+
+A transformation that returns `null` fails the delivery with an `EventSerializationException` naming the message ID, the stored type, and the upcaster. The subject is then retried like any other
+failed delivery. Validation cannot see which type names exist in the store; cover every historical name with a [stored event fixture](testing.md#test-stored-event-upcasting).
 
 ## Publication and Subscriptions
 

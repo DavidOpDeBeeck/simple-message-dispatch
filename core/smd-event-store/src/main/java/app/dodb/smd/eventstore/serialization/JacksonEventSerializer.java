@@ -6,6 +6,9 @@ import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.storage.SerializedEvent;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
@@ -13,14 +16,20 @@ public class JacksonEventSerializer implements EventSerializer {
 
     private final ObjectMapper objectMapper;
     private final EventTypeResolver eventTypeResolver;
+    private final EventUpcasterChain upcasterChain;
 
     public JacksonEventSerializer(ObjectMapper objectMapper) {
         this(objectMapper, new ClassNameEventTypeResolver());
     }
 
     public JacksonEventSerializer(ObjectMapper objectMapper, EventTypeResolver eventTypeResolver) {
+        this(objectMapper, eventTypeResolver, List.of());
+    }
+
+    public JacksonEventSerializer(ObjectMapper objectMapper, EventTypeResolver eventTypeResolver, List<EventUpcaster> upcasters) {
         this.objectMapper = requireNonNull(objectMapper);
         this.eventTypeResolver = requireNonNull(eventTypeResolver);
+        this.upcasterChain = new EventUpcasterChain(upcasters, eventTypeResolver);
     }
 
     @Override
@@ -50,8 +59,7 @@ public class JacksonEventSerializer implements EventSerializer {
     @SuppressWarnings("unchecked")
     public <E extends Event> EventMessage<E> deserialize(SerializedEvent serializedEvent) {
         try {
-            var eventClass = eventTypeResolver.eventClassFor(serializedEvent.eventType());
-            var payload = (E) objectMapper.readValue(serializedEvent.serializedPayload(), eventClass);
+            var payload = (E) readPayload(serializedEvent);
             var metadata = objectMapper.readValue(serializedEvent.serializedMetadata(), Metadata.class);
 
             return new EventMessage<>(serializedEvent.messageId(), serializedEvent.subjectId(), payload, metadata);
@@ -62,7 +70,24 @@ public class JacksonEventSerializer implements EventSerializer {
         }
     }
 
+    private Event readPayload(SerializedEvent serializedEvent) throws EventTypeResolutionException {
+        var eventType = serializedEvent.eventType();
+        if (!upcasterChain.upcasts(eventType)) {
+            return objectMapper.readValue(serializedEvent.serializedPayload(), eventTypeResolver.eventClassFor(eventType));
+        }
+
+        if (!(objectMapper.readTree(serializedEvent.serializedPayload()) instanceof ObjectNode storedPayload)) {
+            throw new EventSerializationException("Cannot upcast event %s stored as '%s': payload is not a JSON object".formatted(serializedEvent.messageId(), eventType));
+        }
+        var upcasted = upcasterChain.upcast(serializedEvent.messageId(), eventType, storedPayload);
+        return objectMapper.treeToValue(upcasted.payload(), eventTypeResolver.eventClassFor(upcasted.eventType()));
+    }
+
     public static class EventSerializationException extends RuntimeException {
+        public EventSerializationException(String message) {
+            super(message);
+        }
+
         public EventSerializationException(String message, Throwable cause) {
             super(message, cause);
         }

@@ -7,6 +7,7 @@ import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.serialization.ClassNameEventTypeResolver;
 import app.dodb.smd.eventstore.serialization.EventSerializer;
 import app.dodb.smd.eventstore.serialization.EventTypeResolver;
+import app.dodb.smd.eventstore.serialization.EventUpcaster;
 import app.dodb.smd.eventstore.serialization.JacksonEventSerializer;
 import app.dodb.smd.eventstore.serialization.SMDJacksonModule;
 import app.dodb.smd.eventstore.storage.ConnectionProvider;
@@ -17,6 +18,7 @@ import app.dodb.smd.eventstore.storage.postgres.PostgresEventSubjectSequenceStor
 import app.dodb.smd.eventstore.storage.postgres.PostgresTokenStore;
 import app.dodb.smd.spring.EventBusSpecCustomizer;
 import app.dodb.smd.spring.SMDAutoConfiguration;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -69,12 +71,14 @@ public class SMDEventStoreAutoConfiguration {
     @Bean
     @ConditionalOnBean(JsonMapper.Builder.class)
     @ConditionalOnMissingBean(EventSerializer.class)
-    public EventSerializer eventSerializer(JsonMapper.Builder jsonMapperBuilder, EventTypeResolver eventTypeResolver) {
+    public EventSerializer eventSerializer(JsonMapper.Builder jsonMapperBuilder,
+                                           EventTypeResolver eventTypeResolver,
+                                           ObjectProvider<EventUpcaster> eventUpcasters) {
         var objectMapper = jsonMapperBuilder
             .disable(FAIL_ON_EMPTY_BEANS)
             .addModule(new SMDJacksonModule())
             .build();
-        return new JacksonEventSerializer(objectMapper, eventTypeResolver);
+        return new JacksonEventSerializer(objectMapper, eventTypeResolver, eventUpcasters.orderedStream().toList());
     }
 
     @Bean
