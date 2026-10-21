@@ -2,10 +2,10 @@ package app.dodb.smd.eventstore.serialization;
 
 import app.dodb.smd.api.event.Event;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toMap;
 
 public class StaticEventTypeResolver implements EventTypeResolver {
 
@@ -14,8 +14,7 @@ public class StaticEventTypeResolver implements EventTypeResolver {
 
     public StaticEventTypeResolver(Map<String, Class<? extends Event>> eventClassByEventType) {
         this.eventClassByIdentifier = requireNonNull(eventClassByEventType);
-        this.eventTypeByEventClass = eventClassByEventType.entrySet().stream()
-            .collect(toMap(Map.Entry::getValue, Map.Entry::getKey));
+        this.eventTypeByEventClass = indexByEventClass(eventClassByEventType);
     }
 
     @Override
@@ -32,5 +31,17 @@ public class StaticEventTypeResolver implements EventTypeResolver {
             return eventClassByIdentifier.get(eventType);
         }
         throw new EventTypeResolutionException("Event type not found: " + eventType);
+    }
+
+    private static Map<Class<? extends Event>, String> indexByEventClass(Map<String, Class<? extends Event>> eventClassByEventType) {
+        var eventTypeByEventClass = new HashMap<Class<? extends Event>, String>();
+        for (var entry : eventClassByEventType.entrySet()) {
+            var duplicate = eventTypeByEventClass.putIfAbsent(entry.getValue(), entry.getKey());
+            if (duplicate != null) {
+                throw new IllegalArgumentException("Event class %s is mapped to event types '%s' and '%s'; map only the current event type name and upcast older names with EventUpcaster"
+                    .formatted(entry.getValue().getName(), duplicate, entry.getKey()));
+            }
+        }
+        return eventTypeByEventClass;
     }
 }

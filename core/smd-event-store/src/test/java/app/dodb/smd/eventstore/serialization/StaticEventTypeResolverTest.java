@@ -29,6 +29,20 @@ class StaticEventTypeResolverTest {
             .isInstanceOf(EventTypeResolutionException.class);
     }
 
+    @Test
+    void constructor_eventClassMappedToTwoEventTypes_throwsExceptionNamingBoth() {
+        var eventClassByEventType = Map.<String, Class<? extends Event>>of(
+            "test.v1", TestEvent.class,
+            "test.v2", TestEvent.class
+        );
+
+        assertThatThrownBy(() -> new StaticEventTypeResolver(eventClassByEventType))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Event class " + TestEvent.class.getName() + " is mapped to event types ")
+            .hasMessageContaining("'test.v1'")
+            .hasMessageContaining("'test.v2'");
+    }
+
     record TestEvent() implements Event {
     }
 

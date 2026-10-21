@@ -159,6 +159,48 @@ assertThat(queries.send(query)).contains(ticket);
 
 `NoOpTransactionProvider` executes transactions and deferred work immediately. Use it only when real transaction boundaries are irrelevant to the test.
 
+## Test Stored Event Upcasting
+
+Construction-time validation checks the upcasters against the resolver, but it cannot know which type names exist in your store. Keep one stored JSON sample per historical type name, for example
+`src/test/resources/stored-events/ticket.created.v1.json`, copied from `serialized_payload` of a real row. Deserialize every sample through the application's real mapper, resolver, and
+upcasters, and assert the current event:
+
+```java
+class StoredEventFixturesTest {
+
+    private static final byte[] METADATA = "{\"properties\": {}}".getBytes(UTF_8);
+
+    // Use the same resolver and upcasters as the application, or inject its EventSerializer bean.
+    private final EventSerializer serializer = new JacksonEventSerializer(
+        JsonMapper.builder().addModule(new SMDJacksonModule()).build(),
+        TicketEventTypes.resolver(),
+        TicketEventTypes.upcasters()
+    );
+
+    @ParameterizedTest
+    @MethodSource("storedEvents")
+    void deserialize_storedEvent_readsCurrentEvent(String eventType, Event expected) throws IOException {
+        var payload = getClass().getResourceAsStream("/stored-events/" + eventType + ".json").readAllBytes();
+        var stored = new SerializedEvent(MessageId.generate(), 1L, Optional.of(TICKET_ID.toString()), eventType, payload, METADATA, Instant.EPOCH);
+
+        var deserialized = serializer.deserialize(stored);
+
+        assertThat(deserialized.payload()).isEqualTo(expected);
+    }
+
+    static Stream<Arguments> storedEvents() {
+        return Stream.of(
+            arguments("ticket.created.v1", new TicketOpenedEvent(TICKET_ID, "Cannot sign in", "NORMAL")),
+            arguments("ticket.opened.v1", new TicketOpenedEvent(TICKET_ID, "Cannot sign in", "NORMAL")),
+            arguments("ticket.opened.v2", new TicketOpenedEvent(TICKET_ID, "Cannot sign in", "HIGH"))
+        );
+    }
+}
+```
+
+Add a sample before removing an event class or renaming a type, and never edit a sample afterwards: it represents rows that are already stored. Include the current type names as well, so a
+class change that breaks reading existing rows also fails the test.
+
 ## Choose the Test Boundary
 
 - Use `@EnableSMDStubs` for a focused handler flow with real discovery, binding, metadata, and application repositories.
