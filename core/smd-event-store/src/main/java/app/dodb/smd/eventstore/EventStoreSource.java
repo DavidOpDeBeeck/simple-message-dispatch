@@ -4,63 +4,29 @@ import app.dodb.smd.api.event.delivery.EventDelivery;
 import app.dodb.smd.api.event.delivery.EventSource;
 import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.event.delivery.EventSubscription;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import app.dodb.smd.eventstore.storage.EventLog;
 
-import java.util.concurrent.ScheduledExecutorService;
-
-import static app.dodb.smd.eventstore.EventStoreConfig.SchedulingConfig;
+import static app.dodb.smd.eventstore.EventLogConsumption.HANDLING;
 import static java.util.Objects.requireNonNull;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
 
-class EventStoreSource implements EventSource, AutoCloseable {
+class EventStoreSource implements EventSource {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(EventStoreSource.class);
-
-    private final SchedulingConfig schedulingConfig;
+    private final EventLogPolling polling;
     private final EventStoreTokenProcessor tokenProcessor;
 
-    EventStoreSource(EventStoreConfig config) {
+    EventStoreSource(EventStoreConfig config, EventLogPolling polling) {
         requireNonNull(config);
-        this.schedulingConfig = config.getSchedulingConfig();
-        this.tokenProcessor = new EventStoreTokenProcessor(config);
+        this.polling = requireNonNull(polling);
+        this.tokenProcessor = new EventStoreTokenProcessor(config, EventLog.EVENTS, HANDLING);
     }
 
     @Override
     public EventSubscription subscribe(EventSubscriber listener) {
-        if (!schedulingConfig.isEnabled()) {
-            LOGGER.info("Event store polling disabled: processingGroup={}", listener.processingGroup());
-            return EventSubscription.EMPTY;
-        }
-
-        var scheduler = schedulingConfig.getScheduler();
-        var polling = scheduler.scheduleWithFixedDelay(
-            () -> tokenProcessor.poll(listener),
-            schedulingConfig.getInitialDelay().toMillis(),
-            schedulingConfig.getPollingDelay().toMillis(),
-            MILLISECONDS
-        );
-        return () -> polling.cancel(false);
+        return polling.schedule(tokenProcessor, listener);
     }
 
     @Override
     public EventDelivery delivery() {
         return EventStore.DELIVERY;
-    }
-
-    @Override
-    public void close() {
-        ScheduledExecutorService scheduler = schedulingConfig.getScheduler();
-        scheduler.shutdown();
-        try {
-            if (scheduler.awaitTermination(30, SECONDS)) {
-                return;
-            }
-            scheduler.shutdownNow();
-        } catch (InterruptedException e) {
-            scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
     }
 }

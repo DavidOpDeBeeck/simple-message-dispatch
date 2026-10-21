@@ -1,5 +1,6 @@
 package app.dodb.smd.eventstore;
 
+import app.dodb.smd.api.event.delivery.EventSinkInterceptor;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.serialization.EventSerializer;
@@ -7,6 +8,8 @@ import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 
 import static app.dodb.smd.eventstore.RetryBackoffStrategy.exponential;
@@ -24,6 +27,7 @@ public class EventStoreConfig {
     private final EventSubjectSequenceStore eventSubjectSequenceStore;
     private final SchedulingConfig schedulingConfig;
     private final ProcessingConfig processingConfig;
+    private final List<EventSinkInterceptor> sinkInterceptors;
 
     private EventStoreConfig(Builder builder) {
         this.transactionProvider = requireNonNull(builder.transactionProvider);
@@ -33,6 +37,7 @@ public class EventStoreConfig {
         this.eventSubjectSequenceStore = requireNonNull(builder.eventSubjectSequenceStore);
         this.schedulingConfig = requireNonNull(builder.schedulingConfig);
         this.processingConfig = requireNonNull(builder.processingConfig);
+        this.sinkInterceptors = requireNonNull(builder.sinkInterceptors);
     }
 
     public TransactionProvider getTransactionProvider() {
@@ -63,6 +68,10 @@ public class EventStoreConfig {
         return processingConfig;
     }
 
+    public List<EventSinkInterceptor> getSinkInterceptors() {
+        return sinkInterceptors;
+    }
+
     public static Builder withDefaults() {
         return new Builder()
             .schedulingConfig(SchedulingConfig.withDefaults().build())
@@ -82,6 +91,7 @@ public class EventStoreConfig {
         private EventSerializer eventSerializer;
         private SchedulingConfig schedulingConfig;
         private ProcessingConfig processingConfig;
+        private final List<EventSinkInterceptor> sinkInterceptors = new ArrayList<>();
 
         private Builder() {
         }
@@ -118,6 +128,15 @@ public class EventStoreConfig {
 
         public Builder processingConfig(ProcessingConfig processingConfig) {
             this.processingConfig = processingConfig;
+            return this;
+        }
+
+        public Builder sinkInterceptors(EventSinkInterceptor... sinkInterceptors) {
+            return sinkInterceptors(List.of(sinkInterceptors));
+        }
+
+        public Builder sinkInterceptors(List<EventSinkInterceptor> sinkInterceptors) {
+            this.sinkInterceptors.addAll(sinkInterceptors);
             return this;
         }
 

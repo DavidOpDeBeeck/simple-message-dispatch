@@ -11,6 +11,10 @@ import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.query.Query;
 import app.dodb.smd.api.query.QueryGateway;
 import app.dodb.smd.api.query.QueryHandler;
+import app.dodb.smd.eventstore.EventStoreConfig;
+import app.dodb.smd.eventstore.serialization.EventSerializer;
+import app.dodb.smd.eventstore.serialization.JacksonEventSerializer;
+import app.dodb.smd.eventstore.serialization.SMDJacksonModule;
 import app.dodb.smd.opentelemetry.MessageSpans;
 import app.dodb.smd.opentelemetry.MessageTracing;
 import app.dodb.smd.spring.EnableSMD;
@@ -27,7 +31,10 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import tools.jackson.databind.json.JsonMapper;
 
+import javax.sql.DataSource;
 import java.util.List;
 
 import static io.opentelemetry.api.trace.StatusCode.ERROR;
@@ -130,6 +137,23 @@ class SMDOpenTelemetryAutoConfigurationIntegrationTest {
     }
 
     @Test
+    void configure_withEventStore_installsMessageTracingAsEventStoreSinkInterceptor() {
+        // Given / When / Then
+        traced.withUserConfiguration(EventStoreConfiguration.class)
+            .withPropertyValues("smd.event-store.enabled=true", "smd.event-store.scheduling.enabled=false")
+            .run(context -> assertThat(context.getBean(EventStoreConfig.class).getSinkInterceptors())
+                .containsExactly(context.getBean(MessageTracing.class)));
+    }
+
+    @Test
+    void configure_withEventStoreWithoutOpenTelemetry_installsNoEventStoreSinkInterceptor() {
+        // Given / When / Then
+        runner.withUserConfiguration(EventStoreConfiguration.class)
+            .withPropertyValues("smd.event-store.enabled=true", "smd.event-store.scheduling.enabled=false")
+            .run(context -> assertThat(context.getBean(EventStoreConfig.class).getSinkInterceptors()).isEmpty());
+    }
+
+    @Test
     void configure_withoutOpenTelemetry_registersNoMessageTracing() {
         // Given / When / Then
         runner.run(context -> assertThat(context)
@@ -173,6 +197,20 @@ class SMDOpenTelemetryAutoConfigurationIntegrationTest {
                 .setTracerProvider(SdkTracerProvider.builder().addSpanProcessor(SimpleSpanProcessor.create(spanExporter)).build())
                 .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
                 .build();
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class EventStoreConfiguration {
+
+        @Bean
+        DataSource dataSource() {
+            return new DriverManagerDataSource("jdbc:postgresql://localhost/unused");
+        }
+
+        @Bean
+        EventSerializer eventSerializer() {
+            return new JacksonEventSerializer(JsonMapper.builder().addModule(new SMDJacksonModule()).build());
         }
     }
 

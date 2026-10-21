@@ -3,6 +3,7 @@ package app.dodb.smd.eventstore.storage.postgres;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.eventstore.storage.ConnectionProvider;
 import app.dodb.smd.eventstore.storage.Cursor;
+import app.dodb.smd.eventstore.storage.EventLog;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.EventStorageException;
 import app.dodb.smd.eventstore.storage.SerializedEvent;
@@ -32,45 +33,63 @@ public class PostgresEventStorage implements EventStorage {
     }
 
     @Override
-    public void store(SerializedEvent event) {
+    public void store(EventLog log, SerializedEvent event) {
         connectionProvider.doWithConnection(connection -> {
             try (PreparedStatement stmt = connection.prepareStatement("""
-                INSERT INTO smd_event_store (message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO smd_event_store (log, message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """)) {
-                stmt.setObject(1, event.messageId().value());
-                stmt.setString(2, event.subjectId().orElse(null));
-                stmt.setString(3, event.eventType());
-                stmt.setBytes(4, event.serializedPayload());
-                stmt.setBytes(5, event.serializedMetadata());
-                stmt.setTimestamp(6, Timestamp.from(event.createdAt()));
+                setEventParameters(stmt, log, event);
 
                 int rowsInserted = stmt.executeUpdate();
                 if (rowsInserted != 1) {
-                    throw new EventStorageException("Failed to insert event: " + event.messageId());
+                    throw new EventStorageException("Failed to insert event: log=" + log.name() + ", messageId=" + event.messageId());
                 }
 
-                LOGGER.debug("Stored event: messageId={}, eventType={}", event.messageId(), event.eventType());
+                LOGGER.debug("Stored event: log={}, messageId={}, eventType={}", log.name(), event.messageId(), event.eventType());
             } catch (SQLException e) {
-                throw new EventStorageException("Failed to store event: " + event.messageId(), e);
+                throw new EventStorageException("Failed to store event: log=" + log.name() + ", messageId=" + event.messageId(), e);
             }
         });
     }
 
     @Override
-    public Cursor<SerializedEvent> load(long lastProcessedSequenceNumber, int limit) {
+    public boolean storeIfAbsent(EventLog log, SerializedEvent event) {
+        // INSERT ... ON CONFLICT DO NOTHING would draw a sequence number for every duplicate and leave a gap that stalls every cursor.
+        return connectionProvider.doWithConnection(connection -> {
+            try (PreparedStatement stmt = connection.prepareStatement("""
+                INSERT INTO smd_event_store (log, message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at)
+                SELECT ?, ?, ?, ?, ?, ?, ?
+                WHERE NOT EXISTS (SELECT 1 FROM smd_event_store WHERE log = ? AND message_id = ?)
+                """)) {
+                setEventParameters(stmt, log, event);
+                stmt.setString(8, log.name());
+                stmt.setObject(9, event.messageId().value());
+
+                var stored = stmt.executeUpdate() == 1;
+                LOGGER.debug("Stored event if absent: log={}, messageId={}, stored={}", log.name(), event.messageId(), stored);
+                return stored;
+            } catch (SQLException e) {
+                throw new EventStorageException("Failed to store event if absent: log=" + log.name() + ", messageId=" + event.messageId(), e);
+            }
+        });
+    }
+
+    @Override
+    public Cursor<SerializedEvent> load(EventLog log, long lastProcessedSequenceNumber, int limit) {
         return connectionProvider.doWithConnection(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at, sequence_number
                 FROM smd_event_store
-                WHERE sequence_number > ?
+                WHERE log = ? AND sequence_number > ?
                 ORDER BY sequence_number
                 LIMIT ?
                 """)) {
-                statement.setLong(1, lastProcessedSequenceNumber);
-                statement.setInt(2, limit);
+                statement.setString(1, log.name());
+                statement.setLong(2, lastProcessedSequenceNumber);
+                statement.setInt(3, limit);
 
-                LOGGER.debug("Loading events after sequenceNumber={} (limit={})", lastProcessedSequenceNumber, limit);
+                LOGGER.debug("Loading events: log={}, afterSequenceNumber={}, limit={}", log.name(), lastProcessedSequenceNumber, limit);
                 var resultSet = statement.executeQuery();
 
                 var events = new ArrayDeque<SerializedEvent>();
@@ -79,9 +98,42 @@ public class PostgresEventStorage implements EventStorage {
                 }
                 return cursor(events);
             } catch (SQLException e) {
-                throw new EventStorageException("Failed to load events: lastProcessedSequenceNumber=" + lastProcessedSequenceNumber, e);
+                throw new EventStorageException("Failed to load events: log=" + log.name() + ", lastProcessedSequenceNumber=" + lastProcessedSequenceNumber, e);
             }
         });
+    }
+
+    @Override
+    public long countStoredInOtherLogs(EventLog log, long afterSequenceNumber, long beforeSequenceNumber) {
+        return connectionProvider.doWithConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT COUNT(*)
+                FROM smd_event_store
+                WHERE sequence_number > ? AND sequence_number < ? AND log <> ?
+                """)) {
+                statement.setLong(1, afterSequenceNumber);
+                statement.setLong(2, beforeSequenceNumber);
+                statement.setString(3, log.name());
+
+                try (var resultSet = statement.executeQuery()) {
+                    resultSet.next();
+                    return resultSet.getLong(1);
+                }
+            } catch (SQLException e) {
+                throw new EventStorageException("Failed to count events stored in other logs: log=" + log.name()
+                    + ", afterSequenceNumber=" + afterSequenceNumber + ", beforeSequenceNumber=" + beforeSequenceNumber, e);
+            }
+        });
+    }
+
+    private static void setEventParameters(PreparedStatement stmt, EventLog log, SerializedEvent event) throws SQLException {
+        stmt.setString(1, log.name());
+        stmt.setObject(2, event.messageId().value());
+        stmt.setString(3, event.subjectId().orElse(null));
+        stmt.setString(4, event.eventType());
+        stmt.setBytes(5, event.serializedPayload());
+        stmt.setBytes(6, event.serializedMetadata());
+        stmt.setTimestamp(7, Timestamp.from(event.createdAt()));
     }
 
     private static SerializedEvent mapToSerializedEvent(ResultSet resultSet) throws SQLException {
