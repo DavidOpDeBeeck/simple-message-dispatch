@@ -1,6 +1,29 @@
 {
   "properties": [
     {
+      "name": "smd.jms.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether to create a JmsConfig for JMS event media. Requires app.dodb:smd-jms and a ConnectionFactory bean.",
+      "defaultValue": false
+    },
+    {
+      "name": "smd.jms.subscriber-name",
+      "type": "java.lang.String",
+      "description": "Prefix of the durable subscription each processing group opens on a JMS topic, as <subscriber-name>.<processing-group>. Must be unique per application on the broker."
+    },
+    {
+      "name": "smd.jms.outlet.concurrency",
+      "type": "java.lang.Integer",
+      "description": "Consumers per JMS subscription in each application instance.",
+      "defaultValue": 1
+    },
+    {
+      "name": "smd.jms.outlet.receive-timeout",
+      "type": "java.time.Duration",
+      "description": "How long a JMS consumer waits for a message before checking whether its subscription was closed. Also the delay before reconnecting after a failure.",
+      "defaultValue": "1s"
+    },
+    {
       "name": "smd.opentelemetry.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to record the buses' invocations as OpenTelemetry spans when an OpenTelemetry bean exists.",
