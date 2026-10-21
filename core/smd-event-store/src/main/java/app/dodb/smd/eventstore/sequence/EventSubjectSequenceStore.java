@@ -12,4 +12,6 @@ public interface EventSubjectSequenceStore {
 
     Optional<EventSequenceState> eventSequenceState(String processingGroup, String subjectId);
 
+    int deleteSequences(String processingGroup);
+
 }

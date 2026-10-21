@@ -65,4 +65,31 @@ class EventStoreConfigTest {
             .build())
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void processingConfig_rejectsZeroResetLockTimeout() {
+        assertThatThrownBy(() -> ProcessingConfig.withDefaults()
+            .resetLockTimeout(Duration.ZERO)
+            .build())
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void processingConfig_rejectsNegativeResetLockTimeout() {
+        assertThatThrownBy(() -> ProcessingConfig.withDefaults()
+            .resetLockTimeout(Duration.ofMillis(-1))
+            .build())
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void processingConfig_withoutResetLockTimeout_fails() {
+        assertThatThrownBy(() -> ProcessingConfig.withoutDefaults()
+            .maxRetries(3)
+            .batchSize(100)
+            .retryBackoffStrategy(RetryBackoffStrategy.fixed(Duration.ofSeconds(1)))
+            .gapTimeout(Duration.ofMinutes(5))
+            .build())
+            .isInstanceOf(NullPointerException.class);
+    }
 }

@@ -6,5 +6,6 @@ dependencies {
 
     compileOnly(libs.jackson.databind)
 
+    testImplementation(project(":smd-test"))
     testImplementation(libs.jackson.databind)
 }

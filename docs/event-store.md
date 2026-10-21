@@ -75,7 +75,8 @@ With Spring, `eventStore.send(message)` joins an existing transaction or commits
 
 Closing a subscription stops its future polls and lets an active delivery finish. Close the store to shut down its scheduler; Spring handles this automatically.
 
-An outlet filter skips nonmatching events and advances past them. Changing the filter later does not replay those events.
+An outlet filter skips nonmatching events and advances past them. Changing the filter later does not replay those events; [reset the group](#rebuild-a-processing-group) to
+deliver them under the new filter.
 
 ## Identify Event Subjects
 
@@ -149,6 +150,9 @@ Crashes and rollbacks can cause redelivery, so handlers must remain idempotent.
 
 `batch-size` limits the number of stored events inspected per poll. A subject beyond that window waits for a later poll even when an earlier subject is in backoff.
 
+When a poll inspected a full batch and advanced the token, the group polls again without waiting for `polling-delay`. A group that is behind, for example after a reset or an outage, therefore
+catches up at processing speed. Each repeated poll goes through the shared scheduler queue, so other groups' polls still interleave. Otherwise the next poll waits `polling-delay`.
+
 ## Configuration
 
 The defaults are suitable for a basic installation:
@@ -157,11 +161,12 @@ The defaults are suitable for a basic installation:
 |----------------------------------------|---------------------:|-----------------------------------------|
 | `scheduling.enabled`                   |               `true` | Start polling for subscribed groups     |
 | `scheduling.initial-delay`             |                `10s` | Wait before the first poll              |
-| `scheduling.polling-delay`             |                 `5s` | Delay between completed polls           |
+| `scheduling.polling-delay`             |                 `5s` | Delay before polling a caught-up group  |
 | `scheduling.thread-pool-size`          | available processors | Shared scheduler threads                |
 | `processing.max-retries`               |                  `3` | Retries after the initial failure       |
 | `processing.batch-size`                |                `100` | Maximum events scanned per poll         |
 | `processing.gap-timeout`               |                 `5m` | Wait before skipping a missing position |
+| `processing.reset-lock-timeout`        |                `30s` | Wait for the token lock during a reset  |
 | `processing.retry-backoff.strategy`    |        `EXPONENTIAL` | Backoff calculation                     |
 | `processing.retry-backoff.base-delay`  |                 `1s` | Initial exponential or linear delay     |
 | `processing.retry-backoff.multiplier`  |                `5.0` | Exponential growth factor               |
@@ -184,6 +189,7 @@ smd:
       max-retries: 3
       batch-size: 100
       gap-timeout: 5m
+      reset-lock-timeout: 30s
       retry-backoff:
         strategy: EXPONENTIAL
         base-delay: 1s
@@ -209,7 +215,7 @@ retry-backoff:
   max-delay: 1m
 ```
 
-Durations and retry counts must be non-negative. Polling delay, batch size, scheduler size, and exponential multiplier must be greater than zero. Invalid configuration fails during application
+Durations and retry counts must be non-negative. Polling delay, reset lock timeout, batch size, scheduler size, and exponential multiplier must be greater than zero. Invalid configuration fails during application
 startup.
 
 ## Delivery Metadata
@@ -222,6 +228,7 @@ Before each delivery attempt, SMD merges these reserved properties into the even
 | `sequenceNumber` | Global store position                             |
 | `subjectId`      | Persisted subject; omitted for subjectless events |
 | `errorCount`     | Failures already recorded for the subject         |
+| `replay`         | `"true"` at or below the group's replay boundary  |
 
 Handlers can read them with `@MetadataValue`. Attempt metadata replaces stored properties with the same names but does not modify the metadata stored in `smd_event_store`.
 
@@ -235,8 +242,84 @@ var global = eventSequenceStore.globalEventSequenceState("ticket-activity");
 var ticket = eventSequenceStore.eventSequenceState("ticket-activity", ticketId.toString());
 ```
 
-`TokenState` reports contiguous progress and any active gap. `EventSequenceState` reports status, progress, failure count, and the latest error for one subject. Missing state is returned as
+`TokenState` reports contiguous progress, any active gap, and the replay boundary. `EventSequenceState` reports status, progress, failure count, and the latest error for one subject. Missing state is returned as
 `Optional.empty()`. SMD does not publish metrics or an HTTP endpoint; adapt these snapshots to your monitoring system if needed.
+
+## Rebuild a Processing Group
+
+`EventStore.reset` replays a processing group from the start of the store. Use it after fixing a projection bug or changing what a projection stores:
+
+```java
+var result = eventStore.reset("ticket-view", () -> jdbc.execute("TRUNCATE ticket_view"));
+```
+
+The reset runs in its own transaction and commits before it returns:
+
+1. It waits up to `reset-lock-timeout` for the group's token lock. A batch in flight on any node finishes and commits first. Pollers never wait for the reset; they skip the group while
+   the reset holds the lock.
+2. It runs the optional reset action, here a `TRUNCATE` of the group's read model.
+3. It deletes the group's subject state, including failed and abandoned subjects, and moves the token to the start.
+
+The reset action and the token move commit together or not at all. An exception from the reset action propagates unchanged and rolls back the whole reset. No node needs to stop, but readers
+see an empty and then growing read model until the replay catches up. Use an in-place reset for internal or small read models, and a [blue/green rebuild](#bluegreen-rebuilds) otherwise.
+
+| Result                   | Meaning                                                                                                     |
+|--------------------------|-------------------------------------------------------------------------------------------------------------|
+| `Reset`                  | Committed. Reports the previous position and the replay boundary                                            |
+| `TokenClaimed`           | The lock was not acquired within `reset-lock-timeout`. Nothing changed; retry later                         |
+| `UnknownProcessingGroup` | The group has no token and no subscription to this event store on this node. Nothing changed or was created |
+
+Abandoned subjects get another attempt during the replay. If the cause is still there, they fail and are abandoned again through the normal retry path.
+
+Outlet filters run on every replayed event, so a reset delivers events that an earlier filter skipped. Every replayed event is still deserialized, even when the filter drops it: a stored type
+that no longer deserializes fails the group during the replay.
+
+### Replayed Deliveries
+
+The reset records the group's previous position as its replay boundary. Events at or below the boundary are delivered with the `replay` property set to `"true"`; later events get
+`"false"`. When the token passes the boundary, the store clears it and logs `Replay finished`. Resetting again during a replay keeps the furthest boundary.
+
+Missing store positions at or below the boundary are skipped immediately, because the group already passed them. Above the boundary, `gap-timeout` applies as usual.
+
+### Keep Side Effects in Their Own Groups
+
+Reset only groups whose handlers are safe to run again, such as projections. Put emails, webhooks, and outbound commands in their own processing groups and do not reset those groups. A handler
+that must combine a projection with a side effect can guard on the property:
+
+```java
+@EventHandler
+public void on(TicketResolvedEvent event, @MetadataValue("replay") String replay) {
+    projection.markResolved(event.ticketId());
+    if (!"true".equals(replay)) {
+        mailer.sendResolvedMail(event.ticketId());
+    }
+}
+```
+
+Like the other delivery properties, `replay` is inherited by messages a handler sends, and is stored with the events it publishes.
+
+### Blue/Green Rebuilds
+
+A processing group without a token starts at the beginning of the store, so a rebuild without an empty read model needs no reset:
+
+1. Deploy a copy of the projection under a new group, for example `@ProcessingGroup("ticket-view-v2")`, writing to `ticket_view_v2`. Both groups receive every event.
+2. Wait until the new group has caught up with the old one:
+
+   ```java
+   var v1 = eventStore.progress("ticket-view").orElseThrow();
+   var v2 = eventStore.progress("ticket-view-v2").orElseThrow();
+   boolean caughtUp = v2.position() >= v1.position();
+   ```
+
+   Compare with the old group's position, not with `head()`: both groups pause at the same recent gaps.
+3. Switch reads to `ticket_view_v2` in the application.
+4. Remove the old handler. Its token and subject rows stay behind and are not read again.
+
+A new group has no replay boundary. Its whole backfill is delivered with `replay` set to `"false"`, and it waits `gap-timeout` at every historical gap. Never introduce a side-effect handler
+under a new group name on a store with history.
+
+`progress` returns `ProcessingProgress` with the group's `position`, the store's `head`, the `replayUntil` boundary, `remaining()`, and `replaying()`. It is empty for a group without a
+token.
 
 ## Framework-Agnostic Setup
 
@@ -294,3 +377,10 @@ Fresh installations need all three tables from the bundled schema:
 
 The schema uses PostgreSQL `UNIQUE NULLS NOT DISTINCT`, which requires PostgreSQL 15 or newer. It is not applied automatically. Copy it into a versioned Flyway migration or include it through
 Liquibase `sqlFile`.
+
+Installations created with SMD 0.0.12 or earlier need the replay boundary column before upgrading:
+
+```sql
+ALTER TABLE smd_token_store
+    ADD COLUMN replay_until_sequence_number BIGINT;
+```

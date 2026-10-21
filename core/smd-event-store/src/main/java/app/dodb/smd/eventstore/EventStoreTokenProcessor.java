@@ -41,18 +41,18 @@ class EventStoreTokenProcessor {
         );
     }
 
-    void poll(EventSubscriber listener) {
+    boolean poll(EventSubscriber listener) {
         var processingGroup = listener.processingGroup();
         try {
             var batchSize = processingConfig.getBatchSize();
             while (batchSize > 0) {
                 try {
-                    processBatchInNewTransaction(listener, batchSize);
-                    return;
+                    var fullBatchAdvanced = processBatchInNewTransaction(listener, batchSize);
+                    return fullBatchAdvanced && batchSize == processingConfig.getBatchSize();
                 } catch (BatchProcessingFailure failure) {
                     if (failure.replayBatchSize() == 0) {
                         recordFailureInNewTransaction(processingGroup, failure.failure());
-                        return;
+                        return false;
                     }
 
                     LOGGER.warn("Event processing failed mid-batch, retrying previous {} event(s): processingGroup={}, subjectId={}, sequenceNumber={}",
@@ -63,22 +63,24 @@ class EventStoreTokenProcessor {
         } catch (Exception exception) {
             LOGGER.error("Polling error: processingGroup={}", processingGroup, exception);
         }
+        return false;
     }
 
-    private void processBatchInNewTransaction(EventSubscriber listener, int batchSize) {
-        transactionProvider.doInNewTransaction(() -> {
+    private boolean processBatchInNewTransaction(EventSubscriber listener, int batchSize) {
+        return transactionProvider.doInNewTransaction(() -> {
             var claimedToken = tokenStore.claimToken(listener.processingGroup());
             if (claimedToken.isEmpty()) {
                 LOGGER.debug("Token already claimed, skipping poll: processingGroup={}", listener.processingGroup());
-                return;
+                return false;
             }
 
-            processClaimedBatch(listener, claimedToken.get(), batchSize);
+            return processClaimedBatch(listener, claimedToken.get(), batchSize);
         });
     }
 
-    private void processClaimedBatch(EventSubscriber listener, Token token, int batchSize) {
+    private boolean processClaimedBatch(EventSubscriber listener, Token token, int batchSize) {
         long initialSequenceNumber = token.lastProcessedSequenceNumber().orElse(0L);
+        long replayUntilSequenceNumber = token.replayUntilSequenceNumber().orElse(0L);
         long committableSequenceNumber = initialSequenceNumber;
         long lastInspectedSequenceNumber = initialSequenceNumber;
         int positionInBatch = 0;
@@ -87,7 +89,7 @@ class EventStoreTokenProcessor {
         try (var events = eventStorage.load(initialSequenceNumber, batchSize)) {
             if (!events.hasNext()) {
                 LOGGER.debug("No events to process: processingGroup={}, lastProcessedSequence={}", listener.processingGroup(), initialSequenceNumber);
-                return;
+                return false;
             }
 
             while (events.hasNext()) {
@@ -96,6 +98,17 @@ class EventStoreTokenProcessor {
                 var expectedSequence = lastInspectedSequenceNumber + 1;
                 lastInspectedSequenceNumber = sequenceNumber;
                 positionInBatch++;
+
+                // The group already passed every position up to the replay boundary, so missing ones there are permanent holes.
+                if (sequenceNumber > expectedSequence && expectedSequence <= replayUntilSequenceNumber) {
+                    var skippedUntil = Math.min(sequenceNumber - 1, replayUntilSequenceNumber);
+                    LOGGER.debug("Skipping missing replayed positions: processingGroup={}, fromSequence={}, toSequence={}",
+                        listener.processingGroup(), expectedSequence, skippedUntil);
+                    if (committableSequenceNumber + 1 == expectedSequence) {
+                        committableSequenceNumber = skippedUntil;
+                    }
+                    expectedSequence = skippedUntil + 1;
+                }
 
                 if (sequenceNumber > expectedSequence) {
                     var gapDetectedAt = token.lastGapDetectedAt();
@@ -117,7 +130,7 @@ class EventStoreTokenProcessor {
                     }
                 }
 
-                var result = eventSequenceProcessor.process(listener, serializedEvent);
+                var result = eventSequenceProcessor.process(listener, serializedEvent, sequenceNumber <= replayUntilSequenceNumber);
                 if (result instanceof Failure failure) {
                     throw new BatchProcessingFailure(failure, lastProcessedPositionInBatch);
                 }
@@ -130,9 +143,12 @@ class EventStoreTokenProcessor {
             }
         }
 
-        if (committableSequenceNumber > initialSequenceNumber) {
-            token.markProcessed(committableSequenceNumber);
+        if (committableSequenceNumber <= initialSequenceNumber) {
+            return false;
         }
+
+        markProcessed(listener.processingGroup(), token, committableSequenceNumber);
+        return positionInBatch == batchSize;
     }
 
     private void recordFailureInNewTransaction(String processingGroup, Failure failure) {
@@ -160,7 +176,7 @@ class EventStoreTokenProcessor {
                 sequence.markAbandoned(failure.sequenceNumber(), failure.exception());
 
                 if (token.lastProcessedSequenceNumber().orElse(0L) + 1 == failure.sequenceNumber()) {
-                    token.markProcessed(failure.sequenceNumber());
+                    markProcessed(processingGroup, token, failure.sequenceNumber());
                 }
                 return;
             }
@@ -170,6 +186,15 @@ class EventStoreTokenProcessor {
                 processingGroup, failure.subjectId().orElse(null), failure.sequenceNumber(), nextErrorCount, processingConfig.getMaxRetries(), failure.exception());
             sequence.markFailed(failure.exception(), nextErrorCount);
         });
+    }
+
+    private static void markProcessed(String processingGroup, Token token, long sequenceNumber) {
+        var replayUntilSequenceNumber = token.replayUntilSequenceNumber();
+        token.markProcessed(sequenceNumber);
+        if (replayUntilSequenceNumber.filter(replayUntil -> sequenceNumber >= replayUntil).isPresent()) {
+            LOGGER.info("Replay finished: processingGroup={}, replayUntil={}, sequenceNumber={}",
+                processingGroup, replayUntilSequenceNumber.get(), sequenceNumber);
+        }
     }
 
     private static class BatchProcessingFailure extends RuntimeException {

@@ -46,6 +46,18 @@ class InMemoryEventStorageTest {
             .containsExactly(3L, 4L);
     }
 
+    @Test
+    void headSequenceNumber_withoutEvents_returnsZero() {
+        assertThat(new InMemoryEventStorage().headSequenceNumber()).isZero();
+    }
+
+    @Test
+    void headSequenceNumber_returnsHighestStoredSequenceNumber() {
+        var storage = new InMemoryEventStorage(event(5L), event(2L));
+
+        assertThat(storage.headSequenceNumber()).isEqualTo(5L);
+    }
+
     private SerializedEvent event(Long sequenceNumber) {
         return new SerializedEvent(
             generate(),

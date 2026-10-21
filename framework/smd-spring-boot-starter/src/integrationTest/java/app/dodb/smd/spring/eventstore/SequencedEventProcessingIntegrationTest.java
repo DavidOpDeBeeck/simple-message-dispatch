@@ -67,6 +67,7 @@ class SequencedEventProcessingIntegrationTest {
                 .batchSize(BATCH_SIZE)
                 .retryBackoffStrategy(fixed(Duration.ZERO))
                 .gapTimeout(ofSeconds(1))
+                .resetLockTimeout(ofSeconds(1))
                 .build();
 
             try (var eventStore = fixture.createEventStore(processingConfig, scheduler);
@@ -112,6 +113,7 @@ class SequencedEventProcessingIntegrationTest {
                 .batchSize(BATCH_SIZE)
                 .retryBackoffStrategy(fixed(Duration.ZERO))
                 .gapTimeout(ofSeconds(1))
+                .resetLockTimeout(ofSeconds(1))
                 .build();
 
             try (var eventStore = fixture.createEventStore(processingConfig, scheduler);
@@ -159,6 +161,7 @@ class SequencedEventProcessingIntegrationTest {
                 .batchSize(BATCH_SIZE)
                 .retryBackoffStrategy(fixed(Duration.ofDays(1)))
                 .gapTimeout(ofSeconds(1))
+                .resetLockTimeout(ofSeconds(1))
                 .build();
 
             try (var eventStore = fixture.createEventStore(processingConfig, scheduler);

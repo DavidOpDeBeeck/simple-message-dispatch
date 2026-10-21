@@ -68,6 +68,10 @@ final class EventStoreTestFixture implements AutoCloseable {
     }
 
     EventStore createEventStore(ProcessingConfig processingConfig, ScheduledExecutorService scheduler) {
+        return createEventStore(processingConfig, scheduler, POLLING_DELAY);
+    }
+
+    EventStore createEventStore(ProcessingConfig processingConfig, ScheduledExecutorService scheduler, Duration pollingDelay) {
         return new EventStore(EventStoreConfig.withoutDefaults()
             .transactionProvider(bean(TransactionProvider.class))
             .eventStorage(bean(EventStorage.class))
@@ -78,10 +82,19 @@ final class EventStoreTestFixture implements AutoCloseable {
                 .enabled(true)
                 .scheduler(scheduler)
                 .initialDelay(ZERO)
-                .pollingDelay(POLLING_DELAY)
+                .pollingDelay(pollingDelay)
                 .build())
             .processingConfig(processingConfig)
             .build());
+    }
+
+    ProcessingConfig.Builder defaultProcessingConfigBuilder() {
+        return ProcessingConfig.withoutDefaults()
+            .maxRetries(1)
+            .batchSize(DEFAULT_BATCH_SIZE)
+            .retryBackoffStrategy(fixed(ZERO))
+            .gapTimeout(ofSeconds(1))
+            .resetLockTimeout(ofSeconds(1));
     }
 
     @SafeVarargs
@@ -173,12 +186,7 @@ final class EventStoreTestFixture implements AutoCloseable {
     }
 
     private ProcessingConfig defaultProcessingConfig() {
-        return ProcessingConfig.withoutDefaults()
-            .maxRetries(1)
-            .batchSize(DEFAULT_BATCH_SIZE)
-            .retryBackoffStrategy(fixed(ZERO))
-            .gapTimeout(ofSeconds(1))
-            .build();
+        return defaultProcessingConfigBuilder().build();
     }
 
     static final class Builder {

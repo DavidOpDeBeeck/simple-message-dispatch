@@ -159,6 +159,7 @@ class EventStoreProcessingIntegrationTest {
                 .batchSize(BATCH_SIZE)
                 .retryBackoffStrategy(fixed(Duration.ofDays(1)))
                 .gapTimeout(ofSeconds(1))
+                .resetLockTimeout(ofSeconds(1))
                 .build();
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {

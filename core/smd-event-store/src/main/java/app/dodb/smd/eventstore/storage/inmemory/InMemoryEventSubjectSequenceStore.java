@@ -40,6 +40,17 @@ public class InMemoryEventSubjectSequenceStore implements EventSubjectSequenceSt
         return eventSequenceState(processingGroup, Optional.of(requireNonNull(subjectId)));
     }
 
+    @Override
+    public int deleteSequences(String processingGroup) {
+        var deleted = 0;
+        for (var sequenceId : sequences.keySet()) {
+            if (sequenceId.processingGroup().equals(processingGroup) && sequences.remove(sequenceId) != null) {
+                deleted++;
+            }
+        }
+        return deleted;
+    }
+
     private Optional<EventSubjectSequence> claim(String processingGroup, Optional<String> subjectId) {
         var sequenceId = new SequenceId(processingGroup, subjectId);
         return Optional.of(sequences.computeIfAbsent(sequenceId, _ -> new InMemoryEventSubjectSequence()));

@@ -84,6 +84,22 @@ public class PostgresEventStorage implements EventStorage {
         });
     }
 
+    @Override
+    public long headSequenceNumber() {
+        return connectionProvider.doWithConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT COALESCE(MAX(sequence_number), 0)
+                FROM smd_event_store
+                """);
+                 var resultSet = statement.executeQuery()) {
+                resultSet.next();
+                return resultSet.getLong(1);
+            } catch (SQLException e) {
+                throw new EventStorageException("Failed to read head sequence number", e);
+            }
+        });
+    }
+
     private static SerializedEvent mapToSerializedEvent(ResultSet resultSet) throws SQLException {
         return new SerializedEvent(
             new MessageId((UUID) resultSet.getObject("message_id")),

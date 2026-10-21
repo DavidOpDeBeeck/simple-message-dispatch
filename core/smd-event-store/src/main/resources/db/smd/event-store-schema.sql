@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS smd_token_store
     processing_group               VARCHAR(255) PRIMARY KEY,
     last_processed_sequence_number BIGINT,
     last_gap_detected_at           TIMESTAMP WITH TIME ZONE,
-    gap_sequence_number            BIGINT
+    gap_sequence_number            BIGINT,
+    replay_until_sequence_number   BIGINT
 );
 
 CREATE TABLE IF NOT EXISTS smd_event_sequence_state
