@@ -2,11 +2,14 @@
 
 Status: proposal, nothing implemented. Written against 0.0.12.
 
-A deadline is a command that SMD sends at a due time unless the deadline is cancelled first. A key names it, so a later message can cancel or move it:
+A deadline is a command that SMD sends at a due time unless the deadline is cancelled first. Scheduling returns a generated ID that cancels it, and an optional key names it, so a later
+message can cancel or move it without having stored the ID:
 
 ```java
-deadlines.schedule(escalation(ticketId), timestamp.plus(ofHours(48)), new EscalateTicketCommand(ticketId));
+var reminder = deadlines.schedule(new RemindCustomerCommand(ticketId), ofHours(4));
+deadlines.schedule(new EscalateTicketCommand(ticketId), timestamp.plus(ofHours(48)), escalation(ticketId));
 // later, when the customer replies
+deadlines.cancel(reminder);
 deadlines.cancel(escalation(ticketId));
 ```
 
@@ -19,8 +22,8 @@ sagas on top of this port, so the port has a correlation scope and can cancel ev
 |----------------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | What is scheduled    | Commands only, any `Command<R>`; the result is discarded                                                                              |
 | When                 | `Instant` or `Duration`; a `Duration` is added to `TimeProvider.now()` when you schedule                                               |
-| Identity             | `DeadlineKey(scope, name)`; at most one pending deadline per key; scheduling an existing key replaces it                               |
-| Cancel               | `cancel(key)` and `cancelAll(scope)`                                                                                                   |
+| Identity             | Every deadline gets a generated `DeadlineId`; an optional `DeadlineKey(scope, name)` names at most one pending deadline and replaces it |
+| Cancel               | `cancel(id)`, `cancel(key)` and `cancelAll(scope)`                                                                                     |
 | Port                 | `DeadlineScheduler` in `smd-api`, package `app.dodb.smd.api.deadline`                                                                |
 | Durable store        | `DeadlineStore` in `smd-event-store`, package `app.dodb.smd.eventstore.deadline`, table `smd_deadline_store`                         |
 | In memory            | `InMemoryDeadlineStorage` behind the same `DeadlineStore`, and `DeadlineSchedulerStub` in `smd-test`                                  |
@@ -43,9 +46,15 @@ package app.dodb.smd.api.deadline;
 
 public interface DeadlineScheduler {
 
-    void schedule(DeadlineKey key, Instant dueAt, Command<?> command);
+    DeadlineId schedule(Command<?> command, Instant dueAt);
 
-    void schedule(DeadlineKey key, Duration delay, Command<?> command);
+    DeadlineId schedule(Command<?> command, Duration delay);
+
+    DeadlineId schedule(Command<?> command, Instant dueAt, DeadlineKey key);
+
+    DeadlineId schedule(Command<?> command, Duration delay, DeadlineKey key);
+
+    boolean cancel(DeadlineId id);
 
     boolean cancel(DeadlineKey key);
 
@@ -54,6 +63,17 @@ public interface DeadlineScheduler {
 ```
 
 ```java
+public record DeadlineId(UUID value) {
+
+    public static DeadlineId generate() {
+        return new DeadlineId(UUID.randomUUID());
+    }
+
+    public DeadlineId {
+        requireNonNull(value);
+    }
+}
+
 public record DeadlineScope(String value) {
 
     public DeadlineScope {
@@ -87,7 +107,7 @@ Usage in a handler:
 public UUID handle(OpenTicketCommand command, Instant timestamp) {
     var ticket = Ticket.open(command.title(), command.description());
     tickets.save(ticket);
-    deadlines.schedule(escalation(ticket.id()), timestamp.plus(ofHours(48)), new EscalateTicketCommand(ticket.id()));
+    deadlines.schedule(new EscalateTicketCommand(ticket.id()), timestamp.plus(ofHours(48)), escalation(ticket.id()));
     events.publish(new TicketOpenedEvent(ticket.id(), command.title(), command.description()));
     return ticket.id();
 }
@@ -113,23 +133,31 @@ public Void handle(EscalateTicketCommand command) {
 
 **Commands only.** A deadline asks for something to be done later, which is a command. Firing goes through the normal `CommandGateway`, so interceptors, transactions, tracing, handler
 discovery and metadata binding all apply unchanged, and no fourth message kind or handler annotation is needed. An event that "becomes true" in 48 hours is better modelled as a command whose
-handler checks the state and publishes `TicketEscalatedEvent` if it still applies. Events can be added later as `schedule(key, dueAt, Event)` on the same table with a `message_kind` column; see
+handler checks the state and publishes `TicketEscalatedEvent` if it still applies. Events can be added later as `schedule(Event, dueAt, key)` on the same table with a `message_kind` column; see
 [Open Questions](#open-questions). `Command<R>` with any `R` is accepted; the result is logged at debug and discarded.
 
-**A key is required.** There is no anonymous `schedule(delay, command)`. One shape means every deadline can be cancelled, inspected, and replaced, and the storage needs one unique constraint.
-`DeadlineScope` is the correlation: a ticket, an order, a saga instance. The name separates deadlines within one scope: `escalate`, `remind-customer`, `payment-timeout`.
+**Every deadline gets an ID; a key is optional.** `schedule` always returns a generated `DeadlineId`, so every deadline can be cancelled. The ID identifies one scheduled occurrence and is
+also the `MessageId` value of the command it fires, so a fired handler and the scheduler see the same identifier. A caller that wants to cancel by ID stores it in its own state, for example on
+the ticket row.
+
+A key is for deadlines that something other than the scheduling call needs to find: a later message that has not stored the ID, a saga that ends, a reschedule. `DeadlineScope` is the
+correlation: a ticket, an order, a saga instance. The name separates deadlines within one scope: `escalate`, `remind-customer`, `payment-timeout`. The key comes last because it is the
+optional part; an overload is used rather than an `Optional<DeadlineKey>` parameter.
+
+Without a key, scheduling is not idempotent: two calls schedule two deadlines. With the event store that is harmless, because a message is only redelivered after a rollback, which also rolled
+back the schedule. With a non-transactional source, such as a broker consumer without XA, a redelivered message schedules a second deadline; use a key there.
 
 **Scheduling an existing key replaces it.** Rescheduling is the common case (an SLA restarts when the customer replies), and replace-on-schedule makes it one call without a separate
-`reschedule`. Replacing resets the due time, the command, the captured metadata, the error count and the status, and gives the deadline a new `MessageId`. Failing on a duplicate instead was
-considered; see [Rejected Alternatives](#rejected-alternatives).
+`reschedule`. Replacing resets the due time, the command, the captured metadata, the error count and the status, and gives the deadline a new `DeadlineId`; cancelling the old ID then returns
+`false`. Failing on a duplicate instead was considered; see [Rejected Alternatives](#rejected-alternatives).
 
-**Instant and Duration.** `schedule(key, Duration, command)` computes `timeProvider.now().plus(delay)` at the call, using the same `TimeProvider` as metadata. A negative delay fails:
+**Instant and Duration.** `schedule(command, Duration)` computes `timeProvider.now().plus(delay)` at the call, using the same `TimeProvider` as metadata. A negative delay fails:
 `IllegalArgumentException("Deadline delay must not be negative: key=ticket#42/escalate, delay=PT-1H")`. An `Instant` in the past is allowed and fires on the next poll, which makes
 "recompute the due date and schedule it" safe without a special case. In at-least-once handlers, prefer the `Instant` form derived from the message timestamp so a redelivered message
 schedules the same due time.
 
-**`cancel` returns whether it removed a deadline that had not fired.** `false` means the key had no pending deadline: it never existed, was cancelled already, or fired and committed
-(see [Cancel versus Fire](#cancel-versus-fire)). `cancelAll` returns the number removed. Both are idempotent.
+**`cancel` returns whether it removed a deadline that had not fired.** `false` means the ID or key had no pending deadline: it never existed, was cancelled or replaced already, or fired and
+committed (see [Cancel versus Fire](#cancel-versus-fire)). `cancelAll` returns the number removed. All three are idempotent.
 
 **Validation happens at the call.** `DeadlineStore.schedule` serializes the command and resolves its type name immediately, so an unserializable command or a missing type mapping fails in the
 handler that scheduled it, not 48 hours later. The PostgreSQL storage also rejects keys longer than its columns with the key in the message.
@@ -138,7 +166,7 @@ handler that scheduled it, not 48 hours later. The PostgreSQL storage also rejec
 
 | Module                              | Contents                                                                                                                                                    |
 |-------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `core/smd-api`                      | `DeadlineScheduler`, `DeadlineKey`, `DeadlineScope`                                                                                                         |
+| `core/smd-api`                      | `DeadlineScheduler`, `DeadlineId`, `DeadlineKey`, `DeadlineScope`                                                                                           |
 | `core/smd-event-store`              | `DeadlineStore`, `DeadlineStoreConfig`, `DeadlineStorage`, `DeadlineState`, `PostgresDeadlineStorage`, `InMemoryDeadlineStorage`, serializer, schema table |
 | `core/smd-test`                     | `DeadlineSchedulerStub`                                                                                                                                     |
 | `framework/smd-spring-boot-starter` | `SMDDeadlineAutoConfiguration`, `smd.deadlines.*` properties                                                                                               |
@@ -160,6 +188,8 @@ public class DeadlineStore implements DeadlineScheduler, AutoCloseable {
     // DeadlineScheduler methods write in the caller's transaction and work before start.
 
     public void start(CommandGateway commandGateway) { ... }   // begins polling and firing
+
+    public Optional<DeadlineState> deadlineState(DeadlineId id) { ... }
 
     public Optional<DeadlineState> deadlineState(DeadlineKey key) { ... }
 
@@ -202,7 +232,9 @@ The storage port is internal to the store's contract with its database, like `Ev
 ```java
 public interface DeadlineStorage {
 
-    void store(SerializedDeadline deadline);               // insert, or replace the row with the same key
+    void store(SerializedDeadline deadline);               // insert; a keyed deadline replaces the row with the same key
+
+    boolean delete(DeadlineId id);
 
     boolean delete(DeadlineKey key);
 
@@ -210,7 +242,9 @@ public interface DeadlineStorage {
 
     Optional<ClaimedDeadline> claimDue(Instant now);       // locked until the claiming transaction ends
 
-    Optional<ClaimedDeadline> claim(MessageId messageId);  // for recording a failure
+    Optional<ClaimedDeadline> claim(DeadlineId id);        // for recording a failure
+
+    Optional<DeadlineState> deadlineState(DeadlineId id);
 
     Optional<DeadlineState> deadlineState(DeadlineKey key);
 }
@@ -229,16 +263,16 @@ public interface ClaimedDeadline {
 }
 ```
 
-`DeadlineState` is a non-locking diagnostic snapshot like `EventSequenceState`: key, due time, next attempt, status (`PENDING`, `FAILED`, `ABANDONED`), error count, latest error.
+`DeadlineState` is a non-locking diagnostic snapshot like `EventSequenceState`: ID, optional key, due time, next attempt, status (`PENDING`, `FAILED`, `ABANDONED`), error count, latest error.
 
 ## Schema Sketch
 
 ```sql
 CREATE TABLE IF NOT EXISTS smd_deadline_store
 (
-    deadline_scope      VARCHAR(500)             NOT NULL,
-    deadline_name       VARCHAR(255)             NOT NULL,
-    message_id          UUID                     NOT NULL UNIQUE,
+    deadline_id         UUID PRIMARY KEY,
+    deadline_scope      VARCHAR(500),
+    deadline_name       VARCHAR(255),
     command_type        VARCHAR(500)             NOT NULL,
     serialized_payload  BYTEA                    NOT NULL,
     serialized_metadata BYTEA                    NOT NULL,
@@ -249,7 +283,8 @@ CREATE TABLE IF NOT EXISTS smd_deadline_store
     error_count         INTEGER                  NOT NULL DEFAULT 0,
     last_error_message  TEXT,
     last_error_at       TIMESTAMP WITH TIME ZONE,
-    PRIMARY KEY (deadline_scope, deadline_name)
+    UNIQUE (deadline_scope, deadline_name),
+    CHECK ((deadline_scope IS NULL) = (deadline_name IS NULL))
 );
 
 CREATE INDEX IF NOT EXISTS smd_deadline_store_next_attempt
@@ -257,25 +292,28 @@ CREATE INDEX IF NOT EXISTS smd_deadline_store_next_attempt
     WHERE status <> 'ABANDONED';
 ```
 
-- The primary key is the deadline key, so "one pending deadline per key" is a database constraint and `cancelAll(scope)` uses the key's prefix.
+- `deadline_id` identifies one occurrence and is also the fired command's `MessageId`. A replaced deadline gets a new one, and failure recording matches it so it cannot touch a deadline
+  that was replaced in between.
+- The unique key makes "one deadline per key" a database constraint, and its index serves `cancel(key)` and, by its prefix, `cancelAll(scope)`. Unkeyed rows store `NULL` in both columns;
+  PostgreSQL treats `NULL`s as distinct in a unique constraint by default, so they never collide. This must not use `NULLS NOT DISTINCT`, unlike `smd_event_sequence_state`.
 - `next_attempt_at` starts at `due_at` and moves forward with backoff, so one partial index answers "what is due now" for both first attempts and retries.
-- `message_id` identifies one occurrence: a replaced deadline gets a new one, and failure recording matches it so it cannot touch a deadline that was replaced in between.
 - A fired deadline is deleted. Only abandoned deadlines accumulate; see [Open Questions](#open-questions) for retention.
 
 Statements:
 
 ```sql
--- schedule (in the caller's transaction)
-INSERT INTO smd_deadline_store (deadline_scope, deadline_name, message_id, command_type, serialized_payload, serialized_metadata,
+-- schedule with a key (in the caller's transaction); without a key, the same INSERT with NULL scope and name and no ON CONFLICT
+INSERT INTO smd_deadline_store (deadline_id, deadline_scope, deadline_name, command_type, serialized_payload, serialized_metadata,
                                 scheduled_at, due_at, next_attempt_at, status, error_count)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0)
 ON CONFLICT (deadline_scope, deadline_name) DO UPDATE
-SET message_id = excluded.message_id, command_type = excluded.command_type,
+SET deadline_id = excluded.deadline_id, command_type = excluded.command_type,
     serialized_payload = excluded.serialized_payload, serialized_metadata = excluded.serialized_metadata,
     scheduled_at = excluded.scheduled_at, due_at = excluded.due_at, next_attempt_at = excluded.next_attempt_at,
     status = 'PENDING', error_count = 0, last_error_message = NULL, last_error_at = NULL;
 
--- cancel / cancelAll (in the caller's transaction)
+-- cancel by ID / by key / cancelAll (in the caller's transaction)
+DELETE FROM smd_deadline_store WHERE deadline_id = ? AND status <> 'ABANDONED';
 DELETE FROM smd_deadline_store WHERE deadline_scope = ? AND deadline_name = ? AND status <> 'ABANDONED';
 DELETE FROM smd_deadline_store WHERE deadline_scope = ? AND status <> 'ABANDONED';
 
@@ -287,7 +325,7 @@ LIMIT 1
 FOR UPDATE SKIP LOCKED;
 
 -- fired (in the firing transaction); row count must be 1
-DELETE FROM smd_deadline_store WHERE message_id = ?;
+DELETE FROM smd_deadline_store WHERE deadline_id = ?;
 ```
 
 Should `cancel` also remove an abandoned deadline? This sketch leaves abandoned rows for the operator and makes `cancel` report only pending deadlines; scheduling the key again replaces an
@@ -332,7 +370,7 @@ a successful fire's effects are applied once.
 **At least once.** A deadline is retried until it fires or is abandoned. Duplicates come from crashes before commit and from the window between a rollback and the failure record, where another
 node can claim the row and try again. Handlers that call external systems must be idempotent.
 
-**A stable message ID.** The `CommandMessage` is created once, when scheduling, and its `MessageId` is stored. Every attempt sends that same message through
+**A stable message ID.** The `CommandMessage` is created once, when scheduling, with the `DeadlineId`'s value as its `MessageId`. Every attempt sends that same message through
 `CommandGateway.send(CommandMessage)`, which keeps the ID, so handlers can use `MessageId` as an idempotency key exactly as event-store handlers use the event ID. Replacing a deadline creates a
 new message and a new ID.
 
@@ -346,7 +384,7 @@ triggers.
 
 ### Cancel versus Fire
 
-The firing transaction holds the row lock from claim to commit, and `cancel` is a `DELETE` of that row, so PostgreSQL serializes them:
+The firing transaction holds the row lock from claim to commit, and `cancel`, by ID or by key, is a `DELETE` of that row, so PostgreSQL serializes them:
 
 | Interleaving                                        | Result                                                                                         |
 |-----------------------------------------------------|------------------------------------------------------------------------------------------------|
@@ -367,8 +405,9 @@ cancel first. This is documented, not prevented.
 **Thread.** The store's scheduler thread runs the poll, the command dispatch and the handler, synchronously, inside the firing transaction. `close()` stops future polls, lets an active fire
 finish, and shuts the scheduler down as `EventStoreSource.close()` does; interruption is restored.
 
-**Metadata.** `schedule` builds the command message with `metadataFactory.createScope().run(metadata -> CommandMessage.from(command, metadata), ...)`, the same path `CommandBus.send` takes, so the
-stored metadata is exactly what an immediate send would have carried:
+**Metadata.** `schedule` builds the command message with
+`metadataFactory.createScope().run(metadata -> new CommandMessage<>(new MessageId(deadlineId.value()), command, metadata), ...)`, the same scope `CommandBus.send` uses, so the stored metadata
+is exactly what an immediate send would have carried:
 
 - the principal and properties of the message being handled when `schedule` was called, or the `PrincipalProvider`'s principal outside a handler;
 - the scheduling message's ID as `parentMessageId`;
@@ -379,8 +418,8 @@ At fire time the store sends the stored message with these changes, merged with 
 | Metadata                 | Value at fire time                                       |
 |--------------------------|----------------------------------------------------------|
 | `timestamp`              | `TimeProvider.now()` of the attempt                      |
-| `deadlineScope` property | The key's scope                                          |
-| `deadlineName` property  | The key's name                                           |
+| `deadlineScope` property | The key's scope; omitted for unkeyed deadlines           |
+| `deadlineName` property  | The key's name; omitted for unkeyed deadlines            |
 | `dueAt` property         | The due time, ISO-8601                                   |
 | `errorCount` property    | Failures already recorded for this deadline              |
 
@@ -405,10 +444,10 @@ The store reuses the event store's concepts and configuration shape:
 
 - `max-retries` counts attempts after the first; with the default `3`, a deadline is abandoned after four failed attempts.
 - After failure `n`, `next_attempt_at = now + retryBackoffStrategy.calculateDelay(n - 1)`, with the same `FIXED`, `LINEAR` and `EXPONENTIAL` strategies.
-- Recording a failure claims the row by `message_id` with `SKIP LOCKED`. If the row is gone (cancelled or replaced) or locked, nothing is recorded.
-- An abandoned deadline keeps its row with status `ABANDONED` and the latest error, and is never claimed again. It is logged once at error with scope, name, message ID and attempts.
-  Scheduling the key again replaces it.
-- A failed attempt is logged at warn with scope, name, message ID and `retry=n/max`.
+- Recording a failure claims the row by `deadline_id` with `SKIP LOCKED`. If the row is gone (cancelled or replaced) or locked, nothing is recorded.
+- An abandoned deadline keeps its row with status `ABANDONED` and the latest error, and is never claimed again. It is logged once at error with deadline ID, key when present, and
+  attempts. Scheduling the key again replaces it.
+- A failed attempt is logged at warn with deadline ID, key when present, and `retry=n/max`.
 
 There is no subject sequencing to block: a failing deadline delays only itself.
 
@@ -452,11 +491,12 @@ public class DeadlineSchedulerStub implements DeadlineScheduler {
     public void reset() { ... }
 }
 
-public record ScheduledDeadline(DeadlineKey key, Instant dueAt, Command<?> command) {
+public record ScheduledDeadline(DeadlineId id, Optional<DeadlineKey> key, Instant dueAt, Command<?> command) {
 }
 ```
 
-It follows the rules for `smd-test`: captured deadlines are an ordered snapshot, nothing fires implicitly, and `reset()` clears them. Replace and cancel behave as in the real store. `fireDue`
+It follows the rules for `smd-test`: captured deadlines are an ordered snapshot, nothing fires implicitly, and `reset()` clears them. Replace and cancel by ID, key and scope behave as in the
+real store. The stub generates IDs randomly, so tests compare the ID a handler returned or stored rather than a fixed value. `fireDue`
 sends on the test thread, so a test advances the `TimeProviderStub` and then fires explicitly, with no sleeps. Deadlines scheduled by the commands that `fireDue` sends wait for the next
 `fireDue` call, so one call fires one round.
 
@@ -473,11 +513,13 @@ void handle_openTicketCommand_schedulesEscalationIn48Hours() {
 
     var ticketId = handler.handle(new OpenTicketCommand("Cannot sign in", "Password reset does not arrive"), openedAt);
 
-    assertThat(deadlines.getDeadlines()).containsExactly(new ScheduledDeadline(
-        new DeadlineScope("ticket#" + ticketId).deadline("escalate"),
-        openedAt.plus(ofHours(48)),
-        new EscalateTicketCommand(ticketId)
-    ));
+    assertThat(deadlines.getDeadlines())
+        .extracting(ScheduledDeadline::key, ScheduledDeadline::dueAt, ScheduledDeadline::command)
+        .containsExactly(tuple(
+            Optional.of(new DeadlineScope("ticket#" + ticketId).deadline("escalate")),
+            openedAt.plus(ofHours(48)),
+            new EscalateTicketCommand(ticketId)
+        ));
 }
 ```
 
@@ -511,7 +553,7 @@ The in-memory storage is for tests and demos only: no transactions, one JVM, not
 
 | Library                        | Borrow                                                                                                                    | Avoid                                                                                                                                                                    |
 |--------------------------------|---------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Axon `DeadlineManager`         | A named deadline within a scope; cancel all within a scope; metadata propagation; test fixtures that advance time        | A separate deadline message kind routed back into the scheduling aggregate or saga by `@DeadlineHandler`; returning a generated ID the caller must store to cancel; an in-memory `SimpleDeadlineManager` that loses deadlines on restart |
+| Axon `DeadlineManager`         | A named deadline within a scope; cancel all within a scope; a returned deadline ID for cancelling one occurrence; metadata propagation; test fixtures that advance time | A separate deadline message kind routed back into the scheduling aggregate or saga by `@DeadlineHandler`; cancelling by name requiring the scope descriptor; an in-memory `SimpleDeadlineManager` that loses deadlines on restart |
 | db-scheduler                   | One table keyed by task name and instance; `SELECT ... FOR UPDATE SKIP LOCKED` polling; a next execution time column; failure handlers with backoff and a maximum; scheduling with the application's `DataSource` and transaction | `picked`/`picked_by` plus heartbeats and dead-execution detection, needed because it runs tasks outside the claiming transaction; SMD keeps the claim and the work in one transaction instead |
 | JobRunr                        | Explicit job states, retries with backoff by default, and caller-chosen IDs that make enqueueing idempotent                | Jobs captured as serialized lambdas or method calls, which break on refactoring and bypass SMD's typed messages, interceptors and metadata                              |
 | Quartz                         | Misfire policy as a named decision: SMD fires overdue deadlines as soon as possible                                       | About a dozen tables, a cluster-wide lock row, untyped `JobDataMap`, and a separate job and trigger model with its own thread pool and transaction handling             |
@@ -526,6 +568,10 @@ The in-memory storage is for tests and demos only: no transactions, one JVM, not
 - **An in-JVM `ScheduledExecutorService` per deadline.** Lost on restart, not shared by a cluster, not transactional.
 - **Wrapping Quartz, db-scheduler or JobRunr as the implementation.** Adds a dependency and a second scheduling model to the core. The port allows an adapter outside SMD.
 - **Failing when the key is already scheduled.** Forces cancel-then-schedule for the common reschedule. The constraint violation would also surface late if the write were deferred.
+- **An `Optional<DeadlineKey>` parameter.** Overloads keep the call sites plain and make the unkeyed choice visible.
+- **Generating a `DeadlineKey` for unkeyed deadlines.** A made-up scope would turn `cancelAll` and the key's meaning into accidents of the generator; a `DeadlineId` names an occurrence, not a
+  correlation.
+- **Returning `void` from unkeyed `schedule`.** Leaves a deadline that nothing can cancel.
 - **A claim flag with heartbeats.** Would allow work outside the claiming transaction and then needs dead-execution recovery. Not needed while fired work is a command in a transaction.
 - **Batching several deadlines into one firing transaction.** One failure would roll back the others and bring back prefix replay.
 - **Firing automatically when `TimeProviderStub` changes.** Hides when and on which thread commands run in a test.
@@ -533,7 +579,7 @@ The in-memory storage is for tests and demos only: no transactions, one JVM, not
 
 ## Open Questions
 
-1. **Events as deadline payloads.** Is there a use case that a command with a state check does not cover? If so, add a `message_kind` column and `schedule(key, dueAt, Event)`.
+1. **Events as deadline payloads.** Is there a use case that a command with a state check does not cover? If so, add a `message_kind` column and `schedule(Event, dueAt, key)`.
 2. **Principal at fire time.** Keep the scheduling principal (proposed), or let the store be configured with a system principal for fired deadlines while keeping the scheduler in the
    properties?
 3. **A new trace root for fired deadlines.** Worth a deadline interceptor port that `MessageTracing` implements? This also gives applications a hook around firing.
@@ -549,7 +595,7 @@ The in-memory storage is for tests and demos only: no transactions, one JVM, not
 
 ## Implementation Slices
 
-1. Port and stub: `DeadlineScheduler`, `DeadlineKey`, `DeadlineScope` in `smd-api`; `DeadlineSchedulerStub` in `smd-test`.
+1. Port and stub: `DeadlineScheduler`, `DeadlineId`, `DeadlineKey`, `DeadlineScope` in `smd-api`; `DeadlineSchedulerStub` in `smd-test`.
 2. `DeadlineStore` with `InMemoryDeadlineStorage`, command type resolvers and the serializer, with unit tests for metadata, retry and abandonment.
 3. `PostgresDeadlineStorage`, schema and Testcontainers tests for claims, cancel-versus-fire and rollback.
 4. Spring autoconfiguration, properties, stub replacement and `SMDTestExtension` methods, plus user documentation.
