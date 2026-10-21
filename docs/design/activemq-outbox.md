@@ -1,149 +1,118 @@
-# Design: Event Store Outbox with ActiveMQ
+# Design: Event Store Outbox and Inbox with ActiveMQ
 
-Status: proposal, 2026-10-22. Nothing here is implemented or released. This proposal does not change released behavior.
+Status: proposal, 2026-10-22. Nothing here is implemented or released. Existing event-store behavior stays the same, but the storage needs a schema migration (see [Storage](#storage)).
 
 ## Summary
 
-- **Broker and API.** Target **ActiveMQ Artemis** through **Jakarta Messaging 3.1** (`jakarta.jms`). Build a generic **`core/smd-jms`** module and test it against Artemis with Testcontainers.
-  Artemis-specific behavior is limited to one string property, `_AMQ_DUPL_ID`, which other brokers ignore.
-- **Outbound.** A relay processing group reads `eventStore.outlet()` and sends each event to a `JmsEventSink`. Events are stored in the publishing transaction, as they are today. The relay
-  reuses the event store's token, per-subject ordering, retry and abandonment. One small core addition wires it up: `EventBusSpec.relay(processingGroup, source, sink)`.
-- **Inbound.** A `JmsEventSource` consumes a topic through one shared durable subscription per processing group. For ordered or retried handling, the recommended shape is an **inbox**: relay the
-  `JmsEventSource` into the local event store (`eventStore.inbox()`, which deduplicates by `MessageId`), and let durable groups read it as usual.
-- **Ordering.** `@SubjectId` becomes `JMSXGroupID`. Per-subject order holds from store to handler while group ownership is stable and the broker redelivers without delay. A spike confirms both
-  the guarantee and the ways it breaks.
-- **Delivery.** At least once in both directions. The relay's database transaction owns token advancement, and the JMS send completes before that transaction commits. Duplicates are dropped by
-  Artemis duplicate detection and by `MessageId` deduplication on the consumer.
-- **Broker outage.** Today an outage would exhaust retries and **abandon** subjects for good. This proposal adds `EventDeliveryUnavailableException`, which pauses the whole group with
-  backoff instead of failing subjects.
-- **Wire format.** The body is `SerializedEvent.serializedPayload`. `JMSType` holds the stable event type name, `smd_metadata` holds the serialized metadata, and `smd_message_id` and
-  `smd_subject_id` hold the identity. Trace context is also copied into top-level properties. CloudEvents structured mode is deferred.
+- **Model.** The event store already makes delivery durable to its own log: transactional, ordered per subject, and retried. This proposal lets it do the same *around* another sink or
+  source:
+  ```java
+  EventSink   eventStore.outbox(String name, EventSink sink)   // send = stored in the transaction, forwarded to sink later
+  EventSource eventStore.inbox(EventSource source)             // received = stored with deduplication, delivered to the subscriber later
+  ```
+  An outbox forwards exactly what was sent to it. An inbox delivers exactly what the wrapped source delivers, to the same subscriber. Only the timing and the guarantees change, the same way
+  `.selecting(...)` changes only which events pass.
+- **ActiveMQ** is a plain `EventMedium`: `JmsEventMedium` pairs a `JmsEventSink` inlet with a `JmsEventSource` outlet. It is usable on its own when you don't need durability, like the
+  built-in dispatchers. Durability comes from wrapping it.
+- **Broker and API.** Target **ActiveMQ Artemis** through **Jakarta Messaging 3.1**, in a generic **`core/smd-jms`** module tested against Artemis. The only Artemis-specific piece is the
+  `_AMQ_DUPL_ID` string property.
+- **No new concept on the bus.** Configuration uses `.sinks(...)`, `.source(...)`, `.medium(...)` and `.selecting(...)` as they are today.
+- **Ordering.** `@SubjectId` maps to `JMSXGroupID`. Per-subject order holds from the outbox to the consumer while group ownership is stable and the broker redelivers without delay. A spike
+  confirms both the guarantee and the ways it breaks.
+- **Delivery.** At least once in both directions. Duplicates are dropped by Artemis duplicate detection and permanently by the inbox, which deduplicates by `MessageId`.
 
 ## Context
 
-SMD already has every outbox ingredient except the broker adapter:
+The event store is already an outbox for its own log:
 
-| Outbox need                       | SMD today                                                                                                       |
-|-----------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| Store events atomically with state | `EventStore.inlet()` defers `INSERT` into the publishing transaction (`TransactionProvider.defer`)              |
-| Durable cursor per consumer        | `smd_token_store` row per processing group, claimed with a lock so one poller runs per group cluster-wide        |
-| Per-key ordering                   | `smd_event_sequence_state` per (group, subject): store order, retry backoff, abandonment                         |
-| Stable type names                  | `EventTypeResolver` / `StaticEventTypeResolver`                                                                 |
-| Serialization                      | `EventSerializer` → `SerializedEvent` (payload bytes, metadata bytes, type, subject, message ID)                |
-| Trace propagation                  | `traceparent` in metadata properties, extracted by `MessageTracing` on any thread, instance or application       |
-| Publication / subscription split   | `EventSink`, `EventSource`, `EventMedium`, `.selecting(EventSelector)`                                          |
+| Need                               | SMD today                                                                                                 |
+|------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| Store atomically with state        | `EventStore.inlet()` defers its `INSERT` into the publishing transaction (`TransactionProvider.defer`)     |
+| Durable cursor                     | `smd_token_store` row per processing group, claimed with a lock so one poller runs per group cluster-wide  |
+| Per-key ordering and retry         | `smd_event_sequence_state` per (group, subject): store order, retry backoff, abandonment                   |
+| Stable type names                  | `EventTypeResolver` / `StaticEventTypeResolver`                                                           |
+| Serialization                      | `EventSerializer` → `SerializedEvent`                                                                     |
+| Trace propagation                  | `traceparent` in metadata properties, picked up by `MessageTracing` on any thread or application           |
+| Publication / subscription split   | `EventSink`, `EventSource`, `EventMedium`, `.selecting(EventSelector)`                                    |
 
-So the outbox is *a durable processing group whose only side effect is a broker send*. The design questions are about the relay's transaction boundaries, the broker's ordering, the wire format
-and the inbound side.
+What it lacks is a way to put that durability *between* the application and another medium. A first draft of this note added a relay: a processing group that read the whole event log and
+sent it to a sink. That made the store send the broker events nobody had sent there. The consequences were a full history replay when a relay first starts, inbound events echoing back out,
+and a made-up group name. See [Rejected Alternatives](#rejected-alternatives).
 
-## Which ActiveMQ
+## Model
 
-| Option                         | Message groups (`JMSXGroupID`) | Broker duplicate detection                            | Jakarta JMS 3            | Notes                                                                                     |
-|--------------------------------|--------------------------------|-------------------------------------------------------|--------------------------|-------------------------------------------------------------------------------------------|
-| **Artemis + Jakarta JMS 3.1**  | Yes, per queue/subscription    | Yes: `_AMQ_DUPL_ID`, persisted ID cache per address   | `artemis-jakarta-client` | Shared durable subscriptions (JMS 2+) map directly to processing groups. Spring Boot `spring-boot-starter-artemis`. |
-| Artemis core client            | Yes                            | Yes                                                   | n/a                      | Vendor-locked API; buys nothing the relay needs                                            |
-| ActiveMQ Classic 6 + Jakarta   | Yes                            | Producer audit by JMS message ID only (in memory, per producer) | Yes (6.x)        | No application-supplied dedup key; a relay restart is a new producer, so resends are not caught |
-| AMQP 1.0 (Qpid JMS)            | Artemis maps it                | Via `_AMQ_DUPL_ID` application property               | Yes                      | Interesting later for non-Java consumers; same JMS API                                    |
+```text
+publishing transaction                       polling thread                     broker
+──────────────────────                       ──────────────                     ──────
+eventPublisher.publish(e)
+  └─ outbox("ticket-events", tickets.inlet())
+       .send(e) → row in log outbox:ticket-events ──► forward in subject order ──► tickets.inlet().send(e)
 
-**Recommendation:** a generic `smd-jms` module on `jakarta.jms-api` 3.1, integration-tested only against Artemis. Everything the design relies on is standard JMS except
-`_AMQ_DUPL_ID`. That is a plain string property, so the module sets it unconditionally and needs no Artemis dependency in `main`. An ActiveMQ-specific module would duplicate the JMS code for no
-gain. Testing only Artemis keeps the support claim honest: "JMS 3.1; verified on Artemis". Other brokers work without broker-side deduplication.
-
-## Module Placement
-
-```
-core/smd-jms                     app.dodb.smd.jms         JmsConfig, JmsDestination, JmsSubscription, JmsEventSink, JmsEventSource
-  api(project(":smd-api"))
-  api(project(":smd-event-store"))   // EventSerializer, SerializedEvent; see open question 5
-  api("jakarta.jms:jakarta.jms-api:3.1.0")
-  integrationTestImplementation("org.apache.activemq:artemis-jakarta-client")
-  integrationTestImplementation("org.testcontainers:testcontainers-activemq")
-
-framework/smd-spring-boot-starter   app.dodb.smd.spring.jms  SMDJmsAutoConfiguration, SMDJmsProperties
-  compileOnly(project(":smd-jms"))   // @ConditionalOnClass(JmsEventSink.class); apps opt in by adding smd-jms
+broker consumer thread                       polling thread                     processing group
+──────────────────────                       ──────────────                     ────────────────
+billing.outlet() delivers m
+  └─ inbox(billing.outlet())
+       stores m in log inbox:billing-projection ──► deliver in subject order ──► subscriber.on(m)
+         (if absent), then the broker ack                                         (retry, backoff, abandonment)
 ```
 
-Core stays free of Spring. The starter does not pull JMS into every application. Apps opt in by adding `app.dodb:smd-jms` and `spring-boot-starter-artemis`.
+The rules:
 
-Core changes outside the new module, each its own slice (see [Implementation Slices](#implementation-slices)):
+1. **An outbox keeps the sink contract.** It forwards exactly the events sent to it, in the transaction that sent them. Events published before the outbox existed, events sent only to other
+   sinks, and inbound events are never forwarded.
+2. **An inbox keeps the source contract.** Each subscriber gets exactly what the wrapped source would deliver to it. Each subscriber's processing group gets its own inbox log.
+3. **The event store owns both lifecycles.** `outbox(...)` starts forwarding on the store's scheduler and stops when the store closes. `inbox(source).subscribe(subscriber)` returns one
+   `EventSubscription` that closes both the broker subscription and the store cursor.
+4. **Each wrapper reports the delivery of what it wraps.** A selecting sink or source already does this. So the outbox in front of the JMS sink and the inbox behind the JMS source report
+   `jms` (open question 4).
 
-| Module             | Addition                                                                                   | Why                                                               |
-|--------------------|--------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
-| `smd-api`          | `EventBusSpec.relay(String processingGroup, EventSource source, EventSink sink)`           | Bus-owned relay with lifecycle, validation and interceptors       |
-| `smd-api`          | `EventDeliveryUnavailableException(EventDelivery, String, Throwable)`                      | Lets a sink say "the medium is down", rather than "this event failed" |
-| `smd-event-store`  | Group pause on `EventDeliveryUnavailableException`                                         | A broker outage must not abandon subjects                         |
-| `smd-event-store`  | `EventStore.inbox()` backed by `EventStorage.storeIfAbsent(SerializedEvent)`               | Inbound deduplication by `MessageId` without sequence gaps        |
-| `smd-event-store`  | Public names for attempt metadata (`processingId`, `sequenceNumber`, `subjectId`, `errorCount`) | The relay must not leak local delivery metadata to other applications |
+The existing store stays what it is: `eventStore.inlet()` and `eventStore.outlet()` read and write the store's own log, `events`.
 
-## Shape
+## API and Configuration
 
-### Outbound: relay group from the event-store outlet into a JMS sink
+### Without Spring
 
 ```java
 var jms = JmsConfig.withDefaults()
         .connectionFactory(connectionFactory)          // jakarta.jms.ConnectionFactory
         .eventSerializer(eventSerializer)              // the event store's serializer: same stable type names
-        .transactionProvider(transactionProvider)      // used by JmsEventSource only
+        .transactionProvider(transactionProvider)      // the JMS outlet handles each message in a transaction
+        .subscriberName("ticket-service")             // durable subscription per group: "ticket-service.<processingGroup>"
         .build();
 
-var ticketEvents = new JmsEventSink(jms, JmsDestination.topic("tickets.events"))
-        .selecting(EventSelector.eventType(TicketIntegrationEvent.class));
+var tickets = new JmsEventMedium(jms, JmsDestination.topic("tickets.events"));
+var billing = new JmsEventMedium(jms, JmsDestination.topic("billing.events"));
 
 var eventBus = EventBusSpec.withDefaults()
         .interceptors(tracing, new TransactionalEventBusInterceptor(transactionProvider))
         .sinkInterceptors(tracing)
         .processingGroupInterceptors(tracing)
-        .sinks(eventStore.inlet())
-        .relay("tickets-events-relay", eventStore.outlet(), ticketEvents)
-        .processingGroups(locator, groups -> groups.anyProcessingGroup().source(eventStore.outlet()))
+        .sinks(eventStore.inlet(),
+               eventStore.outbox("ticket-events", tickets.inlet())
+                       .selecting(EventSelector.eventType(TicketIntegrationEvent.class)))
+        .processingGroups(locator, groups -> groups
+                .processingGroup("billing-projection").source(eventStore.inbox(billing.outlet()))
+                .anyProcessingGroup().source(eventStore.outlet()))
         .create();
 ```
 
-`relay(processingGroup, source, sink)`:
+- `outbox(name, sink)` fails with `"Event store already has an outbox named 'ticket-events'"` when a name is reused on one store. The name keys durable state, so renaming it starts a new, empty
+  outbox. Entries left in the old log are not forwarded.
+- Put `.selecting(...)` *outside* the outbox so only selected events are stored. A selector *inside* (`outbox(name, sink.selecting(...))`) is still correct, but every event is stored and the
+  unselected ones are dropped when forwarded.
+- `JmsEventMedium` used without wrappers (`.medium(tickets)`, `.sinks(tickets.inlet())`) is allowed and documented as non-transactional. It is a dual write, which is fine for notifications
+  but is not an outbox.
+- The JMS outlet fails early when a processing group subscribes without `subscriberName`: `"JMS topic 'billing.events' needs JmsConfig.subscriberName to name the durable subscription for
+  processing group 'billing-projection'"`.
+- A queue destination (`JmsDestination.queue(...)`) has no per-group copies, so a second group subscribing to the same queue outlet is rejected, naming both groups.
 
-- Subscribes an `EventSubscriber` named `processingGroup` to `source` when the bus is created. It lives for the bus's lifetime, like other bus-created subscriptions.
-- For each delivered event, runs the processing-group interceptors (`ProcessingGroupContext` with that group and source), then the sink interceptors, then `sink.send(message)`. Tracing therefore
-  records `process … group tickets-events-relay, event-store` → `send … delivery jms` with no extra code.
-- Failures propagate to the source, which owns retries. For the event store, that means its per-subject retry and abandonment.
-- Validation in `create()`: the name must be non-blank, unique among relays, and must not collide with a discovered processing group. Errors name the conflicting group.
-
-Composition with the existing configuration is unchanged. `source` and `sink` are ordinary `EventSource` and `EventSink` values, so `.selecting(...)` applies on either side.
-`JmsEventSink` can still be registered directly with `.sinks(...)`, but that is a dual write outside the publishing transaction. The docs must say that the relay is the outbox and the direct
-sink is not.
-
-#### Why a relay and not a handler or an `EventMedium`
-
-- **Annotated handler group.** Handlers receive the payload plus selected context, not the `EventMessage`. Rebuilding the message identity, subject and metadata from parameters is lossy. The
-  group would also be discovered and configured like application handlers, which invites `anyProcessingGroup()` to swallow it.
-- **Unmanaged `eventStore.outlet().subscribe(relaySubscriber)`.** This works with zero core changes and is how the first spike of the real module can start. But it bypasses the
-  processing-group and sink interceptors (so no tracing), and it leaves lifecycle and name validation to the application.
-- **`EventMedium` (store inlet + JMS outlet).** A medium couples publishing and consuming in one application. The outbox's consumers are mostly *other* applications, and a medium hides the fact
-  that two hops with different guarantees are involved. A `JmsEventSink` + `JmsEventSource` pair could implement `EventMedium` later as a convenience. It is not the primary shape.
-
-### Inbound: `JmsEventSource`
-
-```java
-var billingEvents = new JmsEventSource(jms, JmsSubscription.sharedDurable(
-        JmsDestination.topic("billing.events"),
-        "ticket-service"));   // subscription name per group: "ticket-service.<processingGroup>"
-
-// Simple: handlers consume directly from the broker (idempotent, broker-owned redelivery).
-groups.processingGroup("billing-notifications").source(billingEvents);
-
-// Recommended for ordered or retried handling: inbox into the local event store.
-spec.relay("billing-inbox", billingEvents, eventStore.inbox());
-groups.processingGroup("billing-projection").source(eventStore.outlet().selecting(EventSelector.eventType(BillingEvent.class)));
-```
-
-- Each `subscribe(subscriber)` opens its own shared durable subscription named `<prefix>.<processingGroup>`. Every group gets its own copy and its own progress, matching processing-group
-  isolation. Every application instance attaches consumers to the same subscription, so instances compete and message groups keep each subject on one consumer.
-- `JmsSubscription.queue(JmsDestination.queue(name))` is the point-to-point variant. A queue has no per-group copies, so a second `subscribe` on a queue source is rejected:
-  `"JMS queue 'x' already feeds processing group 'a'; cannot also subscribe 'b'"`.
-- `delivery()` returns `new EventDelivery("jms")`.
+A possible convenience, not part of the first slice: `eventStore.durable(name, medium)` returns an `EventMedium` whose inlet is `outbox(name, medium.inlet())` and whose outlet is
+`inbox(medium.outlet())`, so `.medium(eventStore.durable("tickets", tickets))` works. See open question 12.
 
 ### Spring Boot
 
-The connection comes from Spring Boot's Artemis support. SMD adds a small property block, and relays and sources stay explicit Java assembly:
+The connection comes from Spring Boot's Artemis support. SMD adds one small property block. Outboxes and inboxes stay explicit Java assembly: which events leave the application is a decision,
+not a default.
 
 ```yaml
 spring:
@@ -159,243 +128,273 @@ smd:
     enabled: true
   jms:
     enabled: true
-    inbound:
+    subscriber-name: ticket-service
+    outlet:
       concurrency: 1          # consumers per subscription per instance
       receive-timeout: 1s
 ```
 
 ```java
-@Bean
-EventBusSpecCustomizer ticketEventsRelay(EventStore eventStore, JmsConfig jms) {
-    return spec -> spec.relay(
-            "tickets-events-relay",
-            eventStore.outlet(),
-            new JmsEventSink(jms, JmsDestination.topic("tickets.events"))
-                    .selecting(EventSelector.eventType(TicketIntegrationEvent.class)));
+@Bean(destroyMethod = "close")
+JmsEventMedium ticketEvents(JmsConfig jms) {
+    return new JmsEventMedium(jms, JmsDestination.topic("tickets.events"));
 }
 
 @Bean(destroyMethod = "close")
-JmsEventSource billingEvents(JmsConfig jms) {
-    return new JmsEventSource(jms, JmsSubscription.sharedDurable(JmsDestination.topic("billing.events"), "ticket-service"));
+JmsEventMedium billingEvents(JmsConfig jms) {
+    return new JmsEventMedium(jms, JmsDestination.topic("billing.events"));
 }
 
 @Bean
-EventBusSpecCustomizer billingInbox(JmsEventSource billingEvents, EventStore eventStore) {
-    return spec -> spec.relay("billing-inbox", billingEvents, eventStore.inbox());
+EventBusSpecCustomizer ticketEventsOutbox(EventStore eventStore, JmsEventMedium ticketEvents) {
+    return spec -> spec.sinks(eventStore.outbox("ticket-events", ticketEvents.inlet())
+            .selecting(EventSelector.eventType(TicketIntegrationEvent.class)));
+}
+
+@Bean
+ProcessingGroupsConfigurer billingGroups(EventStore eventStore, JmsEventMedium billingEvents) {
+    return groups -> groups.processingGroup("billing-projection").source(eventStore.inbox(billingEvents.outlet()));
 }
 ```
 
-`SMDJmsAutoConfiguration` is `@ConditionalOnClass(JmsEventSink.class)`, `@ConditionalOnBean(ConnectionFactory.class)` and `smd.jms.enabled=true`. It builds only the `JmsConfig` bean from the
-`ConnectionFactory`, the `EventSerializer` and the `TransactionProvider`. It deliberately autoconfigures **no relay**: which events leave the application is a decision, not a default. See the echo
-risk in [Inbox](#inbox-recommended).
+`SMDJmsAutoConfiguration` is `@ConditionalOnClass(JmsEventMedium.class)`, `@ConditionalOnBean(ConnectionFactory.class)` and `smd.jms.enabled=true`. It builds only the `JmsConfig` bean. No
+outbox, inbox or medium is autoconfigured.
 
-## Ordering
+## Module Placement
 
-Mapping: `JMSXGroupID = subjectId`. The string is identical to the event store's subject identity, so a subject is one ordered sequence in the store, on the wire and in the consumer.
+```
+core/smd-jms                       app.dodb.smd.jms         JmsConfig, JmsDestination, JmsEventMedium, JmsEventSink, JmsEventSource
+  api(project(":smd-api"))
+  api(project(":smd-event-store"))   // EventSerializer, SerializedEvent; see open question 5
+  api("jakarta.jms:jakarta.jms-api:3.1.0")
+  integrationTestImplementation("org.apache.activemq:artemis-jakarta-client")
+  integrationTestImplementation("org.testcontainers:testcontainers-activemq")
 
-Subjectless events share one global sequence per group in the event store. To keep that meaning, the relay sets `JMSXGroupID = "smd-subjectless"`, which pins them to one consumer. Leaving the
-group unset would spread them round-robin. See open question 1. Collision with a real subject named `smd-subjectless` only over-serializes and never reorders.
+core/smd-event-store               app.dodb.smd.eventstore  EventStore.outbox(...), EventStore.inbox(...)   // no JMS dependency
 
-What **is** guaranteed, end to end, for one subject on one subscription:
+framework/smd-spring-boot-starter  app.dodb.smd.spring.jms  SMDJmsAutoConfiguration, SMDJmsProperties
+  compileOnly(project(":smd-jms"))   // apps opt in by adding app.dodb:smd-jms and spring-boot-starter-artemis
+```
 
-1. **Store → relay.** The relay group processes events in store order per subject (`EventSequenceProcessor`). One poller runs per group cluster-wide (token row lock). A failing subject backs off
-   without blocking other subjects and without letting its own later events pass.
-2. **Relay → broker.** Each send is synchronous and persistent, so the broker has the message before the relay moves to the subject's next event.
-3. **Broker → consumer.** Artemis delivers one group, in FIFO order, to one consumer of a queue or shared subscription. *Spike: 6 groups × 40 messages, 3 competing consumers on one shared durable
-   subscription. Each group landed on exactly one consumer, in order.*
-4. **Consumer failure.** A transacted rollback with `redelivery-delay = 0` puts the message back at the head of the group. *Spike: rolled back message 1 while messages 2–5 arrived; committed order
-   1, 2, 3, 4, 5.*
-5. **Inbox.** Arrival order per subject becomes local store order, so local groups keep it with the store's retry semantics.
+The outbox and inbox are broker-independent and belong to the event store. They can be tested with the built-in dispatchers and work unchanged with any future Kafka or HTTP medium. Core stays
+free of Spring, and the starter doesn't pull JMS into every application.
 
-What is **not** guaranteed:
+## Which ActiveMQ
 
-- **Order across subjects**, or across subscriptions or destinations.
-- **Order with a redelivery delay.** *Spike: with `redelivery-delay = 2s`, rolling back message 1 while 2–5 arrive commits 2, 3, 4, 5, 1. With all five already queued, the outcome was
-  timing-dependent (1, 2, 3, 4, 5 once, and 5, 1, 2, 3, 4 once).* Ordered subscriptions must use `redelivery-delay = 0`. SMD cannot enforce this, so the docs must state it.
-- **Order after dead-lettering.** After `max-delivery-attempts`, Artemis moves the message to the DLA and the subject's *later* messages continue. This differs from SMD abandonment, which skips
-  the subject's later events. The inbox avoids the gap because inbox inserts almost never fail. Real handler failures then get SMD's per-subject semantics.
-- **Order during consumer membership changes.** Not verified here (deploys, crashes, scaling). Artemis reassigns a group when its consumer closes, and messages that were in flight or prefetched
-  are redelivered. See open question 7.
-- **Events the store skips.** An abandoned subject's later events are never relayed, so consumers see a truncated stream, logged on the producer side. A missing store position skipped after
-  `gap-timeout` is never relayed either.
-- **Splitting one subject's events across relays.** Two relay groups with disjoint *type* selectors each preserve their own order, but not the subject's order across types. Scale out by
-  destination, never by splitting one subject's events.
-- **Clustered Artemis.** Grouping in a cluster needs grouping handlers. The design assumes one live broker (with HA backup).
+| Option                         | Message groups (`JMSXGroupID`) | Broker duplicate detection                                      | Jakarta JMS 3            | Notes                                                                                     |
+|--------------------------------|--------------------------------|-----------------------------------------------------------------|--------------------------|-------------------------------------------------------------------------------------------|
+| **Artemis + Jakarta JMS 3.1**  | Yes, per queue/subscription    | Yes: `_AMQ_DUPL_ID`, persisted ID cache per address             | `artemis-jakarta-client` | Shared durable subscriptions map directly to processing groups. Spring Boot `spring-boot-starter-artemis` |
+| Artemis core client            | Yes                            | Yes                                                             | n/a                      | Vendor-locked API; buys nothing the medium needs                                          |
+| ActiveMQ Classic 6 + Jakarta   | Yes                            | Producer audit by JMS message ID only (in memory, per producer) | Yes (6.x)                | No application-supplied dedup key; a restarted forwarder is a new producer, so resends are not caught |
+| AMQP 1.0 (Qpid JMS)            | Artemis maps it                | Via `_AMQ_DUPL_ID` application property                         | Yes                      | Later option for non-Java consumers; same JMS API                                         |
 
-## Delivery Semantics
+**Recommendation:** a generic `smd-jms` on `jakarta.jms-api` 3.1, integration-tested only against Artemis. Everything except `_AMQ_DUPL_ID` is standard JMS. That property is a plain string,
+set unconditionally, so `main` needs no Artemis dependency. The support claim: "JMS 3.1; verified on Artemis". Other brokers work without broker-side deduplication.
 
-### Outbound: who owns what
+## Storage
 
-The relay runs inside the event store's batch transaction (`EventStoreTokenProcessor.processBatchInNewTransaction`). That database transaction owns the token, sequence state and abandonment. The
-JMS send is **not** part of it: it uses a non-transacted session with a synchronous persistent send, so `send()` returns after the broker has stored the message. No XA.
+The outbox and inbox reuse the event store's tables, token processor and sequence processor. Only a `log` dimension is new.
+
+```sql
+ALTER TABLE smd_event_store          ADD COLUMN log VARCHAR(255) NOT NULL DEFAULT 'events';
+ALTER TABLE smd_token_store          ADD COLUMN log VARCHAR(255) NOT NULL DEFAULT 'events';
+ALTER TABLE smd_event_sequence_state ADD COLUMN log VARCHAR(255) NOT NULL DEFAULT 'events';
+-- keys become (log, message_id), (log, processing_group) and (log, processing_group, subject_id)
+```
+
+| Log                      | Written by                                 | Read by                                    | Consumer key in token/sequence state |
+|--------------------------|--------------------------------------------|--------------------------------------------|--------------------------------------|
+| `events`                 | `eventStore.inlet()`                       | `eventStore.outlet()` processing groups     | processing group (unchanged)         |
+| `outbox:<name>`          | `outbox(name, sink).send(...)`             | that outbox's forwarder                    | outbox name                          |
+| `inbox:<processingGroup>`| `inbox(source)`'s subscription for a group | that group's subscriber                    | processing group                     |
+
+- **One sequence for all logs.** `sequence_number` stays one `BIGSERIAL`. Each cursor walks the shared sequence and skips other logs' rows, the same way an outlet filter skips nonmatching
+  events today. Gap detection is therefore unchanged: a missing number is still a missing number. (A per-log query that checks holes against the shared sequence is a later optimization.)
+- **Separate keys per log.** An outbox and a processing group with the same name never share state, and a publication sent to both the inlet and an outbox becomes two rows.
+- **Released behavior.** Existing rows migrate to `events`, and the inlet and outlet behave exactly as today.
+
+The inbox stores with `INSERT … SELECT … WHERE NOT EXISTS (… log = ? AND message_id = ?)`, not `ON CONFLICT DO NOTHING`. PostgreSQL evaluates `nextval` before the conflict check, so every
+duplicate would burn a sequence number, and that gap would stall every cursor for `gap-timeout`. A concurrent race for the same ID still raises a unique violation, which rolls back and
+redelivers, and the retry is a no-op.
+
+## Outbox Semantics
+
+- **Send.** `outbox.send(message)` defers an insert into `outbox:<name>` into the current transaction, exactly like the inlet. Without a transaction, the insert commits before `send` returns.
+- **Forward.** A cursor per outbox runs on the store's scheduler. It deserializes each entry and calls `sink.send(message)` in subject order, inside the cursor's batch transaction. It does
+  **not** add the attempt metadata (`processingId`, `sequenceNumber`, `subjectId`, `errorCount`) that handlers receive. The sink gets the message exactly as it was sent.
+- **Transaction ownership.** The cursor's database transaction owns its token and per-subject state. The JMS send is not part of that transaction: it is a synchronous persistent send that
+  completes before the database commits. No XA.
 
 | Situation                                        | Result                                                                                                        |
 |--------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| Send succeeds, DB commit succeeds                | Delivered once                                                                                                |
-| Send succeeds, DB commit fails or process dies   | Token not advanced; resent on a later poll → **duplicate**, dropped by `_AMQ_DUPL_ID` and/or consumer dedup     |
-| Later event in the batch fails                   | Batch rolls back; SMD replays the successful prefix in a smaller transaction → **duplicates** of that prefix   |
-| Send fails or times out (outcome unknown)        | Treated as unavailable (below); resent later → possible duplicate                                              |
-| Serialization or metadata mapping fails          | Ordinary subject failure: retry with backoff, then abandon (logged; visible in `EventSequenceState`)           |
+| Forward succeeds, DB commit succeeds             | Delivered once                                                                                                |
+| Forward succeeds, DB commit fails or process dies | Resent on a later poll → **duplicate**, dropped by `_AMQ_DUPL_ID` and the consumer's inbox                     |
+| Later entry in the batch fails                   | Batch rolls back; the successful prefix is replayed → **duplicates** of that prefix                            |
+| Forward fails or times out                       | That subject backs off and retries; other subjects continue                                                    |
 
-Delivery is never lost silently, but there are two loud exceptions: an abandoned subject (logged at `ERROR`) and a store gap skipped after `gap-timeout`.
+- **Never abandon.** A handler group abandons a subject after `max-retries`. An outbox does not: dropping is not an acceptable outbox outcome. A failing subject keeps retrying, capped at
+  `max-delay`, and stays visible in `EventSequenceState`. Its later entries wait behind it, which preserves order. A poison entry therefore blocks its subject until an operator acts (open
+  question 13).
+- **Broker down.** Because nothing is abandoned, an outage loses nothing and preserves order. But each subject records failures and backs off on its own, so recovery can take up to
+  `max-delay` after the broker returns, with one log line per subject per attempt. A group-level pause would fix that, but the outbox needs a signal from the sink to tell "medium unavailable"
+  from "this message failed". See open question 9.
+- **Delivery name and spans.** The outbox's `send` at publish time records a `send … delivery jms` span through the bus's sink interceptors. The later forward runs outside the bus and records
+  no span (open question 10).
+- **Scheduling disabled.** Entries are stored but not forwarded, the same as durable groups.
 
-The order is deliberate. **JMS completes before the DB commits.** The reverse order (commit DB, then send) loses messages on a crash between the two. That is the dual-write problem the outbox
-exists to remove.
+## Inbox Semantics
 
-A later throughput option: one transacted JMS session per batch, committed through `TransactionProvider.defer` (deferred work runs before the SMD transaction commits). This keeps "JMS before DB"
-and amortizes the broker round trip. See open question 2.
+`inbox(source).subscribe(subscriber)`:
 
-### Broker down
+1. Subscribes to `source` with an internal subscriber that has the same processing-group name. For each message, it defers an insert-if-absent into `inbox:<processingGroup>` in the source's
+   transaction.
+2. Starts a cursor on `inbox:<processingGroup>` that delivers to `subscriber` with the store's normal semantics: subject order, attempt metadata, retry, backoff and abandonment per
+   `processing` settings.
+3. Returns an `EventSubscription` that closes both.
 
-Today, any exception from the relay is a subject failure. During an outage every subject fails in turn, and with the defaults (3 retries, backoff 1s/5s/25s) subjects are **abandoned after
-about 30 seconds**. Their later events would never be relayed. That is not acceptable for an outbox.
+With the JMS outlet as the wrapped source, each broker message is handled like this:
 
-Proposal:
+| Step                                          | Transaction                                                                  |
+|-----------------------------------------------|------------------------------------------------------------------------------|
+| Receive on a `SESSION_TRANSACTED` context      | JMS transaction open                                                         |
+| Deserialize, insert-if-absent into inbox log   | `transactionProvider.doInNewTransaction(...)`, owned by the JMS outlet       |
+| DB commit, then `context.commit()` (ack)       | DB first, broker acknowledgement second: a crash between → redelivery → no-op insert |
+| Handler runs later on the polling thread       | The store's delivery transaction, independent of the broker                  |
 
-- `JmsEventSink` throws `EventDeliveryUnavailableException(delivery, message, cause)` for any `JMSException` or `JMSRuntimeException` from connecting or sending. In practice JMS send failures are
-  broker or transport conditions, including address-full with the `FAIL` policy. Failures before JMS (serialization, metadata mapping) stay ordinary exceptions.
-- `EventStoreTokenProcessor` treats that exception as a **group** condition. It rolls back as today, replays the successful prefix, records **no** subject failure, and pauses that subscription
-  in memory. The pause uses the configured `RetryBackoffStrategy` with an unbounded attempt counter, capped by `max-delay`. It logs once at `WARN` when pausing and once at `INFO` when resuming.
-  Nothing is abandoned, nothing is written to `smd_event_sequence_state`, and order is preserved across all subjects.
-- The exception lives in `smd-api` (`app.dodb.smd.api.event.delivery`), not in `smd-jms`. Any handler or sink fronting a remote dependency (HTTP, SMTP) can use it. Handler exceptions are preserved:
-  a handler that throws it gets the same group pause.
+- **Duplicates** are absorbed permanently: redeliveries, DLQ re-sends and manual replays all hit the `(log, message_id)` key.
+- **Failures.** The inbox insert fails only when the database is down, and then rollback and redelivery is the right answer. Handler failures happen later with SMD's per-subject semantics,
+  not the broker's DLQ, so a failing subject does not let its later events pass.
+- **Isolation.** Inbound events never enter the `events` log. Groups on `eventStore.outlet()` don't see them, and outboxes never forward them. A group that needs both local and inbound events
+  needs a merged source (open question 11).
+- **Attempt metadata** comes from the inbox log (`sequenceNumber`, `errorCount` and so on), so it is local to this application.
 
-### Deduplication
+### The JMS Outlet Without an Inbox
 
-- **Broker.** The relay sets `_AMQ_DUPL_ID = messageId`. Artemis keeps a persisted ID cache per address (`id-cache-size`, default 20,000), so resends after a crash or a prefix replay are dropped.
-  *Spike: resends with the same ID from a new connection were dropped on a queue and on a topic with a durable subscription.*
-- **Consumer.** This is still required: the ID cache is finite, DLQ re-sends and manual replays bypass it, and other brokers ignore the property. `MessageId` is preserved end to end. The inbox
-  deduplicates permanently through `smd_event_store.message_id`. Direct handlers use the documented `ON CONFLICT (event_id) DO NOTHING` pattern.
+`groups.processingGroup("notifications").source(billing.outlet())` runs handlers directly in the JMS outlet's transaction (same table as above, with the handler in place of the insert). Retry
+policy is then the broker's: `redelivery-delay`, `max-delivery-attempts` and the dead-letter address. Ordered subscriptions need `redelivery-delay = 0`, which turns retries into a tight loop,
+and dead-lettering lets the subject's later messages continue. Use the direct outlet for idempotent, order-tolerant handlers. Use the inbox for everything else.
+
+Recommended Artemis address settings for SMD subscriptions:
+
+```xml
+<address-setting match="billing.events">
+    <redelivery-delay>0</redelivery-delay>
+    <max-delivery-attempts>5</max-delivery-attempts>
+    <dead-letter-address>DLA</dead-letter-address>
+    <auto-create-dead-letter-resources>true</auto-create-dead-letter-resources>
+</address-setting>
+```
+
+### JMS Outlet Details
+
+- Each `subscribe(subscriber)` opens a shared durable subscription named `<subscriberName>.<processingGroup>`. Every group gets its own copy and its own progress. All application instances
+  attach to the same subscription and compete, and message groups keep each subject on one consumer.
+- `concurrency(n)` sets consumers per subscription per instance, each on its own thread and context (default `1`). Java 25 removes the `synchronized` pinning that made blocking `receive`
+  costly on virtual threads.
+- Each rollback is logged with group, subscription, `smd_message_id`, `JMSType` and `JMSXDeliveryCount`.
+
+## Ordering
+
+Mapping: `JMSXGroupID = subjectId`, the same string the event store uses as the subject's identity. Subjectless events get `JMSXGroupID = "smd-subjectless"`, mirroring the store's single
+subjectless sequence (open question 1).
+
+Guaranteed for one subject, from one outbox to one subscription:
+
+1. **Outbox → broker.** The forwarder sends in log order per subject. One forwarder runs per outbox cluster-wide (token lock), and a failing subject holds its later entries back. Each send is
+   synchronous and persistent.
+2. **Broker → consumer.** Artemis delivers a group in FIFO order to one consumer of a queue or shared subscription. *Spike: 6 groups × 40 messages, 3 competing consumers on one shared durable
+   subscription. Each group landed on exactly one consumer, in order.*
+3. **Consumer rollback.** A transacted rollback with `redelivery-delay = 0` keeps the group's order. *Spike: rolled back message 1 while 2–5 arrived; committed 1, 2, 3, 4, 5.*
+4. **Inbox → handler.** Arrival order per subject becomes inbox-log order, then subject order with the store's retry.
+
+Not guaranteed:
+
+- **Across subjects**, outboxes or subscriptions.
+- **With a redelivery delay.** *Spike: with `redelivery-delay = 2s`, rolling back message 1 while 2–5 arrive commits 2, 3, 4, 5, 1. With all five already queued, the outcome was
+  timing-dependent.* SMD cannot enforce the broker setting, so the docs must state it.
+- **After dead-lettering**, on the direct outlet. The inbox avoids it.
+- **During consumer membership changes.** Not verified (open question 7).
+- **Across two outboxes.** Two outboxes that split one subject's events by type each keep their own order, but not the subject's order across types.
+- **Missing positions.** A position skipped after `gap-timeout` is never forwarded. This is existing store behavior, and the outbox inherits it.
+- **Clustered Artemis**, which needs grouping handlers. The design assumes one live broker with an HA backup.
 
 ## Wire Format
 
-A `jakarta.jms.BytesMessage`, `DeliveryMode.PERSISTENT`, no expiry, default priority.
+`JmsEventSink` sends a `jakarta.jms.BytesMessage`, `DeliveryMode.PERSISTENT`, with no expiry and default priority. `JmsEventSource` reverses the mapping.
 
-| SMD                                       | JMS                                         | Notes                                                                                                                                       |
-|-------------------------------------------|---------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| Payload                                   | Body (bytes)                                | `SerializedEvent.serializedPayload()`; JSON with `JacksonEventSerializer`                                                                   |
-| Event type                                | `JMSType`                                   | Stable name from `EventTypeResolver`, such as `ticket.opened.v1`; usable in JMS selectors. `ClassNameEventTypeResolver` works but couples consumers to Java class names |
-| `MessageId`                               | `smd_message_id`                            | UUID string. `JMSMessageID` is assigned by the provider and cannot carry it                                                                 |
-| `MessageId`                               | `_AMQ_DUPL_ID`                              | Artemis duplicate detection; ignored elsewhere                                                                                             |
-| Subject                                   | `smd_subject_id`                            | Absent for subjectless events. Inbound reads this, not `JMSXGroupID`                                                                       |
-| Subject                                   | `JMSXGroupID`                               | Subject, or `smd-subjectless`                                                                                                              |
-| Metadata (principal, timestamp, parent, properties) | `smd_metadata`                    | `SerializedEvent.serializedMetadata()` as a UTF-8 string: the same bytes the event store stores. Authoritative on inbound                  |
-| Trace context                             | `traceparent`, `tracestate` (when present)  | Copies of the metadata properties, for broker tooling and OTel JMS instrumentation. Inbound ignores them in favor of `smd_metadata`        |
-| Format version                            | `smd_wire_version` = `1`                    | Lets inbound reject formats it does not know                                                                                              |
-| Event-store attempt metadata              | *not sent*                                  | `processingId`, `sequenceNumber`, `subjectId` and `errorCount` describe the *relay's* local attempt. The sink strips them so consumers never mistake them for their own |
+| SMD                                                  | JMS                                         | Notes                                                                                                   |
+|------------------------------------------------------|---------------------------------------------|---------------------------------------------------------------------------------------------------------|
+| Payload                                              | Body (bytes)                                | `SerializedEvent.serializedPayload()`; JSON with `JacksonEventSerializer`                               |
+| Event type                                           | `JMSType`                                   | Stable name from `EventTypeResolver`; usable in JMS selectors                                           |
+| `MessageId`                                          | `smd_message_id`                            | UUID string; `JMSMessageID` is assigned by the provider and cannot carry it                             |
+| `MessageId`                                          | `_AMQ_DUPL_ID`                              | Artemis duplicate detection; ignored by other brokers                                                  |
+| Subject                                              | `smd_subject_id`                            | Absent for subjectless events. Inbound reads this, not `JMSXGroupID`                                   |
+| Subject                                              | `JMSXGroupID`                               | Subject, or `smd-subjectless`                                                                           |
+| Metadata (principal, timestamp, parent, properties)  | `smd_metadata`                              | `SerializedEvent.serializedMetadata()` as a UTF-8 string; authoritative on inbound                      |
+| Trace context                                        | `traceparent`, `tracestate` (when present)  | Copies for broker tooling and OTel JMS instrumentation; inbound uses `smd_metadata`                     |
+| Format version                                       | `smd_wire_version` = `1`                    | Inbound rejects versions it does not know                                                              |
 
-Why one `smd_metadata` property instead of one JMS property per metadata entry: it reuses `EventSerializer` unchanged and round-trips the principal and parent exactly. It also avoids JMS
-identifier rules: metadata keys like `x-request-id` are not legal JMS property names. The cost is that metadata properties cannot be used in broker selectors. Event type and subject can.
+The sink never receives attempt metadata from the outbox (see [Outbox Semantics](#outbox-semantics)), so nothing local leaks onto the wire. On a direct `.sinks(tickets.inlet())` the sink
+sends the publication's metadata as is.
 
-Inbound rebuilds a `SerializedEvent` from `smd_message_id`, `smd_subject_id`, `JMSType`, the body, `smd_metadata` and the metadata timestamp, then calls `EventSerializer.deserialize`. The two
-applications must agree on the stable type names. `EventTypeResolutionException` on inbound is a poison message (below).
+Metadata travels as one `smd_metadata` property rather than one JMS property per entry, for three reasons:
 
-**CloudEvents.** The CloudEvents spec has no JMS binding. Its AMQP binding names properties `cloudEvents:id`, which are not legal JMS identifiers, and the Kafka-style `ce_` prefix is not a
-standard for JMS. A conformant option is **structured mode**: the body is a JSON CloudEvent with `content-type: application/cloudevents+json`, using `id = messageId`, `type = event type`,
-`subject = subjectId`, `time = timestamp`, `source = configured URI`, and SMD metadata as extension attributes. It would be an opt-in wire format for non-SMD consumers, not the default. Deferred
-until someone needs it.
+- It reuses `EventSerializer` unchanged.
+- It round-trips the principal and parent exactly.
+- It avoids JMS identifier rules: keys like `x-request-id` are not legal property names.
 
-**Principal trust.** `SMDJacksonModule` serializes `Principal` with Jackson class type info. Inside one application's own database that is fine. From a broker it is input from another trust
-domain: it names a Java class to instantiate and claims an identity. See open question 3. The minimum before release is a polymorphic type allow-list for inbound deserialization.
+The cost is that metadata properties can't be used in broker selectors. Event type and subject can.
 
-## Inbound
+Inbound rebuilds a `SerializedEvent` from these properties and the body, then calls `EventSerializer.deserialize`. The two applications must agree on stable type names. An unknown type rolls
+back. Behind an inbox it is redelivered until dead-lettered, because the insert never happened.
 
-### Direct `JmsEventSource`
+**CloudEvents.** The CloudEvents spec has no JMS binding. Its AMQP binding's `cloudEvents:id` names are not legal JMS identifiers. A conformant option is **structured mode**: the body is a
+JSON CloudEvent (`id`, `type`, `subject`, `time`, `source`, and SMD metadata as extensions). That would be an opt-in wire format for non-SMD consumers. Deferred.
 
-Per consumer thread, using a `SESSION_TRANSACTED` `JMSContext`:
-
-1. `receive(timeout)`. Reject unknown `smd_wire_version`.
-2. Deserialize to `EventMessage`.
-3. `transactionProvider.doInNewTransaction(() -> MetadataFactory.runInScope(message, () -> subscriber.on(message)))`
-4. On success: `context.commit()` (acknowledge). On any exception: `context.rollback()`.
-
-| Situation                                  | Result                                                                                                          |
-|--------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| Handler and DB commit succeed, JMS commit succeeds | Processed once                                                                                           |
-| DB commit succeeds, JMS commit fails or process dies | Broker redelivers → **duplicate**; handlers must be idempotent (same rule as event-store delivery)      |
-| Handler fails                              | DB rolls back, JMS rolls back, broker redelivers (`JMSXDeliveryCount` + 1)                                     |
-| Fails `max-delivery-attempts` times        | Broker moves it to the dead-letter address; **later messages of the subject continue**                          |
-| Deserialization fails (unknown type)       | Same as handler failure: rolls back until dead-lettered                                                         |
-
-The DB commits before the JMS acknowledgement, never the reverse. Acknowledging first loses the message on a crash.
-
-The direct source does not retry in process. Retry policy belongs to the broker (`redelivery-delay`, `max-delivery-attempts`, dead-letter address), configured in one place. The catch: ordered
-subscriptions need `redelivery-delay = 0`, which turns retries into a tight loop. So the direct source is for idempotent, order-tolerant handlers that rarely fail.
-
-Concurrency: `concurrency(n)` consumers per subscription per instance, each on its own thread and context (default `1`). Message groups keep a subject on one consumer. Java 25 removes the
-`synchronized` pinning that used to make blocking `receive` costly on virtual threads.
-
-Metadata: like the event store adds attempt metadata, the source could add `deliveryCount` from `JMSXDeliveryCount` (open question 8).
-
-### Inbox (recommended)
-
-`spec.relay("billing-inbox", billingEvents, eventStore.inbox())` turns each received message into a local insert:
-
-- `inbox()` runs `INSERT … SELECT … WHERE NOT EXISTS (… message_id = ?)` in the source's transaction, then the JMS commit. A duplicate is a no-op, so redeliveries and re-sends are absorbed
-  permanently. It deliberately avoids `ON CONFLICT DO NOTHING`: PostgreSQL evaluates `nextval` before the conflict check, so every duplicate would burn a `sequence_number` and pause every
-  durable group for `gap-timeout`. A concurrent race for the same ID still raises a unique violation. That rolls back and redelivers, and the retry is then a no-op.
-- The inbox insert fails only when the database is down, and then rollback and redelivery is the right behavior. Real handler failures happen later in local durable groups, with SMD's
-  per-subject retry, backoff and abandonment instead of the broker's DLQ.
-- Arrival order per subject becomes local store order.
-- **Echo risk.** Inbound events are now in the local store, so *every* durable group sees them, including outbound relays. An unselective outbound relay would republish foreign events. They
-  carry the original `MessageId`, so every inbox, including the origin's, drops them and nothing loops forever. But they do leak. Outbound relays must select explicitly, which is why Spring
-  autoconfigures none.
-
-### Poison messages and DLQ
-
-- Rely on Artemis address settings: `max-delivery-attempts` (default 10), `dead-letter-address` and optional `auto-create-dead-letter-resources`. Document a recommended `broker.xml` snippet
-  for SMD subscriptions:
-  ```xml
-  <address-setting match="billing.events">
-      <redelivery-delay>0</redelivery-delay>
-      <max-delivery-attempts>5</max-delivery-attempts>
-      <dead-letter-address>DLA</dead-letter-address>
-      <auto-create-dead-letter-resources>true</auto-create-dead-letter-resources>
-  </address-setting>
-  ```
-- Log each rollback with group, subscription, `smd_message_id`, `JMSType` and `JMSXDeliveryCount`. The final attempt is logged at `ERROR`.
-- Moving a message from the DLA back is a broker operation. Inbox and handler deduplication make it safe.
+**Principal trust.** `SMDJacksonModule` serializes `Principal` with Jackson class type info. That is fine inside one application's own database. From a broker it is input from another trust
+domain: it names a class to instantiate and claims an identity. The minimum before release is a polymorphic type allow-list for inbound deserialization (open question 3).
 
 ## Observability
 
-No new tracing code. Because the relay is bus-owned, the trace across two applications reads:
+The trace across two applications, with the current interceptors:
 
 ```text
-publish TicketOpened                         event                                  (app A, request thread)
-├─ send TicketOpened                         delivery event-store
-└─ process TicketOpened                      group tickets-events-relay, event-store  (app A, polling thread)
-   └─ send TicketOpened                      delivery jms
-      … broker …
-      process TicketOpened                   group billing-inbox, jms               (app B, consumer thread)
-      ├─ send TicketOpened                   delivery event-store
-      └─ process TicketOpened                group billing-projection, event-store  (app B, polling thread)
+publish TicketOpened                       event                                      (app A, request thread)
+├─ send TicketOpened                       delivery event-store                       (eventStore.inlet())
+└─ send TicketOpened                       delivery jms                               (outbox: stored in the transaction)
+     … forwarded on app A's polling thread, received on app B's consumer thread: no spans …
+   process TicketOpened                    group billing-projection, jms              (app B, inbox polling thread)
 ```
 
-The relay's `process` span replaces `traceparent` in the message it sends, so app B's spans continue the relay's span and link back through lineage. `messaging.message.id` is the same in both
-applications. The existing [OpenTelemetry](../opentelemetry.md) rules already cover this, and nothing about it is ActiveMQ-specific.
+App B's `process` span continues app A's `publish`, because the stored metadata carries its `traceparent`. `messaging.message.id` is the same in both applications. The broker hop shows up only
+as the time between the spans. Recording spans for the forward and for the inbox insert is open question 10.
 
 ## Testing Plan
 
-Unit tests (`smd-api`, `smd-event-store`, `smd-jms`) with small fakes:
+Unit tests in `smd-event-store` need no broker, because the outbox and inbox wrap any sink or source. Use the built-in dispatchers and small fakes:
 
-- `relay_eventFromSource_sendsToSinkWithinInterceptors`, `relay_nameCollidesWithProcessingGroup_failsOnCreate`, `relay_sinkFails_failurePropagatesToSource`
-- `poll_sinkUnavailable_pausesGroupWithoutFailingSubject`, `poll_sinkUnavailableThenAvailable_resumesInStoreOrder`
-- `send_eventMessage_mapsWireFormat` (property-by-property), `send_stripsEventStoreAttemptMetadata`, `receive_unknownWireVersion_rollsBack`
-- `subscribe_queueAlreadySubscribed_failsWithBothGroups`
+- `outbox_send_forwardsAfterCommitInSubjectOrder`, `outbox_rolledBackTransaction_forwardsNothing`, `outbox_createdAfterPublications_forwardsOnlyLaterSends`
+- `outbox_sinkFails_retriesSubjectWithoutAbandoning`, `outbox_sinkFails_otherSubjectsContinue`, `outbox_duplicateName_fails`
+- `outbox_forward_omitsAttemptMetadata`
+- `inbox_duplicateMessage_deliveredOnce`, `inbox_duplicateMessage_doesNotCreateSequenceGap`, `inbox_handlerFails_retriedBySubject`
+- `inbox_events_notVisibleOnOutletOrOutbox`, `inbox_close_closesSourceSubscriptionAndCursor`
+- `outlet_existingRows_readAsEventsLog` (migration)
 
-Integration tests (`smd-jms`, `integrationTest`, Testcontainers PostgreSQL + `ArtemisContainer`):
+`smd-jms` unit tests: `send_eventMessage_mapsWireFormat` (property by property), `receive_unknownWireVersion_rollsBack`, `subscribe_withoutSubscriberName_fails`,
+`subscribe_queueAlreadySubscribed_failsWithBothGroups`.
 
-- `relay_storedEvents_arriveInSubjectOrderAcrossCompetingConsumers`
-- `relay_dbCommitFailsAfterSend_duplicateDroppedByBroker` (fail the commit through a `TransactionProvider` decorator)
-- `relay_brokerStoppedThenStarted_noSubjectAbandonedAndAllDelivered` (`ArtemisContainer` stop/start, or Toxiproxy)
-- `inbox_redeliveredMessage_storedOnce`, `inbox_duplicateId_doesNotCreateSequenceGap`
-- `source_handlerFails_redeliveredThenDeadLettered`, `source_dbCommitsThenAckLost_redeliveredAndDeduplicated`
+Integration tests in `smd-jms`, using Testcontainers PostgreSQL and `ArtemisContainer`:
+
+- `outbox_storedEvents_arriveInSubjectOrderAcrossCompetingConsumers`
+- `outbox_dbCommitFailsAfterSend_duplicateDroppedByBroker`
+- `outbox_brokerStoppedThenStarted_allForwardedInOrder`
+- `inbox_redeliveredAfterLostAck_storedOnce`
+- `outlet_handlerFails_redeliveredThenDeadLettered`
 - `roundTrip_traceparentAndLineage_preservedAcrossApplications` (two buses, one broker, `opentelemetry-sdk-testing`)
 
-Spring integration test (`smd-spring-boot-starter`): `SMDJmsAutoConfiguration` creates `JmsConfig` only with `smd.jms.enabled` and a `ConnectionFactory`, creates no relay, and closes sources on
-shutdown.
+Spring integration test: `SMDJmsAutoConfiguration` creates `JmsConfig` only with `smd.jms.enabled` and a `ConnectionFactory`, and autoconfigures no outbox or inbox.
 
-Use bounded Awaitility waits and the event store's polling delay set low. The spike's `ArtemisContainer` setup (`apache/activemq-artemis:2.42.0`, address settings through
+Use bounded Awaitility waits and a short polling delay. The spike's `ArtemisContainer` setup (`apache/activemq-artemis:2.42.0`, address settings through
 `-Dbrokerconfig.addressSettings.<match>.<property>`) carries over.
 
 ## Spike
@@ -411,61 +410,67 @@ Use bounded Awaitility waits and the event store's polling delay set low. The sp
 | `rollback_withoutRedeliveryDelay_keepsGroupOrder`                        | Rollback of message 1 while 2–5 arrive commits 1, 2, 3, 4, 5                                |
 | `rollback_withRedeliveryDelay_letsLaterGroupMessagesOvertake`            | With a 2s redelivery delay, commits 2, 3, 4, 5, 1                                           |
 
-Stable over three consecutive runs.
+Stable over three consecutive runs. The spike tests broker behavior only, so it is unaffected by the change of model.
 
 ## Prior Art
 
-| System                              | Outbox capture                                                      | Ordering key                                    | Dedup                                                    | Compared with this design                                                                                          |
-|-------------------------------------|---------------------------------------------------------------------|-------------------------------------------------|----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
-| Debezium outbox (Outbox Event Router) | CDC from the WAL into Kafka; separate Kafka Connect deployment      | `aggregateid` → Kafka key → partition           | Consumer-side, by event ID header                        | Lower latency and no polling, but heavy operations and Kafka-centric. SMD's table is plain, so CDC stays possible later |
-| Spring Modulith event externalization | Event publication registry table; `@Externalized` events sent after commit by Spring's async listener; incomplete publications resubmitted | Routing key from `@Externalized("target::#{…}")`; no ordering guarantee on resubmission | Consumer-side                                            | Same "registry is the outbox" idea with JMS/AMQP/Kafka adapters. No per-key retry state or abandonment; failures leave publications incomplete |
-| Axon Framework (Kafka/AMQP extensions) | Event store + tracking processor running a publisher              | Sequencing policy (aggregate ID) → partition    | Consumer-side via event identifier                       | Closest analog: a tracking processor as relay, matching the `relay` group. Axon couples it to its own processor config; SMD keeps it a source → sink pair |
-| Eventuate Tram                      | `message` table + CDC service (WAL tailing or polling) to Kafka, ActiveMQ, RabbitMQ, Redis | Partition by aggregate/destination key       | Idempotent consumer table (`received_messages`)          | Same inbox and outbox split, but relay runs as a separate CDC service. SMD's inbox reuses `smd_event_store.message_id` instead of a second table |
+| System                                | Outbox                                                                    | Inbox                                         | Compared with this design                                                                                     |
+|---------------------------------------|---------------------------------------------------------------------------|-----------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| Debezium outbox (Outbox Event Router) | Application writes an outbox table; CDC from the WAL into Kafka (Kafka Connect) | Consumer's job, by event ID header            | Same "outbox table written in the transaction", but a separate CDC deployment. `outbox:<name>` rows are plain, so CDC stays possible |
+| Spring Modulith externalization       | Event publication registry, one entry per listener; `@Externalized` sends after commit; incomplete entries resubmitted | None built in                                 | Closest to "forward what was sent": registry entries exist only for actual targets. No per-subject order or retry state |
+| Axon (Kafka/AMQP extensions)          | A tracking processor over the event store runs a publisher                | Kafka/AMQP message source into processors     | This is the relay model this note rejects: it forwards the log, not what was sent to the destination         |
+| Eventuate Tram                        | `message` table per destination + CDC service to Kafka, ActiveMQ, RabbitMQ, Redis | `received_messages` table for idempotency     | Same outbox/inbox split, with the relay as a separate service. SMD's inbox also *orders and retries*, not just deduplicates |
 
-What SMD adds: per-subject retry, backoff and abandonment on *both* sides of the broker; group pause for broker outages; and one trace across the hop without a broker-specific tracer.
+What SMD adds: the outbox and inbox are the event store's existing delivery machinery (subject order, retry, backoff, abandonment) put around any sink or source, configured with the existing
+delivery API.
 
 ## Rejected Alternatives
 
-- **Send to JMS in the publishing transaction, or after commit.** Before commit, a rollback leaves a sent message. After commit, a crash loses it. Both are the dual write the outbox replaces.
-- **XA / two-phase commit between PostgreSQL and Artemis.** Heavy, needs a transaction manager, and SMD core does not own the transaction technology. Idempotent at-least-once is simpler and
-  observable.
+- **Relay as a processing group over the event log** (`EventBusSpec.relay(group, eventStore.outlet(), sink)`, or a delivery-level `EventRelay`). It forwards whatever is in the log rather than
+  what was sent to the destination:
+  - a new relay replays all history, because a new cursor starts at position 0;
+  - inbox events echo back out;
+  - it needs a made-up group that shares token state with handler groups;
+  - every relay needs an explicit selector to be safe.
+- **A cursor over the shared `events` log with a membership table.** The event is stored once, but it makes the main outlet deliver inbound events, unless the outlet is filtered by
+  membership too, which amounts to a log column.
+- **Separate tables per outbox and inbox.** Each would need its own contiguous sequence and its own copies of the token and sequence tables. A shared sequence with a `log` column keeps one
+  gap model.
+- **Send to JMS in the publishing transaction, or after commit.** That is a dual write: a rollback after the send leaves a sent message, and a crash after the commit loses it.
+- **XA / two-phase commit.** Heavy, needs a transaction manager, and SMD core does not own the transaction technology.
 - **Artemis core API or an ActiveMQ-only module.** Vendor lock-in for one property.
 - **ActiveMQ Classic as the reference broker.** No persistent, application-keyed duplicate detection.
-- **`EventMedium` as the outbox shape.** See [Shape](#why-a-relay-and-not-a-handler-or-an-eventmedium).
-- **One JMS property per metadata entry.** Metadata keys are not legal JMS identifiers in general, and the principal would need a second serialization path.
-- **In-process retry in `JmsEventSource`.** It duplicates the broker's redelivery policy, blocks the consumer and every group it owns, and still ends in the DLQ. The inbox is the answer for
-  rich retry.
-- **Autoconfigured relay from properties.** Selecting what leaves the application is a deliberate decision, and an unselective relay republishes inbox events.
-- **Count broker outages as subject retries with a large `max-retries`.** Every subject would accumulate failure state during an outage, and the store-wide setting would also apply to ordinary
-  handler groups.
+- **In-process retry in `JmsEventSource`.** It duplicates the broker's policy, blocks the consumer and every group on it, and still ends in the DLQ. The inbox is the answer.
+- **One JMS property per metadata entry.** Keys are not legal JMS identifiers in general, and the principal would need a second serialization path.
+- **Autoconfigured outboxes from properties.** What leaves the application is a decision.
 
 ## Open Questions
 
-1. **Subjectless grouping.** Should the relay pin subjectless events to one group (`smd-subjectless`, mirrors the store's global sequence, serializes them on one consumer) or leave them ungrouped
-   (parallel, unordered)? The proposal is to pin them, for consistency.
-2. **Relay throughput.** One poller per group cluster-wide, one synchronous send per event. Measure before adding batched transacted JMS sessions committed before the DB, or more relay groups
-   partitioned by destination.
-3. **Inbound principal.** Should the inbound principal be trusted, replaced by a configured principal, or restricted to an allow-list of `Principal` types? It currently arrives as Jackson class
-   type info from another trust domain.
-4. **Delivery name.** Generic `jms`, or a configurable name (such as `activemq`) per sink and source for clearer traces? A configurable name adds API surface.
-5. **Serialization placement.** `smd-jms` depends on `smd-event-store` only for `EventSerializer` and `SerializedEvent`. Should these move to `smd-api` or a small `smd-serialization` module
-   before 0.1? That would be a package move and breaking.
-6. **Gap-timeout latency.** Any rolled-back publishing transaction leaves a sequence gap that stalls the relay (and every durable group) for up to `gap-timeout` (default 5m). This is existing
-   behavior, but an outbox makes it externally visible as broker latency.
-7. **Order across consumer reassignment.** Needs a spike: stop a consumer mid-group with prefetched and in-flight messages, then check whether the new owner can see a later message before the
-   redelivered one. Consider `consumerWindowSize = 0` for ordered subscriptions.
-8. **Inbound attempt metadata.** Should `JmsEventSource` add `deliveryCount` (from `JMSXDeliveryCount`) like the store adds `errorCount`?
-9. **Consumption start.** Bus-created subscriptions start when the bus is created. Should `JmsEventSource` wait for an explicit start (Spring `SmartLifecycle`) so messages are not handled while
-   the context is still starting? The event store uses `initial-delay` for this.
-10. **Clustered brokers.** Message grouping in an Artemis cluster needs `LOCAL`/`REMOTE` grouping handlers. Is single live plus backup enough for the first release?
+1. **Subjectless grouping.** Pin subjectless events to one group (`smd-subjectless`: mirrors the store, serializes them on one consumer), or leave them ungrouped (parallel, unordered)? The
+   proposal is to pin them.
+2. **Latency and throughput.** Each hop waits up to one polling delay (5s by default): outbox forward, then inbox delivery. One forwarder runs per outbox cluster-wide, with one synchronous send
+   per event. Options are `LISTEN/NOTIFY` wake-ups, and batched transacted JMS sessions committed before the DB.
+3. **Inbound principal.** Trust it, replace it with a configured principal, or restrict it to an allow-list of `Principal` types?
+4. **Delivery name.** Should the outbox and inbox report the wrapped delivery (`jms`, as a selecting wrapper does) or `event-store`, which describes their own immediate step more literally?
+5. **Serialization placement.** `smd-jms` depends on `smd-event-store` only for `EventSerializer` and `SerializedEvent`. Should they move to `smd-api` or a small `smd-serialization` module
+   before 0.1? That would be a breaking package move.
+6. **Gap-timeout latency.** A rolled-back publishing transaction leaves a sequence gap that stalls every cursor, outboxes included, for up to `gap-timeout` (5m). This is existing behavior that
+   becomes visible externally.
+7. **Order across consumer reassignment.** Needs a spike: stop a consumer mid-group with prefetched and in-flight messages. Consider `consumerWindowSize = 0` for ordered subscriptions.
+8. **Inbound delivery count.** Should the direct JMS outlet expose `JMSXDeliveryCount` as metadata, like the store's `errorCount`?
+9. **Outage signal.** Correctness needs no new API, because an outbox never abandons. A clean group pause (fast recovery, one log line) needs the sink to say "medium unavailable", for example
+   with an `EventDeliveryUnavailableException` in `smd-api` thrown by `JmsEventSink` on JMS failures. Add it, or accept per-subject backoff?
+10. **Spans for the hidden hops.** Should the outbox forward and the inbox insert record spans? Both run outside the bus, so they would need the bus's interceptors or their own `MessageTracing`
+    hook.
+11. **Merged sources.** A group has one source. A group that needs local and inbound events needs a merging `EventSource`. Is that needed?
+12. **`eventStore.durable(name, medium)`.** Add the convenience medium (outbox inlet + inbox outlet) for `.medium(...)` composition, or keep the API to the two wrappers?
+13. **Poison entries in an outbox.** A never-abandoning outbox blocks a subject on a poison entry. What operator action is supported: skip the entry, or move it aside, through a store API?
 
 ## Implementation Slices
 
-Each slice is reviewable and releasable on its own:
-
-1. `smd-api`: `EventBusSpec.relay(...)` with validation, interceptors and tests against the built-in dispatchers.
-2. `smd-api` + `smd-event-store`: `EventDeliveryUnavailableException` and the group pause, with tests, and docs in `event-store.md`.
-3. `smd-event-store`: public attempt-metadata names, `EventStorage.storeIfAbsent` (PostgreSQL and in-memory) and `EventStore.inbox()`, with a gap-free duplicate test.
-4. `core/smd-jms`: `JmsConfig`, `JmsDestination`, `JmsEventSink` and wire format, with an Artemis relay integration test.
-5. `core/smd-jms`: `JmsSubscription`, `JmsEventSource` and the inbox round trip, with poison and DLQ tests.
-6. Starter: `SMDJmsAutoConfiguration` and properties, `docs/jms.md`, and a ticket-service example with a second application.
+1. `smd-event-store`: `log` column, per-log cursors and state, and a migration script. `events` behavior is unchanged, so existing tests must pass untouched.
+2. `smd-event-store`: `EventStore.outbox(name, sink)`: deferred insert, forwarder without attempt metadata, never-abandon policy. Tested with built-in dispatchers.
+3. `smd-event-store`: `EventStore.inbox(source)`: insert-if-absent, per-group cursor, combined subscription. Tested with built-in dispatchers.
+4. `core/smd-jms`: `JmsConfig`, `JmsDestination`, `JmsEventMedium` (sink, source, wire format). Artemis integration tests, including the outbox and inbox round trip.
+5. Decide open question 9; if accepted, add the outage signal and the group pause.
+6. Starter: `SMDJmsAutoConfiguration` and properties, `docs/jms.md`, and a second application in the ticket-service example.
