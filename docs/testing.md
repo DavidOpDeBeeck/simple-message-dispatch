@@ -88,6 +88,7 @@ The extension exposes:
 - `stubCommand(...)` and `stubQuery(...)` for calls made through injected stub gateways
 - `stubPrincipal(...)` and `stubTimestamp(...)` for deterministic metadata
 - `getEvents()` for events sent through the injected publisher stub
+- `getDeadlines()` and `fireDueDeadlines()` for deadlines scheduled through the injected `DeadlineScheduler` stub; see [Deadlines](deadlines.md#testing)
 
 Stub state is isolated per test and reset automatically by `SMDTestScopeLifecycleExtension`. State owned by application fakes or repositories remains the application's responsibility.
 
@@ -134,6 +135,7 @@ Available framework-independent utilities include:
 - `CommandGatewayStub`
 - `QueryGatewayStub`
 - `EventPublisherStub`
+- `DeadlineSchedulerStub`
 - `EventSinkStub`
 - `EventSourceStub`
 - `EventSubscriberStub`
@@ -156,6 +158,8 @@ queries.stubQuery(query, Optional.of(ticket));
 
 assertThat(queries.send(query)).contains(ticket);
 ```
+
+`DeadlineSchedulerStub` captures scheduled deadlines and fires nothing until you call `fireDue(commandGateway)`, which sends the deadlines due at the stub's current time, in due order.
 
 `NoOpTransactionProvider` executes transactions and deferred work immediately. Use it only when real transaction boundaries are irrelevant to the test.
 

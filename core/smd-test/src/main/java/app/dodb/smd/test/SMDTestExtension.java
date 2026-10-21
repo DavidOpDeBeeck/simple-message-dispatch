@@ -26,6 +26,7 @@ public class SMDTestExtension {
     private final CommandGatewayStub commandGatewayStub;
     private final QueryGatewayStub queryGatewayStub;
     private final EventPublisherStub eventPublisherStub;
+    private final DeadlineSchedulerStub deadlineSchedulerStub;
 
     public SMDTestExtension(CommandBusTestConfigurer commandBusTestConfigurer,
                             QueryBusTestConfigurer queryBusTestConfigurer,
@@ -34,7 +35,8 @@ public class SMDTestExtension {
                             TimeProviderStub timeProviderStub,
                             CommandGatewayStub commandGatewayStub,
                             QueryGatewayStub queryGatewayStub,
-                            EventPublisherStub eventPublisherStub) {
+                            EventPublisherStub eventPublisherStub,
+                            DeadlineSchedulerStub deadlineSchedulerStub) {
         this.commandBusTestConfigurer = requireNonNull(commandBusTestConfigurer);
         this.queryBusTestConfigurer = requireNonNull(queryBusTestConfigurer);
         this.eventBusTestConfigurer = requireNonNull(eventBusTestConfigurer);
@@ -43,6 +45,7 @@ public class SMDTestExtension {
         this.commandGatewayStub = requireNonNull(commandGatewayStub);
         this.queryGatewayStub = requireNonNull(queryGatewayStub);
         this.eventPublisherStub = requireNonNull(eventPublisherStub);
+        this.deadlineSchedulerStub = requireNonNull(deadlineSchedulerStub);
     }
 
     public void reset() {
@@ -51,6 +54,7 @@ public class SMDTestExtension {
         commandGatewayStub.reset();
         queryGatewayStub.reset();
         eventPublisherStub.reset();
+        deadlineSchedulerStub.reset();
     }
 
     public SMDTestExtension stubPrincipal(Principal principal) {
@@ -90,6 +94,14 @@ public class SMDTestExtension {
 
     public List<Event> getEvents() {
         return eventPublisherStub.getEvents();
+    }
+
+    public List<ScheduledDeadline> getDeadlines() {
+        return deadlineSchedulerStub.getDeadlines();
+    }
+
+    public List<ScheduledDeadline> fireDueDeadlines() {
+        return deadlineSchedulerStub.fireDue(configureCommandBus());
     }
 
     private CommandBus configureCommandBus() {

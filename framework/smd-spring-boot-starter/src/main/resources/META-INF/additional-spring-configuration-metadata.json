@@ -89,10 +89,100 @@
       "description": "Upper bound on retry delay for LINEAR and EXPONENTIAL strategies.",
       "defaultValue": "5m"
     }
+,
+    {
+      "name": "smd.deadlines.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether deadline support is enabled.",
+      "defaultValue": false
+    },
+    {
+      "name": "smd.deadlines.scheduling.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether this application fires due deadlines.",
+      "defaultValue": true
+    },
+    {
+      "name": "smd.deadlines.scheduling.initial-delay",
+      "type": "java.time.Duration",
+      "description": "Delay before the first deadline poll after startup.",
+      "defaultValue": "10s"
+    },
+    {
+      "name": "smd.deadlines.scheduling.polling-delay",
+      "type": "java.time.Duration",
+      "description": "Fixed delay between successive deadline polls.",
+      "defaultValue": "5s"
+    },
+    {
+      "name": "smd.deadlines.processing.max-retries",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of retries before a failed deadline is abandoned.",
+      "defaultValue": 3
+    },
+    {
+      "name": "smd.deadlines.processing.batch-size",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of deadlines fired per poll.",
+      "defaultValue": 100
+    },
+    {
+      "name": "smd.deadlines.processing.retry-backoff.strategy",
+      "type": "app.dodb.smd.spring.eventstore.SMDEventStoreProperties$ProcessingProperties$Strategy",
+      "description": "Backoff strategy for failed deadline retries.",
+      "defaultValue": "EXPONENTIAL"
+    },
+    {
+      "name": "smd.deadlines.processing.retry-backoff.fixed-delay",
+      "type": "java.time.Duration",
+      "description": "Delay between retries when using the FIXED strategy.",
+      "defaultValue": "1s"
+    },
+    {
+      "name": "smd.deadlines.processing.retry-backoff.base-delay",
+      "type": "java.time.Duration",
+      "description": "Base delay for LINEAR and EXPONENTIAL strategies.",
+      "defaultValue": "1s"
+    },
+    {
+      "name": "smd.deadlines.processing.retry-backoff.multiplier",
+      "type": "java.lang.Double",
+      "description": "Multiplier applied per retry for the EXPONENTIAL strategy.",
+      "defaultValue": 5.0
+    },
+    {
+      "name": "smd.deadlines.processing.retry-backoff.increment",
+      "type": "java.time.Duration",
+      "description": "Delay increment per retry for the LINEAR strategy.",
+      "defaultValue": "5s"
+    },
+    {
+      "name": "smd.deadlines.processing.retry-backoff.max-delay",
+      "type": "java.time.Duration",
+      "description": "Upper bound on retry delay for LINEAR and EXPONENTIAL strategies.",
+      "defaultValue": "5m"
+    }
   ],
   "hints": [
     {
       "name": "smd.event-store.processing.retry-backoff.strategy",
+      "values": [
+        {
+          "value": "FIXED",
+          "description": "Constant delay between retries."
+        },
+        {
+          "value": "LINEAR",
+          "description": "Delay increases by a fixed increment per retry."
+        },
+        {
+          "value": "EXPONENTIAL",
+          "description": "Delay increases by a multiplier per retry."
+        }
+      ]
+    },
+    {
+      "name": "smd.deadlines.processing.retry-backoff.strategy",
       "values": [
         {
           "value": "FIXED",

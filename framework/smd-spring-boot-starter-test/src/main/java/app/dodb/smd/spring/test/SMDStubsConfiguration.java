@@ -14,6 +14,7 @@ import app.dodb.smd.spring.test.scope.SMDTestScopeConfiguration;
 import app.dodb.smd.spring.test.scope.annotation.SMDTestScope;
 import app.dodb.smd.test.CommandBusTestConfigurer;
 import app.dodb.smd.test.CommandGatewayStub;
+import app.dodb.smd.test.DeadlineSchedulerStub;
 import app.dodb.smd.test.EventBusTestConfigurer;
 import app.dodb.smd.test.EventPublisherStub;
 import app.dodb.smd.test.PrincipalProviderStub;
@@ -51,6 +52,12 @@ public class SMDStubsConfiguration {
     @SMDTestScope
     public QueryGatewayStub queryGatewayStub() {
         return new QueryGatewayStub();
+    }
+
+    @Bean
+    @SMDTestScope
+    public DeadlineSchedulerStub deadlineSchedulerStub(TimeProviderStub timeProviderStub) {
+        return new DeadlineSchedulerStub(timeProviderStub);
     }
 
     @Bean
@@ -96,7 +103,8 @@ public class SMDStubsConfiguration {
         TimeProviderStub timeProviderStub,
         CommandGatewayStub commandGatewayStub,
         QueryGatewayStub queryGatewayStub,
-        EventPublisherStub eventPublisherStub
+        EventPublisherStub eventPublisherStub,
+        DeadlineSchedulerStub deadlineSchedulerStub
     ) {
         return new SMDTestExtension(
             commandBusTestConfigurer,
@@ -106,7 +114,8 @@ public class SMDStubsConfiguration {
             timeProviderStub,
             commandGatewayStub,
             queryGatewayStub,
-            eventPublisherStub
+            eventPublisherStub,
+            deadlineSchedulerStub
         );
     }
 }

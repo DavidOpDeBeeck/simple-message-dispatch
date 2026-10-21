@@ -1,6 +1,7 @@
 # Design Proposal: Deadlines
 
-Status: proposal, nothing implemented. Written against 0.0.12.
+Status: implemented after 0.0.12; see [Deadlines](../deadlines.md) for the user guide. This note keeps the reasoning. Where the implementation differs from the first
+sketch, the note has been updated: a flat `DeadlineStoreConfig`, no `scheduled_at` column, a separate `deadline-store-schema.sql`, and `void` handlers for `Command<Void>`.
 
 A deadline is a command that SMD sends at a due time unless the deadline is cancelled first. Scheduling returns a generated ID, and the ID cancels it:
 
@@ -77,11 +78,10 @@ public UUID handle(OpenTicketCommand command, Instant timestamp) {
 }
 
 @CommandHandler
-public Void handle(AnswerTicketCommand command) {
+public void handle(AnswerTicketCommand command) {
     var ticket = tickets.find(command.ticketId()).orElseThrow();
     ticket.escalation().ifPresent(deadlines::cancel);
     tickets.save(ticket.answer(command.answer()));
-    return null;
 }
 ```
 
@@ -89,11 +89,10 @@ The fired command's handler re-checks the state it acts on, because a deadline c
 
 ```java
 @CommandHandler
-public Void handle(EscalateTicketCommand command) {
+public void handle(EscalateTicketCommand command) {
     tickets.find(command.ticketId())
         .filter(Ticket::awaitingCustomer)
         .ifPresent(ticket -> tickets.save(ticket.escalate()));
-    return null;
 }
 ```
 
@@ -179,9 +178,9 @@ var commandBus = CommandBusSpec.withDefaults()
 deadlineStore.start(commandBus);
 ```
 
-`DeadlineStoreConfig` mirrors `EventStoreConfig`: `withDefaults()`, `withoutDefaults()`, a `SchedulingConfig` (enabled, scheduler, initial delay, polling delay) and a `ProcessingConfig`
-(max retries, batch size, `RetryBackoffStrategy`). It has no gap timeout. Defaults: polling delay `5s`, batch size `100`, max retries `3`, exponential backoff `1s × 5` capped at `5m`, the
-same as the event store. A deadline therefore fires up to one polling delay after it is due; this is not a sub-second timer.
+`DeadlineStoreConfig` is one flat builder with `withDefaults()` and `withoutDefaults()`: scheduler, initial delay, polling delay, batch size, max retries and
+`RetryBackoffStrategy`. It has no gap timeout. Defaults: polling delay `5s`, batch size `100`, max retries `3`, exponential backoff `1s × 5` capped at `5m`, the same as the event store. A
+deadline therefore fires up to one polling delay after it is due; this is not a sub-second timer.
 
 Commands need a stable type name for the same reason events do, and more urgently: deadlines stay stored across deployments. Following the command/query/event symmetry rule, this adds
 `CommandTypeResolver`, `ClassNameCommandTypeResolver` and `StaticCommandTypeResolver` beside the event ones rather than generalising the released `EventTypeResolver`.
@@ -227,7 +226,6 @@ CREATE TABLE IF NOT EXISTS smd_deadline_store
     command_type        VARCHAR(500)             NOT NULL,
     serialized_payload  BYTEA                    NOT NULL,
     serialized_metadata BYTEA                    NOT NULL,
-    scheduled_at        TIMESTAMP WITH TIME ZONE NOT NULL,
     due_at              TIMESTAMP WITH TIME ZONE NOT NULL,
     next_attempt_at     TIMESTAMP WITH TIME ZONE NOT NULL,
     status              VARCHAR(32)              NOT NULL,
@@ -250,8 +248,8 @@ Statements:
 ```sql
 -- schedule (in the caller's transaction)
 INSERT INTO smd_deadline_store (deadline_id, command_type, serialized_payload, serialized_metadata,
-                                scheduled_at, due_at, next_attempt_at, status, error_count)
-VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0);
+                                due_at, next_attempt_at, status, error_count)
+VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 0);
 
 -- cancel (in the caller's transaction)
 DELETE FROM smd_deadline_store WHERE deadline_id = ? AND status <> 'ABANDONED';
@@ -401,9 +399,10 @@ smd:
   configuration both use.
 - It declares `DeadlineStorage`, `CommandTypeResolver`, `DeadlineSerializer` (Jackson 3 with `SMDJacksonModule`), `DeadlineStoreConfig` and `DeadlineStore` (`destroyMethod = "close"`),
   each `@ConditionalOnMissingBean`, and exposes it as the `DeadlineScheduler`.
-- A `SmartLifecycle` bean calls `deadlineStore.start(commandGateway)` after the context is refreshed, which also resolves the handler-gateway cycle.
+- A `SmartLifecycle` bean calls `deadlineStore.start(commandGateway)` after the context is refreshed, which also resolves the handler-gateway cycle. `smd.deadlines.scheduling.enabled=false`
+  leaves it out, so an instance can schedule without firing.
 - With deadlines disabled there is no `DeadlineScheduler` bean, so a handler that injects one fails at startup rather than silently not scheduling.
-- The `smd_deadline_store` table is added to `event-store-schema.sql` (or a sibling `deadline-store-schema.sql`) and, like the rest, is not applied automatically.
+- The `smd_deadline_store` table is in a separate `deadline-store-schema.sql` and, like the event-store schema, is not applied automatically.
 - `@EnableSMDStubs` replaces an injected `DeadlineScheduler` with the test-scoped stub.
 
 ## Testing
@@ -417,12 +416,12 @@ public class DeadlineSchedulerStub implements DeadlineScheduler {
 
     public List<ScheduledDeadline> getDeadlines() { ... }           // pending, immutable, ordered by due time then schedule order
 
-    public List<ScheduledDeadline> fireDue(CommandGateway gateway) { ... }   // sends due commands in order, removes them, returns them
+    public List<ScheduledDeadline> fireDue(CommandGateway gateway) { ... }   // sends due commands in order, removes them, returns the fired ones
 
     public void reset() { ... }
 }
 
-public record ScheduledDeadline(DeadlineId id, Instant dueAt, Command<?> command) {
+public record ScheduledDeadline(DeadlineId deadlineId, Instant dueAt, Command<?> command) {
 }
 ```
 
@@ -534,6 +533,5 @@ until a use case needs them: storing the ID covers both, at the cost of a column
 3. `PostgresDeadlineStorage`, schema and Testcontainers tests for claims, cancel-versus-fire and rollback.
 4. Spring autoconfiguration, properties, stub replacement and `SMDTestExtension` methods, plus user documentation.
 
-No spike was added. The open doubts are PostgreSQL row-lock behavior (`DELETE` waiting on a row locked by another transaction and re-evaluating it after commit) and message-ID preservation
-through `CommandGateway.send(CommandMessage)`. The first is standard read-committed behavior and is covered by slice 3's tests; the second is visible in `CommandBus.send(CommandMessage)`, which
-keeps the message ID and replaces only metadata.
+All four slices are implemented. `DeadlineIntegrationTest` in the Spring starter covers the PostgreSQL doubts directly: a cancel issued while a fire holds the row lock waits (observed in
+`pg_stat_activity`) and returns `false` after the fire commits, and two stores polling one table fire each of 30 deadlines exactly once.
