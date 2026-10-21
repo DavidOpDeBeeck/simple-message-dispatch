@@ -13,6 +13,7 @@ integration.
 | `smd-event-store`              | PostgreSQL 15+ event store, polling, sequencing           | [Event Store Guide](docs/event-store.md) |
 | `smd-test`                     | Test helpers and gateway/publisher stubs                  | [Testing Guide](docs/testing.md)         |
 | `smd-opentelemetry`            | OpenTelemetry spans for every bus invocation              | [OpenTelemetry](docs/opentelemetry.md)   |
+| `smd-jms`                      | JMS 3.1 event medium, verified on ActiveMQ Artemis        | [JMS and ActiveMQ](docs/jms.md)          |
 | `smd-spring-boot-starter`      | Spring Boot autoconfiguration and event-store integration | [Spring Boot Guide](docs/spring-boot.md) |
 | `smd-spring-boot-starter-test` | Spring Boot test-scope stubs and lifecycle support        | [Testing Guide](docs/testing.md)         |
 
@@ -40,6 +41,7 @@ dependencies {
     implementation("app.dodb:smd-api:0.0.12")
     implementation("app.dodb:smd-event-store:0.0.12") // Optional
     implementation("app.dodb:smd-opentelemetry:0.0.12") // Optional
+    implementation("app.dodb:smd-jms:0.0.12") // Optional
     testImplementation("app.dodb:smd-test:0.0.12")
 }
 ```

@@ -1,6 +1,9 @@
 # Design: Event Store Outbox and Inbox with ActiveMQ
 
-Status: proposal, 2026-10-22. Nothing here is implemented or released. Existing event-store behavior stays the same, but the storage needs a schema migration (see [Storage](#storage)).
+Status: implemented on 2026-10-22 except slice 0 (gap handling, designed separately) and slice 5 (outage signal, open question 8). The user guides are
+[Outbox and Inbox](../event-store.md#outbox-and-inbox) and [JMS and ActiveMQ](../jms.md). The implementation added two details not in this proposal:
+- an `smd_timestamp` property, so inbound can rebuild `SerializedEvent.createdAt` without parsing the metadata;
+- the finding that Artemis names a shared durable subscription's queue after the subscription name alone, so `<subscriberName>.<processingGroup>` must be unique on the broker.
 
 ## Summary
 
@@ -353,7 +356,7 @@ Recommended Artemis address settings for SMD subscriptions:
 
 ### JMS Outlet Details
 
-- Each `subscribe(subscriber)` opens a shared durable subscription named `<subscriberName>.<processingGroup>`. Every group gets its own copy and its own progress. All application instances
+- Each `subscribe(subscriber)` opens a shared durable subscription named `<subscriberName>.<processingGroup>`. Without a client ID, Artemis names the subscription's queue after this name alone, so it must be unique on the broker. Every group gets its own copy and its own progress. All application instances
   attach to the same subscription and compete, and message groups keep each subject on one consumer.
 - `concurrency(n)` sets consumers per subscription per instance, each on its own thread and context (default `1`). Java 25 removes the `synchronized` pinning that made blocking `receive`
   costly on virtual threads.
@@ -398,6 +401,7 @@ Not guaranteed:
 | Subject                                              | `smd_subject_id`                            | Absent for subjectless events. Inbound reads this, not `JMSXGroupID`                                   |
 | Subject                                              | `JMSXGroupID`                               | Subject, or `smd-subjectless`                                                                           |
 | Metadata (principal, timestamp, parent, properties)  | `smd_metadata`                              | `SerializedEvent.serializedMetadata()` as a UTF-8 string; authoritative on inbound                      |
+| Timestamp                                            | `smd_timestamp`                             | Metadata timestamp (ISO-8601); becomes `SerializedEvent.createdAt` on inbound                           |
 | Trace context                                        | `traceparent`, `tracestate` (when present)  | Copies for broker tooling and OTel JMS instrumentation; inbound uses `smd_metadata`                     |
 | Format version                                       | `smd_wire_version` = `1`                    | Inbound rejects versions it does not know                                                              |
 

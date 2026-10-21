@@ -171,7 +171,8 @@ var auditSource = externalAuditSource.selecting(auditEvents);
 Nonmatching messages are ignored. Matching messages and processing-group names are preserved; selector failures follow the underlying delivery's failure handling.
 
 A sink defines what completion of `send()` means. A source owns delivery threads, ordering, retries, failures, and lifecycle. Custom sources must invoke subscribers inside
-`MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata.
+`MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata. A source that acknowledges messages to a broker may acknowledge one only after
+`on(message)` returns normally, and must redeliver it when `on` throws; the event store's [inbox](event-store.md#outbox-and-inbox) relies on this to never lose a message.
 
 `delivery()` returns an `EventDelivery` naming the medium a sink writes to or a source reads from: `sync`, `async-await`, and `async-fire-and-forget` for the built-in media,
 `event-store` for the event store, and the delivery of the sink or source it selects from for a selecting one. Name a custom sink or source after the medium it uses, such

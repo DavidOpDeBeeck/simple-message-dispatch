@@ -238,6 +238,50 @@ var ticket = eventSequenceStore.eventSequenceState("ticket-activity", ticketId.t
 `TokenState` reports contiguous progress and any active gap. `EventSequenceState` reports status, progress, failure count, and the latest error for one subject. Missing state is returned as
 `Optional.empty()`. SMD does not publish metrics or an HTTP endpoint; adapt these snapshots to your monitoring system if needed.
 
+These methods read the store's own `events` log. For an outbox or inbox, pass its log:
+
+```java
+var outbox = tokenStore.tokenState(EventLog.outbox("ticket-events"), "ticket-events");
+var inbox = eventSequenceStore.eventSequenceState(EventLog.inbox("billing-projection"), "billing-projection", ticketId.toString());
+```
+
+## Outbox and Inbox
+
+The event store can make delivery to another medium durable, not only delivery to its own processing groups:
+
+```java
+EventSink   outbox = eventStore.outbox("ticket-events", broker.inlet());
+EventSource inbox = eventStore.inbox(broker.outlet());
+EventMedium durable = eventStore.durable("ticket-sync", broker);   // outbox inlet + inbox outlet
+```
+
+**Outbox.** `outbox(name, sink)` returns a sink:
+- sending to it stores the event in the current transaction, exactly like the inlet;
+- a polling cursor then forwards each stored event to the wrapped `sink`, in subject order;
+- it forwards exactly what was sent to it: never earlier publications, other sinks' events, or inbox events;
+- the wrapped sink receives the message as it was sent, without attempt metadata.
+
+An outbox never abandons. A failing subject retries with backoff, capped by `max-delay`, while other subjects continue. Its later events wait behind it, so a poison event blocks its subject until you remove it from the database. Track that with the diagnostics above. The name keys durable state and must be unique per store; renaming an outbox leaves its unforwarded entries behind.
+
+**Inbox.** `inbox(source)` returns a source:
+- for each subscribed processing group, it subscribes to the wrapped source;
+- it stores every received message once per group, ignoring a message ID it already stored;
+- it delivers each message to the group like any durable group: in subject order, with attempt metadata, retry, backoff, and abandonment.
+
+The insert runs in the wrapped source's transaction. The inbox relies on the source acknowledging a message only after `on` returns; see [Event Delivery](core-api.md#event-delivery).
+
+**Isolation.** Outbox and inbox entries live in their own logs in `smd_event_store`, so the outlet's groups never see them. Each log has its own cursor and state, and all logs share one sequence. A position held by another log is not a gap, but a position missing from every log stalls every cursor until `gap-timeout`, as described in [Processing and Failure Behavior](#processing-and-failure-behavior).
+
+**Tracing.** The outbox's forward and the inbox's insert run outside the event bus. Register sink interceptors on the store to observe them:
+- with Spring, the starter installs `MessageTracing` there;
+- without Spring, add `.sinkInterceptors(tracing)` to `EventStoreConfig`.
+
+The outbox and inbox report `event-store` as their delivery; the forward records the wrapped sink's delivery, such as `jms`.
+
+**Late commits.** A publishing transaction that commits more than `gap-timeout` after taking its position is skipped by every cursor. That includes an outbox, so keep publishing transactions well below `gap-timeout`.
+
+See [JMS and ActiveMQ](jms.md) for a broker medium.
+
 ## Framework-Agnostic Setup
 
 Without Spring Boot, add the module directly:
@@ -294,3 +338,7 @@ Fresh installations need all three tables from the bundled schema:
 
 The schema uses PostgreSQL `UNIQUE NULLS NOT DISTINCT`, which requires PostgreSQL 15 or newer. It is not applied automatically. Copy it into a versioned Flyway migration or include it through
 Liquibase `sqlFile`.
+
+Stores created with 0.0.12 or earlier need [event-store-logs-migration.sql](../core/smd-event-store/src/main/resources/db/smd/event-store-logs-migration.sql) before upgrading. It adds the `log` column to all three tables, moves their keys
+to include it, and assigns existing rows to the `events` log, so existing processing groups continue where they left off. Stop every instance before migrating: earlier versions cannot
+use the new keys.

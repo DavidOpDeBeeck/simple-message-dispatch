@@ -44,6 +44,16 @@ var eventBus = EventBusSpec.withDefaults()
 Put `MessageTracing` first: the first interceptor wraps the others, so the span covers the transaction and records a failure raised at its commit. A bus you build without
 `MessageTracing` records nothing.
 
+An event store's [outbox and inbox](event-store.md#outbox-and-inbox) forward and receive events outside the bus. Add `MessageTracing` to the store as well, so a forward records a
+`send` span with the wrapped sink's delivery, such as `jms`, and an inbox insert records a `send` span with delivery `event-store`:
+
+```java
+var eventStore = new EventStore(EventStoreConfig.withDefaults()
+        // storage, serializer, and transaction provider
+        .sinkInterceptors(tracing)
+        .build());
+```
+
 Give the `OpenTelemetry` instance a text-map propagator, such as W3C trace context, and a batch span processor. Without a propagator, spans are recorded without the links
 described below; the batch processor exports on its own thread, so a slow or unavailable backend does not delay a message.
 
