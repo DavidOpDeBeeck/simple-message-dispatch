@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+- Added durable delivery in `smd-event-store` (`app.dodb.smd.eventstore.durable`). `DurableDelivery.outbox(name, sink)` stores events in the publishing transaction and forwards
+  them to a `TransportSink`; `DurableDelivery.inbox(name, sources...)` stores each received event once and delivers it to every subscribed processing group. Events with a subject
+  carry a position per outbox and subject, and the inbox delivers them in that order whatever order the broker uses. Durable delivery has its own tables in
+  [durable-delivery-schema.sql](core/smd-event-store/src/main/resources/db/smd/durable-delivery-schema.sql). See [Durable Delivery](docs/durable-delivery.md).
+- Added `smd-jms` with `JmsEventMedium`, a JMS 3.1 medium verified on ActiveMQ Artemis. Its sink and source also implement `TransportSink` and `TransportSource` for durable delivery.
+  See [JMS and ActiveMQ](docs/jms.md).
+- The Spring Boot starter creates a `DurableDelivery` with `smd.durable-delivery.enabled=true` and a `JmsConfig` with `smd.jms.enabled=true`.
+
 ## [0.0.12] - 2026-10-19
 
 - Added `smd-opentelemetry`: `MessageTracing` records each dispatch, each send to a sink, and each processing group's handling as an OpenTelemetry span, and carries the

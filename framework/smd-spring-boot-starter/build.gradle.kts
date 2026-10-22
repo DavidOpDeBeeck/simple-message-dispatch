@@ -14,6 +14,7 @@ dependencies {
     implementation(libs.spring.jdbc)
     implementation(libs.spring.boot.jackson)
 
+    compileOnly(project(":smd-jms"))
     compileOnly(libs.postgresql)
 
     integrationTestImplementation(project(":smd-test"))
@@ -23,4 +24,7 @@ dependencies {
     integrationTestImplementation(libs.testcontainers.junit.jupiter)
     integrationTestImplementation(libs.spring.boot.starter.jdbc)
     integrationTestImplementation(libs.opentelemetry.sdk.testing)
+    integrationTestImplementation(project(":smd-jms"))
+    integrationTestImplementation(libs.artemis.jakarta.client)
+    integrationTestImplementation(libs.testcontainers.activemq)
 }

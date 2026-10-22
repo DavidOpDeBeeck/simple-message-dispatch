@@ -1,6 +1,8 @@
 package app.dodb.smd.spring;
 
+import app.dodb.smd.spring.durable.SMDDurableDeliveryAutoConfiguration;
 import app.dodb.smd.spring.eventstore.SMDEventStoreAutoConfiguration;
+import app.dodb.smd.spring.jms.SMDJmsAutoConfiguration;
 import app.dodb.smd.spring.opentelemetry.SMDOpenTelemetryAutoConfiguration;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.context.annotation.Import;
@@ -17,6 +19,8 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @ImportAutoConfiguration({
     SMDAutoConfiguration.class,
     SMDEventStoreAutoConfiguration.class,
+    SMDDurableDeliveryAutoConfiguration.class,
+    SMDJmsAutoConfiguration.class,
     SMDOpenTelemetryAutoConfiguration.class,
 })
 public @interface EnableSMD {

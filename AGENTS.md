@@ -20,9 +20,10 @@ Command, query, and event code intentionally stays symmetrical. Share code only 
 | Module                                   | Responsibility                                                     |
 |------------------------------------------|--------------------------------------------------------------------|
 | `core/smd-api`                           | Messages, buses, handlers, channels, metadata, and framework ports |
-| `core/smd-event-store`                   | PostgreSQL storage, polling, ordering, retries, and tokens         |
+| `core/smd-event-store`                   | PostgreSQL storage, polling, ordering, retries, outbox, and inbox  |
 | `core/smd-test`                          | Framework-independent test support                                 |
 | `core/smd-opentelemetry`                 | OpenTelemetry instrumentation                                      |
+| `core/smd-jms`                           | JMS event medium and transport: sink, source, and wire format      |
 | `framework/smd-spring-boot-starter`      | Spring Boot wiring and autoconfiguration                           |
 | `framework/smd-spring-boot-starter-test` | Spring test support                                                |
 

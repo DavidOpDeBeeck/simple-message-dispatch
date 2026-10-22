@@ -25,6 +25,8 @@ If you are new to SMD, follow this path:
 | Understand messages or wire SMD without Spring  | [Core API](core-api.md)               |
 | Customize Spring Boot wiring and event delivery | [Spring Boot](spring-boot.md)         |
 | Store and process events durably                | [Event Store](event-store.md)         |
+| Exchange events between applications durably    | [Durable Delivery](durable-delivery.md) |
+| Exchange events through ActiveMQ or JMS         | [JMS and ActiveMQ](jms.md)            |
 | Test handlers and message flows                 | [Testing](testing.md)                 |
 | Trace commands, queries, and events             | [OpenTelemetry](opentelemetry.md)     |
 

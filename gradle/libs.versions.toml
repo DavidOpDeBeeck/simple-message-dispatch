@@ -3,6 +3,7 @@ smd = "0.0.12"
 
 # Core libraries
 guava = "33.5.0-jre"
+jakarta-jms = "3.1.0"
 jackson = "3.0.4"
 opentelemetry = "1.55.0"
 reflections = "0.10.2"
@@ -20,9 +21,13 @@ testcontainers = "2.0.3"
 # Database
 postgresql = "42.7.10"
 
+# Messaging
+artemis = "2.42.0"
+
 [libraries]
 # Core libraries
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
+jakarta-jms-api = { module = "jakarta.jms:jakarta.jms-api", version.ref = "jakarta-jms" }
 jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
 reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
 opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api", version.ref = "opentelemetry" }
@@ -50,9 +55,13 @@ awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" 
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+testcontainers-activemq = { module = "org.testcontainers:testcontainers-activemq", version.ref = "testcontainers" }
 testcontainers-jdbc = { module = "org.testcontainers:testcontainers-jdbc", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
+
+# Messaging
+artemis-jakarta-client = { module = "org.apache.activemq:artemis-jakarta-client", version.ref = "artemis" }
 
 # Database
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }

@@ -176,6 +176,8 @@ complete parameter list.
 ## Next Steps
 
 - [Event Store](event-store.md) for durable PostgreSQL-backed event processing
+- [Durable Delivery](durable-delivery.md) for exchanging events between applications through an outbox and inbox
+- [JMS and ActiveMQ](jms.md) for the broker transport
 - [Testing](testing.md) for Spring test-scope stubs
 - [Core API](core-api.md) for manual construction and event delivery
 - [OpenTelemetry](opentelemetry.md) for the recorded spans
