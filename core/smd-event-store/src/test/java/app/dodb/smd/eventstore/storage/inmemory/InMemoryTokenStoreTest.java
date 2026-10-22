@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
+import static app.dodb.smd.eventstore.storage.EventLog.EVENTS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class InMemoryTokenStoreTest {
@@ -20,17 +21,17 @@ class InMemoryTokenStoreTest {
     @Test
     void claimToken_preservesStatePerProcessingGroup() {
         var store = new InMemoryTokenStore();
-        var firstClaim = store.claimToken("first").orElseThrow();
+        var firstClaim = store.claimToken(EVENTS, "first").orElseThrow();
         firstClaim.markProcessed(3L);
 
-        assertThat(store.claimToken("first").orElseThrow().lastProcessedSequenceNumber()).contains(3L);
-        assertThat(store.claimToken("second").orElseThrow().lastProcessedSequenceNumber()).isEmpty();
+        assertThat(store.claimToken(EVENTS, "first").orElseThrow().lastProcessedSequenceNumber()).contains(3L);
+        assertThat(store.claimToken(EVENTS, "second").orElseThrow().lastProcessedSequenceNumber()).isEmpty();
     }
 
     @Test
     void markProcessed_doesNotRegressAndClearsReachedGap() {
         var store = new InMemoryTokenStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        var token = store.claimToken("processing-group").orElseThrow();
+        var token = store.claimToken(EVENTS, "processing-group").orElseThrow();
 
         token.markGapDetected(3L);
         token.markProcessed(2L);

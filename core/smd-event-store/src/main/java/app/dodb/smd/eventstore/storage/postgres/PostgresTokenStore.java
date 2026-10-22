@@ -1,6 +1,7 @@
 package app.dodb.smd.eventstore.storage.postgres;
 
 import app.dodb.smd.eventstore.storage.ConnectionProvider;
+import app.dodb.smd.eventstore.storage.EventLog;
 import app.dodb.smd.eventstore.storage.Token;
 import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.eventstore.storage.TokenStore;
@@ -33,16 +34,16 @@ public class PostgresTokenStore implements TokenStore {
     }
 
     @Override
-    public Optional<Token> claimToken(String processingGroup) {
+    public Optional<Token> claimToken(EventLog log, String processingGroup) {
         return connectionProvider.doWithConnection(connection -> {
-            var claimedToken = claimTokenRow(connection, processingGroup);
+            var claimedToken = claimTokenRow(connection, log, processingGroup);
             if (claimedToken.isPresent()) {
                 return claimedToken;
             }
 
-            if (tryClaimProcessingGroup(connection, processingGroup)) {
-                createTokenRow(connection, processingGroup);
-                return claimTokenRow(connection, processingGroup);
+            if (tryClaimProcessingGroup(connection, log, processingGroup)) {
+                createTokenRow(connection, log, processingGroup);
+                return claimTokenRow(connection, log, processingGroup);
             }
 
             return empty();
@@ -50,7 +51,7 @@ public class PostgresTokenStore implements TokenStore {
     }
 
     @Override
-    public Optional<TokenState> tokenState(String processingGroup) {
+    public Optional<TokenState> tokenState(EventLog log, String processingGroup) {
         return connectionProvider.doWithConnection(connection -> {
             try (var stmt = connection.prepareStatement("""
                 SELECT processing_group,
@@ -58,9 +59,10 @@ public class PostgresTokenStore implements TokenStore {
                        last_gap_detected_at,
                        gap_sequence_number
                 FROM smd_token_store
-                WHERE processing_group = ?
+                WHERE log = ? AND processing_group = ?
                 """)) {
-                stmt.setString(1, processingGroup);
+                stmt.setString(1, log.name());
+                stmt.setString(2, processingGroup);
                 try (var rs = stmt.executeQuery()) {
                     if (!rs.next()) {
                         return Optional.empty();
@@ -73,73 +75,79 @@ public class PostgresTokenStore implements TokenStore {
                     ));
                 }
             } catch (SQLException e) {
-                throw new TokenStoreException("Failed to read token state for processing group: " + processingGroup, e);
+                throw new TokenStoreException("Failed to read token state: log=" + log.name() + ", processingGroup=" + processingGroup, e);
             }
         });
     }
 
-    private boolean tryClaimProcessingGroup(Connection connection, String processingGroup) {
+    private boolean tryClaimProcessingGroup(Connection connection, EventLog log, String processingGroup) {
         try (var stmt = connection.prepareStatement("""
-            SELECT pg_try_advisory_xact_lock(hashtext('smd_token_store'), hashtext(?))
+            SELECT pg_try_advisory_xact_lock(hashtext(?), hashtext(?))
             """)) {
-            stmt.setString(1, processingGroup);
+            stmt.setString(1, "smd_token_store#" + log.name());
+            stmt.setString(2, processingGroup);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 rs.next();
                 return rs.getBoolean(1);
             }
         } catch (SQLException e) {
-            throw new TokenStoreException("Failed to claim token advisory lock for processing group: " + processingGroup, e);
+            throw new TokenStoreException("Failed to claim token advisory lock: log=" + log.name() + ", processingGroup=" + processingGroup, e);
         }
     }
 
-    private void createTokenRow(Connection connection, String processingGroup) {
+    private void createTokenRow(Connection connection, EventLog log, String processingGroup) {
         try (var stmt = connection.prepareStatement("""
-            INSERT INTO smd_token_store (processing_group)
-            VALUES (?)
-            ON CONFLICT (processing_group) DO NOTHING
+            INSERT INTO smd_token_store (log, processing_group)
+            VALUES (?, ?)
+            ON CONFLICT (log, processing_group) DO NOTHING
             """)) {
-            stmt.setString(1, processingGroup);
+            stmt.setString(1, log.name());
+            stmt.setString(2, processingGroup);
             stmt.executeUpdate();
         } catch (SQLException e) {
-            throw new TokenStoreException("Failed to initialize token for processing group: " + processingGroup, e);
+            throw new TokenStoreException("Failed to initialize token: log=" + log.name() + ", processingGroup=" + processingGroup, e);
         }
     }
 
-    private Optional<Token> claimTokenRow(Connection connection, String processingGroup) {
+    private Optional<Token> claimTokenRow(Connection connection, EventLog log, String processingGroup) {
         try (var stmt = connection.prepareStatement("""
             SELECT last_processed_sequence_number, last_gap_detected_at
             FROM smd_token_store
-            WHERE processing_group = ?
+            WHERE log = ? AND processing_group = ?
             FOR UPDATE SKIP LOCKED
             """)) {
-            stmt.setString(1, processingGroup);
+            stmt.setString(1, log.name());
+            stmt.setString(2, processingGroup);
 
             try (var rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    return of(PostgresToken.from(processingGroup, connectionProvider, rs));
+                    return of(PostgresToken.from(log, processingGroup, connectionProvider, rs));
                 }
                 return empty();
             }
         } catch (SQLException e) {
-            throw new TokenStoreException("Failed to claim token row for processing group: " + processingGroup, e);
+            throw new TokenStoreException("Failed to claim token row: log=" + log.name() + ", processingGroup=" + processingGroup, e);
         }
     }
 
-    record PostgresToken(String processingGroup,
+    record PostgresToken(EventLog log,
+                         String processingGroup,
                          ConnectionProvider connectionProvider,
                          Optional<Long> lastProcessedSequenceNumber,
                          Optional<Instant> lastGapDetectedAt) implements Token {
 
         PostgresToken {
+            requireNonNull(log);
             requireNonNull(processingGroup);
             requireNonNull(connectionProvider);
             requireNonNull(lastProcessedSequenceNumber);
             requireNonNull(lastGapDetectedAt);
         }
 
-        static PostgresToken from(String processingGroup, ConnectionProvider connectionProvider, ResultSet rs) throws SQLException {
+        static PostgresToken from(EventLog log, String processingGroup, ConnectionProvider connectionProvider, ResultSet rs) throws SQLException {
             return new PostgresToken(
+                log,
                 processingGroup,
                 connectionProvider,
                 optionalLong(rs, "last_processed_sequence_number"),
@@ -155,14 +163,15 @@ public class PostgresTokenStore implements TokenStore {
                     SET last_processed_sequence_number = ?,
                         last_gap_detected_at = NULL,
                         gap_sequence_number = NULL
-                    WHERE processing_group = ?
+                    WHERE log = ? AND processing_group = ?
                     """)) {
                     stmt.setLong(1, sequenceNumber);
-                    stmt.setString(2, processingGroup);
+                    stmt.setString(2, log.name());
+                    stmt.setString(3, processingGroup);
                     stmt.executeUpdate();
-                    LOGGER.debug("Marked processed: processingGroup={}, sequenceNumber={}", processingGroup, sequenceNumber);
+                    LOGGER.debug("Marked processed: log={}, processingGroup={}, sequenceNumber={}", log.name(), processingGroup, sequenceNumber);
                 } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to mark processed for processing group: " + processingGroup, e);
+                    throw new TokenStoreException("Failed to mark processed: log=" + log.name() + ", processingGroup=" + processingGroup, e);
                 }
             });
         }
@@ -174,15 +183,16 @@ public class PostgresTokenStore implements TokenStore {
                     UPDATE smd_token_store
                     SET last_gap_detected_at = ?,
                         gap_sequence_number = ?
-                    WHERE processing_group = ?
+                    WHERE log = ? AND processing_group = ?
                     """)) {
                     stmt.setTimestamp(1, Timestamp.from(Instant.now()));
                     stmt.setLong(2, sequenceNumber);
-                    stmt.setString(3, processingGroup);
+                    stmt.setString(3, log.name());
+                    stmt.setString(4, processingGroup);
                     stmt.executeUpdate();
-                    LOGGER.warn("Gap detected: processingGroup={}, gapSequenceNumber={}", processingGroup, sequenceNumber);
+                    LOGGER.warn("Gap detected: log={}, processingGroup={}, gapSequenceNumber={}", log.name(), processingGroup, sequenceNumber);
                 } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to mark gap detected for processing group: " + processingGroup, e);
+                    throw new TokenStoreException("Failed to mark gap detected: log=" + log.name() + ", processingGroup=" + processingGroup, e);
                 }
             });
         }

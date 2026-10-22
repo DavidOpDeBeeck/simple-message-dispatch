@@ -4,6 +4,7 @@ import app.dodb.smd.eventstore.sequence.EventSubjectSequence;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
+import app.dodb.smd.eventstore.storage.EventLog;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -21,41 +22,40 @@ public class InMemoryEventSubjectSequenceStore implements EventSubjectSequenceSt
     private final ConcurrentMap<SequenceId, InMemoryEventSubjectSequence> sequences = new ConcurrentHashMap<>();
 
     @Override
-    public Optional<EventSubjectSequence> claimGlobal(String processingGroup) {
-        return claim(processingGroup, Optional.empty());
+    public Optional<EventSubjectSequence> claimGlobal(EventLog log, String processingGroup) {
+        return claim(new SequenceId(log, processingGroup, Optional.empty()));
     }
 
     @Override
-    public Optional<EventSubjectSequence> claimSubject(String processingGroup, String subjectId) {
-        return claim(processingGroup, Optional.of(requireNonNull(subjectId)));
+    public Optional<EventSubjectSequence> claimSubject(EventLog log, String processingGroup, String subjectId) {
+        return claim(new SequenceId(log, processingGroup, Optional.of(requireNonNull(subjectId))));
     }
 
     @Override
-    public Optional<EventSequenceState> globalEventSequenceState(String processingGroup) {
-        return eventSequenceState(processingGroup, Optional.empty());
+    public Optional<EventSequenceState> globalEventSequenceState(EventLog log, String processingGroup) {
+        return eventSequenceState(new SequenceId(log, processingGroup, Optional.empty()));
     }
 
     @Override
-    public Optional<EventSequenceState> eventSequenceState(String processingGroup, String subjectId) {
-        return eventSequenceState(processingGroup, Optional.of(requireNonNull(subjectId)));
+    public Optional<EventSequenceState> eventSequenceState(EventLog log, String processingGroup, String subjectId) {
+        return eventSequenceState(new SequenceId(log, processingGroup, Optional.of(requireNonNull(subjectId))));
     }
 
-    private Optional<EventSubjectSequence> claim(String processingGroup, Optional<String> subjectId) {
-        var sequenceId = new SequenceId(processingGroup, subjectId);
+    private Optional<EventSubjectSequence> claim(SequenceId sequenceId) {
         return Optional.of(sequences.computeIfAbsent(sequenceId, _ -> new InMemoryEventSubjectSequence()));
     }
 
-    private Optional<EventSequenceState> eventSequenceState(String processingGroup, Optional<String> subjectId) {
-        var sequenceId = new SequenceId(processingGroup, subjectId);
+    private Optional<EventSequenceState> eventSequenceState(SequenceId sequenceId) {
         var sequence = sequences.get(sequenceId);
         return sequence == null
             ? Optional.empty()
             : Optional.of(sequence.state(sequenceId));
     }
 
-    private record SequenceId(String processingGroup, Optional<String> subjectId) {
+    private record SequenceId(EventLog log, String processingGroup, Optional<String> subjectId) {
 
         SequenceId {
+            requireNonNull(log);
             requireNonNull(processingGroup);
             requireNonNull(subjectId);
         }

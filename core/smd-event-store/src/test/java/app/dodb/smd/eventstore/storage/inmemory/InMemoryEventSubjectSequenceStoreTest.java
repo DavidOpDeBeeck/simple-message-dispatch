@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ACTIVE;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
+import static app.dodb.smd.eventstore.storage.EventLog.EVENTS;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class InMemoryEventSubjectSequenceStoreTest {
@@ -20,23 +21,23 @@ class InMemoryEventSubjectSequenceStoreTest {
     @Test
     void claimGlobal_preservesStatePerProcessingGroup() {
         var store = new InMemoryEventSubjectSequenceStore();
-        store.claimGlobal("first-group").orElseThrow().markProcessed(3L);
+        store.claimGlobal(EVENTS, "first-group").orElseThrow().markProcessed(3L);
 
-        assertThat(store.claimGlobal("first-group").orElseThrow()
+        assertThat(store.claimGlobal(EVENTS, "first-group").orElseThrow()
             .lastProcessedSequenceNumber()).contains(3L);
-        assertThat(store.claimGlobal("second-group").orElseThrow()
+        assertThat(store.claimGlobal(EVENTS, "second-group").orElseThrow()
             .lastProcessedSequenceNumber()).isEmpty();
     }
 
     @Test
     void claimGlobal_doesNotAliasEmptySubject() {
         var store = new InMemoryEventSubjectSequenceStore();
-        store.claimGlobal("processing-group").orElseThrow().markProcessed(3L);
-        store.claimSubject("processing-group", "").orElseThrow().markProcessed(4L);
+        store.claimGlobal(EVENTS, "processing-group").orElseThrow().markProcessed(3L);
+        store.claimSubject(EVENTS, "processing-group", "").orElseThrow().markProcessed(4L);
 
-        assertThat(store.claimGlobal("processing-group").orElseThrow()
+        assertThat(store.claimGlobal(EVENTS, "processing-group").orElseThrow()
             .lastProcessedSequenceNumber()).contains(3L);
-        assertThat(store.claimSubject("processing-group", "").orElseThrow()
+        assertThat(store.claimSubject(EVENTS, "processing-group", "").orElseThrow()
             .lastProcessedSequenceNumber()).contains(4L);
         assertThat(store.globalEventSequenceState("processing-group")).hasValueSatisfying(state -> {
             assertThat(state.subjectId()).isEmpty();
@@ -51,14 +52,14 @@ class InMemoryEventSubjectSequenceStoreTest {
     @Test
     void claimSubject_preservesStatePerProcessingGroupAndSubject() {
         var store = new InMemoryEventSubjectSequenceStore();
-        var firstSequence = store.claimSubject("first-group", "first-subjectId").orElseThrow();
+        var firstSequence = store.claimSubject(EVENTS, "first-group", "first-subjectId").orElseThrow();
         firstSequence.markProcessed(3L);
 
-        assertThat(store.claimSubject("first-group", "first-subjectId").orElseThrow()
+        assertThat(store.claimSubject(EVENTS, "first-group", "first-subjectId").orElseThrow()
             .lastProcessedSequenceNumber()).contains(3L);
-        assertThat(store.claimSubject("first-group", "second-subjectId").orElseThrow()
+        assertThat(store.claimSubject(EVENTS, "first-group", "second-subjectId").orElseThrow()
             .lastProcessedSequenceNumber()).isEmpty();
-        assertThat(store.claimSubject("second-group", "first-subjectId").orElseThrow()
+        assertThat(store.claimSubject(EVENTS, "second-group", "first-subjectId").orElseThrow()
             .lastProcessedSequenceNumber()).isEmpty();
     }
 
@@ -66,7 +67,7 @@ class InMemoryEventSubjectSequenceStoreTest {
     void markProcessed_recoversFailedSequence() {
         var store = new InMemoryEventSubjectSequenceStore();
         var sequence = store
-            .claimSubject("processing-group", "subjectId")
+            .claimSubject(EVENTS, "processing-group", "subjectId")
             .orElseThrow();
         assertThat(sequence.status()).isEqualTo(ACTIVE);
 
@@ -106,7 +107,7 @@ class InMemoryEventSubjectSequenceStoreTest {
     void markSkipped_advancesAbandonedSequence() {
         var store = new InMemoryEventSubjectSequenceStore();
         var sequence = store
-            .claimSubject("processing-group", "subjectId")
+            .claimSubject(EVENTS, "processing-group", "subjectId")
             .orElseThrow();
 
         sequence.markAbandoned(2L, new IllegalStateException("abandoned"));

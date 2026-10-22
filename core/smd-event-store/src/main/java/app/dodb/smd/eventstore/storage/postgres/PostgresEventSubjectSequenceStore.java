@@ -5,6 +5,7 @@ import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
 import app.dodb.smd.eventstore.storage.ConnectionProvider;
+import app.dodb.smd.eventstore.storage.EventLog;
 import app.dodb.smd.eventstore.storage.TokenStoreException;
 
 import java.sql.Connection;
@@ -28,42 +29,42 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
     }
 
     @Override
-    public Optional<EventSubjectSequence> claimGlobal(String processingGroup) {
-        return claim(processingGroup, Optional.empty());
+    public Optional<EventSubjectSequence> claimGlobal(EventLog log, String processingGroup) {
+        return claim(new SequenceKey(log, processingGroup, Optional.empty()));
     }
 
     @Override
-    public Optional<EventSubjectSequence> claimSubject(String processingGroup, String subjectId) {
-        return claim(processingGroup, Optional.of(subjectId));
+    public Optional<EventSubjectSequence> claimSubject(EventLog log, String processingGroup, String subjectId) {
+        return claim(new SequenceKey(log, processingGroup, Optional.of(subjectId)));
     }
 
     @Override
-    public Optional<EventSequenceState> globalEventSequenceState(String processingGroup) {
-        return eventSequenceState(processingGroup, Optional.empty());
+    public Optional<EventSequenceState> globalEventSequenceState(EventLog log, String processingGroup) {
+        return eventSequenceState(new SequenceKey(log, processingGroup, Optional.empty()));
     }
 
     @Override
-    public Optional<EventSequenceState> eventSequenceState(String processingGroup, String subjectId) {
-        return eventSequenceState(processingGroup, Optional.of(requireNonNull(subjectId)));
+    public Optional<EventSequenceState> eventSequenceState(EventLog log, String processingGroup, String subjectId) {
+        return eventSequenceState(new SequenceKey(log, processingGroup, Optional.of(requireNonNull(subjectId))));
     }
 
-    private Optional<EventSubjectSequence> claim(String processingGroup, Optional<String> subjectId) {
+    private Optional<EventSubjectSequence> claim(SequenceKey key) {
         return connectionProvider.doWithConnection(connection -> {
-            var claimedSequence = claimSequenceRow(connection, processingGroup, subjectId);
+            var claimedSequence = claimSequenceRow(connection, key);
             if (claimedSequence.isPresent()) {
                 return claimedSequence;
             }
 
-            if (tryClaimSequence(connection, processingGroup, subjectId)) {
-                createSequenceRow(connection, processingGroup, subjectId);
-                return claimSequenceRow(connection, processingGroup, subjectId);
+            if (tryClaimSequence(connection, key)) {
+                createSequenceRow(connection, key);
+                return claimSequenceRow(connection, key);
             }
 
             return Optional.empty();
         });
     }
 
-    private Optional<EventSequenceState> eventSequenceState(String processingGroup, Optional<String> subjectId) {
+    private Optional<EventSequenceState> eventSequenceState(SequenceKey key) {
         return connectionProvider.doWithConnection(connection -> {
             try (var stmt = connection.prepareStatement("""
                 SELECT processing_group,
@@ -74,10 +75,9 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
                        last_error_message,
                        last_error_at
                 FROM smd_event_sequence_state
-                WHERE processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
+                WHERE log = ? AND processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
                 """)) {
-                stmt.setString(1, processingGroup);
-                stmt.setString(2, subjectId.orElse(null));
+                key.setParameters(stmt, 1);
                 try (var rs = stmt.executeQuery()) {
                     if (!rs.next()) {
                         return Optional.empty();
@@ -93,56 +93,53 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
                     ));
                 }
             } catch (SQLException e) {
-                throw new TokenStoreException("Failed to read event sequence state: processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null), e);
+                throw new TokenStoreException("Failed to read event sequence state: " + key, e);
             }
         });
     }
 
-    private boolean tryClaimSequence(Connection connection, String processingGroup, Optional<String> subjectId) {
+    private boolean tryClaimSequence(Connection connection, SequenceKey key) {
         try (var stmt = connection.prepareStatement("""
             SELECT pg_try_advisory_xact_lock(hashtext(?), hashtext(?))
             """)) {
-            stmt.setString(1, "smd_event_sequence_state#" + processingGroup);
-            stmt.setString(2, subjectId.map(value -> "subject#" + value).orElse("global"));
+            stmt.setString(1, "smd_event_sequence_state#" + key.log().name() + "#" + key.processingGroup());
+            stmt.setString(2, key.subjectId().map(value -> "subject#" + value).orElse("global"));
 
             try (var rs = stmt.executeQuery()) {
                 rs.next();
                 return rs.getBoolean(1);
             }
         } catch (SQLException e) {
-            throw new TokenStoreException("Failed to claim event sequence advisory lock: processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null), e);
+            throw new TokenStoreException("Failed to claim event sequence advisory lock: " + key, e);
         }
     }
 
-    private void createSequenceRow(Connection connection, String processingGroup, Optional<String> subjectId) {
+    private void createSequenceRow(Connection connection, SequenceKey key) {
         try (var stmt = connection.prepareStatement("""
-            INSERT INTO smd_event_sequence_state (processing_group, subject_id, status, error_count)
-            VALUES (?, ?, 'ACTIVE', 0)
-            ON CONFLICT (processing_group, subject_id) DO NOTHING
+            INSERT INTO smd_event_sequence_state (log, processing_group, subject_id, status, error_count)
+            VALUES (?, ?, ?, 'ACTIVE', 0)
+            ON CONFLICT (log, processing_group, subject_id) DO NOTHING
             """)) {
-            stmt.setString(1, processingGroup);
-            stmt.setString(2, subjectId.orElse(null));
+            key.setParameters(stmt, 1);
             stmt.executeUpdate();
         } catch (SQLException e) {
-            throw new TokenStoreException("Failed to initialize event sequence: processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null), e);
+            throw new TokenStoreException("Failed to initialize event sequence: " + key, e);
         }
     }
 
-    private Optional<EventSubjectSequence> claimSequenceRow(Connection connection, String processingGroup, Optional<String> subjectId) {
+    private Optional<EventSubjectSequence> claimSequenceRow(Connection connection, SequenceKey key) {
         try (var stmt = connection.prepareStatement("""
-            SELECT processing_group, subject_id, status, last_processed_sequence_number, error_count, last_error_at
+            SELECT status, last_processed_sequence_number, error_count, last_error_at
             FROM smd_event_sequence_state
-            WHERE processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
+            WHERE log = ? AND processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
             FOR UPDATE SKIP LOCKED
             """)) {
-            stmt.setString(1, processingGroup);
-            stmt.setString(2, subjectId.orElse(null));
+            key.setParameters(stmt, 1);
 
             try (var rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return Optional.of(new PostgresEventSubjectSequence(
-                        rs.getString("processing_group"),
-                        Optional.ofNullable(rs.getString("subject_id")),
+                        key,
                         EventSubjectSequenceStatus.valueOf(rs.getString("status")),
                         optionalLong(rs, "last_processed_sequence_number"),
                         rs.getInt("error_count"),
@@ -153,21 +150,39 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
                 return Optional.empty();
             }
         } catch (SQLException e) {
-            throw new TokenStoreException("Failed to claim event sequence row: processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null), e);
+            throw new TokenStoreException("Failed to claim event sequence row: " + key, e);
         }
     }
 
-    record PostgresEventSubjectSequence(String processingGroup,
-                                        Optional<String> subjectId,
-                                        EventSubjectSequenceStatus status,
-                                        Optional<Long> lastProcessedSequenceNumber,
-                                        int errorCount,
-                                        Optional<Instant> lastErrorAt,
-                                        ConnectionProvider connectionProvider) implements EventSubjectSequence {
+    private record SequenceKey(EventLog log, String processingGroup, Optional<String> subjectId) {
 
-        PostgresEventSubjectSequence {
+        SequenceKey {
+            requireNonNull(log);
             requireNonNull(processingGroup);
             requireNonNull(subjectId);
+        }
+
+        void setParameters(PreparedStatement stmt, int firstIndex) throws SQLException {
+            stmt.setString(firstIndex, log.name());
+            stmt.setString(firstIndex + 1, processingGroup);
+            stmt.setString(firstIndex + 2, subjectId.orElse(null));
+        }
+
+        @Override
+        public String toString() {
+            return "log=" + log.name() + ", processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null);
+        }
+    }
+
+    private record PostgresEventSubjectSequence(SequenceKey key,
+                                                EventSubjectSequenceStatus status,
+                                                Optional<Long> lastProcessedSequenceNumber,
+                                                int errorCount,
+                                                Optional<Instant> lastErrorAt,
+                                                ConnectionProvider connectionProvider) implements EventSubjectSequence {
+
+        PostgresEventSubjectSequence {
+            requireNonNull(key);
             requireNonNull(status);
             requireNonNull(lastProcessedSequenceNumber);
             requireNonNull(lastErrorAt);
@@ -184,14 +199,13 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
                         error_count = 0,
                         last_error_message = NULL,
                         last_error_at = NULL
-                    WHERE processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
+                    WHERE log = ? AND processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
                     """)) {
                     stmt.setLong(1, sequenceNumber);
-                    stmt.setString(2, processingGroup);
-                    stmt.setString(3, subjectId.orElse(null));
+                    key.setParameters(stmt, 2);
                     stmt.executeUpdate();
                 } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to mark event sequence processed: processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null), e);
+                    throw new TokenStoreException("Failed to mark event sequence processed: " + key, e);
                 }
             });
         }
@@ -202,14 +216,13 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
                 try (PreparedStatement stmt = connection.prepareStatement("""
                     UPDATE smd_event_sequence_state
                     SET last_processed_sequence_number = ?
-                    WHERE processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
+                    WHERE log = ? AND processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
                     """)) {
                     stmt.setLong(1, sequenceNumber);
-                    stmt.setString(2, processingGroup);
-                    stmt.setString(3, subjectId.orElse(null));
+                    key.setParameters(stmt, 2);
                     stmt.executeUpdate();
                 } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to mark event sequence skipped: processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null), e);
+                    throw new TokenStoreException("Failed to mark event sequence skipped: " + key, e);
                 }
             });
         }
@@ -223,17 +236,15 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
                         error_count = ?,
                         last_error_message = ?,
                         last_error_at = ?
-                    WHERE processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
+                    WHERE log = ? AND processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
                     """)) {
-                    var now = Timestamp.from(Instant.now());
                     stmt.setInt(1, errorCount);
                     stmt.setString(2, getStackTraceAsString(exception));
-                    stmt.setTimestamp(3, now);
-                    stmt.setString(4, processingGroup);
-                    stmt.setString(5, subjectId.orElse(null));
+                    stmt.setTimestamp(3, Timestamp.from(Instant.now()));
+                    key.setParameters(stmt, 4);
                     stmt.executeUpdate();
                 } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to mark event sequence failed: processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null), e);
+                    throw new TokenStoreException("Failed to mark event sequence failed: " + key, e);
                 }
             });
         }
@@ -248,17 +259,15 @@ public class PostgresEventSubjectSequenceStore implements EventSubjectSequenceSt
                         error_count = 0,
                         last_error_message = ?,
                         last_error_at = ?
-                    WHERE processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
+                    WHERE log = ? AND processing_group = ? AND subject_id IS NOT DISTINCT FROM ?
                     """)) {
-                    var now = Timestamp.from(Instant.now());
                     stmt.setLong(1, sequenceNumber);
                     stmt.setString(2, getStackTraceAsString(exception));
-                    stmt.setTimestamp(3, now);
-                    stmt.setString(4, processingGroup);
-                    stmt.setString(5, subjectId.orElse(null));
+                    stmt.setTimestamp(3, Timestamp.from(Instant.now()));
+                    key.setParameters(stmt, 4);
                     stmt.executeUpdate();
                 } catch (SQLException e) {
-                    throw new TokenStoreException("Failed to mark event sequence abandoned: processingGroup=" + processingGroup + ", subjectId=" + subjectId.orElse(null), e);
+                    throw new TokenStoreException("Failed to mark event sequence abandoned: " + key, e);
                 }
             });
         }

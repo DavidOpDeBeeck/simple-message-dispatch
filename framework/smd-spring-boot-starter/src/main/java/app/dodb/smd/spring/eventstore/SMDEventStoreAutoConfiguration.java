@@ -15,8 +15,10 @@ import app.dodb.smd.eventstore.storage.TokenStore;
 import app.dodb.smd.eventstore.storage.postgres.PostgresEventStorage;
 import app.dodb.smd.eventstore.storage.postgres.PostgresEventSubjectSequenceStore;
 import app.dodb.smd.eventstore.storage.postgres.PostgresTokenStore;
+import app.dodb.smd.opentelemetry.MessageTracing;
 import app.dodb.smd.spring.EventBusSpecCustomizer;
 import app.dodb.smd.spring.SMDAutoConfiguration;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -84,10 +86,11 @@ public class SMDEventStoreAutoConfiguration {
                                              TokenStore tokenStore,
                                              EventSubjectSequenceStore eventSubjectSequenceStore,
                                              TransactionProvider transactionProvider,
-                                             SMDEventStoreProperties properties) {
+                                             SMDEventStoreProperties properties,
+                                             ObjectProvider<MessageTracing> messageTracing) {
         var scheduling = properties.getScheduling();
         var processing = properties.getProcessing();
-        return EventStoreConfig.withoutDefaults()
+        var config = EventStoreConfig.withoutDefaults()
             .eventStorage(eventStorage)
             .eventSerializer(eventSerializer)
             .tokenStore(tokenStore)
@@ -104,8 +107,9 @@ public class SMDEventStoreAutoConfiguration {
                 .batchSize(processing.getBatchSize())
                 .gapTimeout(processing.getGapTimeout())
                 .retryBackoffStrategy(processing.getRetryBackoff().createStrategy())
-                .build())
-            .build();
+                .build());
+        messageTracing.ifAvailable(config::sinkInterceptors);
+        return config.build();
     }
 
     @Bean(destroyMethod = "close")

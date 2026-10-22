@@ -1,5 +1,6 @@
 package app.dodb.smd.eventstore.storage.inmemory;
 
+import app.dodb.smd.eventstore.storage.EventLog;
 import app.dodb.smd.eventstore.storage.Token;
 import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.eventstore.storage.TokenStore;
@@ -14,7 +15,7 @@ import static java.util.Objects.requireNonNull;
 
 public class InMemoryTokenStore implements TokenStore {
 
-    private final ConcurrentMap<String, InMemoryToken> tokens = new ConcurrentHashMap<>();
+    private final ConcurrentMap<TokenId, InMemoryToken> tokens = new ConcurrentHashMap<>();
     private final Clock clock;
 
     public InMemoryTokenStore() {
@@ -26,16 +27,24 @@ public class InMemoryTokenStore implements TokenStore {
     }
 
     @Override
-    public Optional<Token> claimToken(String processingGroup) {
-        return Optional.of(tokens.computeIfAbsent(processingGroup, _ -> new InMemoryToken(clock)));
+    public Optional<Token> claimToken(EventLog log, String processingGroup) {
+        return Optional.of(tokens.computeIfAbsent(new TokenId(log, processingGroup), _ -> new InMemoryToken(clock)));
     }
 
     @Override
-    public Optional<TokenState> tokenState(String processingGroup) {
-        var token = tokens.get(processingGroup);
+    public Optional<TokenState> tokenState(EventLog log, String processingGroup) {
+        var token = tokens.get(new TokenId(log, processingGroup));
         return token == null
             ? Optional.empty()
             : Optional.of(token.state(processingGroup));
+    }
+
+    private record TokenId(EventLog log, String processingGroup) {
+
+        TokenId {
+            requireNonNull(log);
+            requireNonNull(processingGroup);
+        }
     }
 
     private static class InMemoryToken implements Token {

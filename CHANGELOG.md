@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+- Added an outbox and inbox to the event store. `eventStore.outbox(name, sink)` stores sends in the publishing transaction and forwards them to the sink in subject order,
+  without abandoning them. `eventStore.inbox(source)` stores each received message once per processing group, then delivers it with the store's ordering and retries.
+  `eventStore.durable(name, medium)` combines both. See [Outbox and Inbox](docs/event-store.md#outbox-and-inbox).
+- Added `smd-jms` with `JmsEventMedium`, a JMS 3.1 event medium verified on ActiveMQ Artemis. Spring Boot creates a `JmsConfig` with `smd.jms.enabled=true`. See
+  [JMS and ActiveMQ](docs/jms.md).
+- Added `EventStoreConfig.Builder.sinkInterceptors(...)`, run around the outbox forward and the inbox insert. The Spring Boot starter installs `MessageTracing` there.
+- `EventStorage`, `TokenStore`, and `EventSubjectSequenceStore` take an `EventLog`. The diagnostic `tokenState(...)`, `eventSequenceState(...)`, and
+  `globalEventSequenceState(...)` overloads without one read the `events` log.
+- The PostgreSQL schema has a `log` column in all three tables. Apply
+  [event-store-logs-migration.sql](core/smd-event-store/src/main/resources/db/smd/event-store-logs-migration.sql) to an existing store with every instance stopped.
+
 ## [0.0.12] - 2026-10-19
 
 - Added `smd-opentelemetry`: `MessageTracing` records each dispatch, each send to a sink, and each processing group's handling as an OpenTelemetry span, and carries the

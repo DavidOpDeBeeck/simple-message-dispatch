@@ -1,9 +1,12 @@
 package app.dodb.smd.eventstore;
 
+import app.dodb.smd.api.event.Event;
+import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.serialization.EventSerializer;
+import app.dodb.smd.eventstore.storage.EventLog;
 import app.dodb.smd.eventstore.storage.SerializedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,13 +28,19 @@ class EventSequenceProcessor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventSequenceProcessor.class);
 
+    private final EventLog log;
+    private final EventLogConsumption consumption;
     private final EventSubjectSequenceStore eventSubjectSequenceStore;
     private final EventSerializer eventSerializer;
     private final RetryBackoffStrategy retryBackoffStrategy;
 
-    EventSequenceProcessor(EventSubjectSequenceStore eventSubjectSequenceStore,
+    EventSequenceProcessor(EventLog log,
+                           EventLogConsumption consumption,
+                           EventSubjectSequenceStore eventSubjectSequenceStore,
                            EventSerializer eventSerializer,
                            RetryBackoffStrategy retryBackoffStrategy) {
+        this.log = requireNonNull(log);
+        this.consumption = requireNonNull(consumption);
         this.eventSubjectSequenceStore = requireNonNull(eventSubjectSequenceStore);
         this.eventSerializer = requireNonNull(eventSerializer);
         this.retryBackoffStrategy = requireNonNull(retryBackoffStrategy);
@@ -43,8 +52,8 @@ class EventSequenceProcessor {
         var subjectIdOpt = serializedEvent.subjectId();
 
         var claimedSequence = subjectIdOpt
-            .map(subjectId -> eventSubjectSequenceStore.claimSubject(processingGroup, subjectId))
-            .orElseGet(() -> eventSubjectSequenceStore.claimGlobal(processingGroup));
+            .map(subjectId -> eventSubjectSequenceStore.claimSubject(log, processingGroup, subjectId))
+            .orElseGet(() -> eventSubjectSequenceStore.claimGlobal(log, processingGroup));
         if (claimedSequence.isEmpty()) {
             return new SequenceClaimed();
         }
@@ -56,42 +65,47 @@ class EventSequenceProcessor {
 
         if (sequence.abandoned()) {
             sequence.markSkipped(sequenceNumber);
-            LOGGER.warn("Event abandoned because subjectId was already abandoned: processingGroup={}, subjectId={}, sequenceNumber={}, messageId={}",
-                processingGroup, subjectIdOpt.orElse(null), sequenceNumber, serializedEvent.messageId());
+            LOGGER.warn("Event abandoned because subjectId was already abandoned: log={}, processingGroup={}, subjectId={}, sequenceNumber={}, messageId={}",
+                log.name(), processingGroup, subjectIdOpt.orElse(null), sequenceNumber, serializedEvent.messageId());
             return new Abandoned();
         }
 
         if (sequence.failed()) {
             var lastErrorAt = sequence.lastErrorAt().orElseThrow(() -> new IllegalStateException(
-                "Failed event sequence has no last error timestamp: processingGroup=" + processingGroup
+                "Failed event sequence has no last error timestamp: log=" + log.name() + ", processingGroup=" + processingGroup
                     + ", subjectId=" + subjectIdOpt.orElse(null)
             ));
             var nextAttemptAt = lastErrorAt.plus(retryBackoffStrategy.calculateDelay(sequence.errorCount() - 1));
             if (Instant.now().isBefore(nextAttemptAt)) {
-                LOGGER.debug("Event subjectId backoff active: processingGroup={}, subjectId={}, sequenceNumber={}, nextAttemptAt={}",
-                    processingGroup, subjectIdOpt.orElse(null), sequenceNumber, nextAttemptAt);
+                LOGGER.debug("Event subjectId backoff active: log={}, processingGroup={}, subjectId={}, sequenceNumber={}, nextAttemptAt={}",
+                    log.name(), processingGroup, subjectIdOpt.orElse(null), sequenceNumber, nextAttemptAt);
                 return new BackoffActive();
             }
         }
 
         try {
-            var eventMessage = eventSerializer.deserialize(serializedEvent);
-            var eventProcessingMetadata = new HashMap<String, String>();
-            eventProcessingMetadata.put("processingId", UUID.randomUUID().toString());
-            eventProcessingMetadata.put("sequenceNumber", String.valueOf(sequenceNumber));
-            eventProcessingMetadata.put("errorCount", String.valueOf(sequence.errorCount()));
-            subjectIdOpt.ifPresent(subjectId -> eventProcessingMetadata.put("subjectId", subjectId));
-            var eventMessageWithProcessingMetadata = eventMessage.andMetadata(withProperties(eventProcessingMetadata));
+            var eventMessage = consumption.addsAttemptMetadata()
+                ? withAttemptMetadata(eventSerializer.deserialize(serializedEvent), sequenceNumber, sequence.errorCount())
+                : eventSerializer.deserialize(serializedEvent);
 
-            MetadataFactory.runInScope(eventMessageWithProcessingMetadata, () -> listener.on(eventMessageWithProcessingMetadata));
+            MetadataFactory.runInScope(eventMessage, () -> listener.on(eventMessage));
         } catch (Exception e) {
             return new Failure(sequenceNumber, subjectIdOpt, e);
         }
 
         sequence.markProcessed(sequenceNumber);
-        LOGGER.debug("Event processed: processingGroup={}, subjectId={}, sequenceNumber={}, messageId={}",
-            processingGroup, subjectIdOpt.orElse(null), sequenceNumber, serializedEvent.messageId());
+        LOGGER.debug("Event processed: log={}, processingGroup={}, subjectId={}, sequenceNumber={}, messageId={}",
+            log.name(), processingGroup, subjectIdOpt.orElse(null), sequenceNumber, serializedEvent.messageId());
 
         return new Processed();
+    }
+
+    private static <E extends Event> EventMessage<E> withAttemptMetadata(EventMessage<E> eventMessage, long sequenceNumber, int errorCount) {
+        var attemptMetadata = new HashMap<String, String>();
+        attemptMetadata.put("processingId", UUID.randomUUID().toString());
+        attemptMetadata.put("sequenceNumber", String.valueOf(sequenceNumber));
+        attemptMetadata.put("errorCount", String.valueOf(errorCount));
+        eventMessage.subjectId().ifPresent(subjectId -> attemptMetadata.put("subjectId", subjectId));
+        return eventMessage.andMetadata(withProperties(attemptMetadata));
     }
 }
