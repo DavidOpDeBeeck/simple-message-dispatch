@@ -20,7 +20,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static java.util.Objects.requireNonNull;
@@ -46,7 +46,7 @@ public class DeadlineStore implements DeadlineScheduler, AutoCloseable {
     private final int maxRetries;
     private final RetryBackoffStrategy retryBackoffStrategy;
 
-    private ScheduledFuture<?> firing;
+    private final AtomicBoolean started = new AtomicBoolean();
 
     public DeadlineStore(DeadlineStoreConfig config) {
         requireNonNull(config);
@@ -90,13 +90,13 @@ public class DeadlineStore implements DeadlineScheduler, AutoCloseable {
         return deadlineStorage.deadlineState(deadlineId);
     }
 
-    public synchronized void start(CommandGateway commandGateway) {
+    public void start(CommandGateway commandGateway) {
         requireNonNull(commandGateway);
-        if (firing != null) {
+        if (!started.compareAndSet(false, true)) {
             throw new IllegalStateException("Deadline store already started");
         }
 
-        firing = scheduler.scheduleWithFixedDelay(
+        scheduler.scheduleWithFixedDelay(
             () -> fireDueDeadlines(commandGateway),
             initialDelay.toMillis(),
             pollingDelay.toMillis(),

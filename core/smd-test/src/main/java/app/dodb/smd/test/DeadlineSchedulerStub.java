@@ -11,20 +11,21 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static java.util.Objects.requireNonNull;
 
 public class DeadlineSchedulerStub implements DeadlineScheduler {
 
     private final TimeProvider timeProvider;
-    private final List<ScheduledDeadline> deadlines = new ArrayList<>();
+    private final List<ScheduledDeadline> deadlines = new CopyOnWriteArrayList<>();
 
     public DeadlineSchedulerStub(TimeProvider timeProvider) {
         this.timeProvider = requireNonNull(timeProvider);
     }
 
     @Override
-    public synchronized DeadlineId schedule(Command<?> command, Instant dueAt) {
+    public DeadlineId schedule(Command<?> command, Instant dueAt) {
         var deadline = new ScheduledDeadline(DeadlineId.generate(), dueAt, command);
         deadlines.add(deadline);
         return deadline.deadlineId();
@@ -39,11 +40,11 @@ public class DeadlineSchedulerStub implements DeadlineScheduler {
     }
 
     @Override
-    public synchronized boolean cancel(DeadlineId deadlineId) {
+    public boolean cancel(DeadlineId deadlineId) {
         return deadlines.removeIf(deadline -> deadline.deadlineId().equals(deadlineId));
     }
 
-    public synchronized List<ScheduledDeadline> getDeadlines() {
+    public List<ScheduledDeadline> getDeadlines() {
         return deadlines.stream()
             .sorted(Comparator.comparing(ScheduledDeadline::dueAt))
             .toList();
@@ -66,7 +67,7 @@ public class DeadlineSchedulerStub implements DeadlineScheduler {
         return List.copyOf(firedDeadlines);
     }
 
-    public synchronized void reset() {
+    public void reset() {
         deadlines.clear();
     }
 }

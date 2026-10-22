@@ -10,9 +10,10 @@ import app.dodb.smd.eventstore.storage.DeadlineStorageException;
 
 import java.time.Instant;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static app.dodb.smd.eventstore.deadline.DeadlineStatus.ABANDONED;
 import static app.dodb.smd.eventstore.deadline.DeadlineStatus.FAILED;
@@ -23,58 +24,71 @@ import static java.util.Objects.requireNonNull;
 // Not transactional: a claim is not released by a rollback, and changes are visible immediately.
 public class InMemoryDeadlineStorage implements DeadlineStorage {
 
-    private final Map<DeadlineId, StoredDeadline> deadlines = new LinkedHashMap<>();
+    private final Map<DeadlineId, StoredDeadline> deadlines = new ConcurrentHashMap<>();
 
     @Override
-    public synchronized void store(SerializedDeadline deadline) {
-        if (deadlines.containsKey(deadline.deadlineId())) {
+    public void store(SerializedDeadline deadline) {
+        if (deadlines.putIfAbsent(deadline.deadlineId(), new StoredDeadline(deadline)) != null) {
             throw new DeadlineStorageException("Deadline already stored: deadlineId=" + deadline.deadlineId().value());
         }
-        deadlines.put(deadline.deadlineId(), new StoredDeadline(deadline));
     }
 
     @Override
-    public synchronized boolean delete(DeadlineId deadlineId) {
-        var deadline = deadlines.get(deadlineId);
-        if (deadline == null || deadline.status == ABANDONED) {
-            return false;
-        }
-        deadlines.remove(deadlineId);
-        return true;
+    public boolean delete(DeadlineId deadlineId) {
+        var deleted = new AtomicBoolean();
+        deadlines.computeIfPresent(deadlineId, (id, deadline) -> {
+            if (deadline.status() == ABANDONED) {
+                return deadline;
+            }
+            deleted.set(true);
+            return null;
+        });
+        return deleted.get();
     }
 
     @Override
-    public synchronized Optional<ClaimedDeadline> claimDue(Instant now) {
+    public Optional<ClaimedDeadline> claimDue(Instant now) {
         return deadlines.values().stream()
-            .filter(deadline -> deadline.status != ABANDONED && !deadline.nextAttemptAt.isAfter(now))
-            .min(Comparator.comparing(deadline -> deadline.nextAttemptAt))
+            .filter(deadline -> deadline.status() != ABANDONED && !deadline.nextAttemptAt().isAfter(now))
+            .min(Comparator.comparing(StoredDeadline::nextAttemptAt))
             .map(InMemoryClaimedDeadline::new);
     }
 
     @Override
-    public synchronized Optional<ClaimedDeadline> claim(DeadlineId deadlineId) {
+    public Optional<ClaimedDeadline> claim(DeadlineId deadlineId) {
         return Optional.ofNullable(deadlines.get(deadlineId))
-            .filter(deadline -> deadline.status != ABANDONED)
+            .filter(deadline -> deadline.status() != ABANDONED)
             .map(InMemoryClaimedDeadline::new);
     }
 
     @Override
-    public synchronized Optional<DeadlineState> deadlineState(DeadlineId deadlineId) {
+    public Optional<DeadlineState> deadlineState(DeadlineId deadlineId) {
         return Optional.ofNullable(deadlines.get(deadlineId)).map(StoredDeadline::state);
     }
 
-    private static class StoredDeadline {
+    private record StoredDeadline(SerializedDeadline deadline,
+                                  Instant nextAttemptAt,
+                                  DeadlineStatus status,
+                                  int errorCount,
+                                  String lastErrorMessage,
+                                  Instant lastErrorAt) {
 
-        private final SerializedDeadline deadline;
-        private Instant nextAttemptAt;
-        private DeadlineStatus status = PENDING;
-        private int errorCount;
-        private String lastErrorMessage;
-        private Instant lastErrorAt;
+        private StoredDeadline {
+            requireNonNull(deadline);
+            requireNonNull(nextAttemptAt);
+            requireNonNull(status);
+        }
 
         private StoredDeadline(SerializedDeadline deadline) {
-            this.deadline = requireNonNull(deadline);
-            this.nextAttemptAt = deadline.dueAt();
+            this(deadline, deadline.dueAt(), PENDING, 0, null, null);
+        }
+
+        private StoredDeadline failed(Exception exception, int errorCount, Instant failedAt, Instant nextAttemptAt) {
+            return new StoredDeadline(deadline, nextAttemptAt, FAILED, errorCount, getStackTraceAsString(exception), failedAt);
+        }
+
+        private StoredDeadline abandoned(Exception exception, Instant abandonedAt) {
+            return new StoredDeadline(deadline, nextAttemptAt, ABANDONED, errorCount, getStackTraceAsString(exception), abandonedAt);
         }
 
         private DeadlineState state() {
@@ -93,17 +107,17 @@ public class InMemoryDeadlineStorage implements DeadlineStorage {
 
     private class InMemoryClaimedDeadline implements ClaimedDeadline {
 
-        private final StoredDeadline stored;
+        private final SerializedDeadline deadline;
         private final int errorCount;
 
         private InMemoryClaimedDeadline(StoredDeadline stored) {
-            this.stored = requireNonNull(stored);
-            this.errorCount = stored.errorCount;
+            this.deadline = stored.deadline();
+            this.errorCount = stored.errorCount();
         }
 
         @Override
         public SerializedDeadline deadline() {
-            return stored.deadline;
+            return deadline;
         }
 
         @Override
@@ -113,29 +127,17 @@ public class InMemoryDeadlineStorage implements DeadlineStorage {
 
         @Override
         public void markFired() {
-            synchronized (InMemoryDeadlineStorage.this) {
-                deadlines.remove(stored.deadline.deadlineId());
-            }
+            deadlines.remove(deadline.deadlineId());
         }
 
         @Override
         public void markFailed(Exception exception, int errorCount, Instant failedAt, Instant nextAttemptAt) {
-            synchronized (InMemoryDeadlineStorage.this) {
-                stored.status = FAILED;
-                stored.errorCount = errorCount;
-                stored.nextAttemptAt = nextAttemptAt;
-                stored.lastErrorMessage = getStackTraceAsString(exception);
-                stored.lastErrorAt = failedAt;
-            }
+            deadlines.computeIfPresent(deadline.deadlineId(), (id, stored) -> stored.failed(exception, errorCount, failedAt, nextAttemptAt));
         }
 
         @Override
         public void markAbandoned(Exception exception, Instant abandonedAt) {
-            synchronized (InMemoryDeadlineStorage.this) {
-                stored.status = ABANDONED;
-                stored.lastErrorMessage = getStackTraceAsString(exception);
-                stored.lastErrorAt = abandonedAt;
-            }
+            deadlines.computeIfPresent(deadline.deadlineId(), (id, stored) -> stored.abandoned(exception, abandonedAt));
         }
     }
 }
