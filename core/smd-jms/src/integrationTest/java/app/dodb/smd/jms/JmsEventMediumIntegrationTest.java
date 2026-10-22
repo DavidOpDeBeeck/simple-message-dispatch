@@ -36,6 +36,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.time.Duration.ZERO;
 import static java.time.Duration.ofHours;
 import static java.time.Duration.ofMillis;
+import static java.time.Duration.ofMinutes;
 import static java.time.Duration.ofSeconds;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static java.util.stream.Collectors.groupingBy;
@@ -51,7 +52,8 @@ class JmsEventMediumIntegrationTest {
     private static final String TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 
     @Container
-    private static final ArtemisContainer ARTEMIS = new ArtemisContainer("apache/activemq-artemis:2.42.0");
+    private static final ArtemisContainer ARTEMIS = new ArtemisContainer("apache/activemq-artemis:2.42.0")
+        .withStartupTimeout(ofMinutes(3));
 
     private final JacksonEventSerializer serializer = new JacksonEventSerializer(JsonMapper.builder().addModule(new SMDJacksonModule()).build());
 

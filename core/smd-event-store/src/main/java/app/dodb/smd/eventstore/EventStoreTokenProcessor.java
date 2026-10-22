@@ -2,8 +2,10 @@ package app.dodb.smd.eventstore;
 
 import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.framework.TransactionProvider;
+import app.dodb.smd.eventstore.EventSequenceProcessingResult.BackoffActive;
 import app.dodb.smd.eventstore.EventSequenceProcessingResult.Failure;
 import app.dodb.smd.eventstore.EventSequenceProcessingResult.Processed;
+import app.dodb.smd.eventstore.EventSequenceProcessingResult.SequenceClaimed;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.storage.EventLog;
@@ -14,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Optional;
 
 import static java.time.Duration.between;
 import static java.util.Objects.requireNonNull;
@@ -91,6 +95,7 @@ class EventStoreTokenProcessor {
         long lastInspectedSequenceNumber = initialSequenceNumber;
         int positionInBatch = 0;
         int lastProcessedPositionInBatch = 0;
+        var heldSubjects = new HashSet<Optional<String>>();
 
         try (var events = eventStorage.load(log, initialSequenceNumber, batchSize)) {
             if (!events.hasNext()) {
@@ -131,7 +136,15 @@ class EventStoreTokenProcessor {
                     }
                 }
 
+                // Once a subject's event is held back, its later events in this batch wait too; a backoff expiring mid-batch must not let them overtake it.
+                if (heldSubjects.contains(serializedEvent.subjectId())) {
+                    continue;
+                }
+
                 var result = eventSequenceProcessor.process(listener, serializedEvent);
+                if (result instanceof BackoffActive || result instanceof SequenceClaimed) {
+                    heldSubjects.add(serializedEvent.subjectId());
+                }
                 if (result instanceof Failure failure) {
                     throw new BatchProcessingFailure(failure, lastProcessedPositionInBatch);
                 }

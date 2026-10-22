@@ -15,6 +15,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
+import static java.time.Duration.ofMinutes;
 import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,7 +26,8 @@ import static org.springframework.boot.WebApplicationType.NONE;
 class JmsOutboxIntegrationTest {
 
     @Container
-    private static final ArtemisContainer ARTEMIS = new ArtemisContainer("apache/activemq-artemis:2.42.0");
+    private static final ArtemisContainer ARTEMIS = new ArtemisContainer("apache/activemq-artemis:2.42.0")
+        .withStartupTimeout(ofMinutes(3));
 
     @Test
     void publish_committedTransaction_reachesInboxGroupThroughBroker() {
