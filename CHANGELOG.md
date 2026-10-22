@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+- Added deadlines: `DeadlineScheduler` in `app.dodb.smd.api.deadline` schedules a command for an `Instant` or after a `Duration` and returns a `DeadlineId` that cancels it.
+  `DeadlineStore` in `smd-event-store` stores deadlines in PostgreSQL (`smd_deadline_store`, see `deadline-store-schema.sql`) and fires each due deadline through the command gateway in its
+  own transaction, at least once, with retries and abandonment. See [Deadlines](docs/deadlines.md).
+- The Spring Boot starter configures a `DeadlineScheduler` when `smd.deadlines.enabled=true`.
+- Added `DeadlineSchedulerStub` to `smd-test`. `@EnableSMDStubs` injects it, and `SMDTestExtension` gains `getDeadlines()` and `fireDueDeadlines()`; its constructor takes the stub.
+- Added `CommandTypeResolver`, `ClassNameCommandTypeResolver`, and `StaticCommandTypeResolver` for stable stored command names.
+
 ## [0.0.12] - 2026-10-19
 
 - Added `smd-opentelemetry`: `MessageTracing` records each dispatch, each send to a sink, and each processing group's handling as an OpenTelemetry span, and carries the

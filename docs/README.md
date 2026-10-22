@@ -6,7 +6,7 @@ Simple Message Dispatch (SMD) is a Java library for commands, queries, and event
 
 - Java 25
 - Spring Boot 4 for Spring applications
-- PostgreSQL 15 or newer when using the built-in event store
+- PostgreSQL 15 or newer when using the built-in event store or deadlines
 
 ## First Use
 
@@ -25,6 +25,7 @@ If you are new to SMD, follow this path:
 | Understand messages or wire SMD without Spring  | [Core API](core-api.md)               |
 | Customize Spring Boot wiring and event delivery | [Spring Boot](spring-boot.md)         |
 | Store and process events durably                | [Event Store](event-store.md)         |
+| Send a command later, or cancel it              | [Deadlines](deadlines.md)             |
 | Test handlers and message flows                 | [Testing](testing.md)                 |
 | Trace commands, queries, and events             | [OpenTelemetry](opentelemetry.md)     |
 

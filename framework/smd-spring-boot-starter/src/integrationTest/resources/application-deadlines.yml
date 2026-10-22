@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    name: smd
+    url: jdbc:tc:postgresql:18-alpine:///smd?TC_INITSCRIPT=db/smd/deadline-store-schema.sql
+    username: test_user
+    password: test_password
+
+smd:
+  deadlines:
+    enabled: true
+    scheduling:
+      initial-delay: 0ms
+      polling-delay: 50ms
+    processing:
+      max-retries: 1
+      batch-size: 10
+      retry-backoff:
+        strategy: FIXED
+        fixed-delay: 0ms
+
+logging:
+  level:
+    app.dodb: DEBUG

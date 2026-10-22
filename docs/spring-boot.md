@@ -176,6 +176,7 @@ complete parameter list.
 ## Next Steps
 
 - [Event Store](event-store.md) for durable PostgreSQL-backed event processing
+- [Deadlines](deadlines.md) for commands sent later and cancellable timeouts
 - [Testing](testing.md) for Spring test-scope stubs
 - [Core API](core-api.md) for manual construction and event delivery
 - [OpenTelemetry](opentelemetry.md) for the recorded spans
