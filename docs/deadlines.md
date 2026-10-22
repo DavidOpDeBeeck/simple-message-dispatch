@@ -157,9 +157,9 @@ var deadlineStore = new DeadlineStore(DeadlineStoreConfig.withDefaults()
     .build());
 
 // Build the command bus with handlers that use deadlineStore, then:
-deadlineStore.start(commandBus);
+var firing = deadlineStore.subscribe(commandBus);
 ```
 
-`start` begins polling; scheduling and cancelling work before it. Use the same `PrincipalProvider` and `TimeProvider` as the command bus, and register its
-`TransactionalCommandBusInterceptor` so the handler joins the firing transaction. Close the store during shutdown. `InMemoryDeadlineStorage` is available for tests and demos; it is not
-transactional and does not survive a restart.
+`subscribe` begins polling and returns a `DeadlineSubscription`; closing it stops later polls, and `subscribe` can be called again. A store allows one open subscription at a time. Scheduling
+and cancelling work without one. Use the same `PrincipalProvider` and `TimeProvider` as the command bus, and register its `TransactionalCommandBusInterceptor` so the handler joins the firing
+transaction. Close the store during shutdown to shut its scheduler down. `InMemoryDeadlineStorage` is available for tests and demos; it is not transactional and does not survive a restart.

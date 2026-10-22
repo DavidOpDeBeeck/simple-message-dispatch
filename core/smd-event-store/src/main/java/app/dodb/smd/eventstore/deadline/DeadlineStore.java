@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -46,7 +47,7 @@ public class DeadlineStore implements DeadlineScheduler, AutoCloseable {
     private final int maxRetries;
     private final RetryBackoffStrategy retryBackoffStrategy;
 
-    private final AtomicBoolean started = new AtomicBoolean();
+    private final AtomicBoolean subscribed = new AtomicBoolean();
 
     public DeadlineStore(DeadlineStoreConfig config) {
         requireNonNull(config);
@@ -90,19 +91,20 @@ public class DeadlineStore implements DeadlineScheduler, AutoCloseable {
         return deadlineStorage.deadlineState(deadlineId);
     }
 
-    public void start(CommandGateway commandGateway) {
+    public DeadlineSubscription subscribe(CommandGateway commandGateway) {
         requireNonNull(commandGateway);
-        if (!started.compareAndSet(false, true)) {
-            throw new IllegalStateException("Deadline store already started");
+        if (!subscribed.compareAndSet(false, true)) {
+            throw new IllegalStateException("Deadline store already has an open subscription");
         }
 
-        scheduler.scheduleWithFixedDelay(
+        var firing = scheduler.scheduleWithFixedDelay(
             () -> fireDueDeadlines(commandGateway),
             initialDelay.toMillis(),
             pollingDelay.toMillis(),
             MILLISECONDS
         );
         LOGGER.info("Deadline firing started: pollingDelay={}, batchSize={}", pollingDelay, batchSize);
+        return new FiringSubscription(firing);
     }
 
     @Override
@@ -198,6 +200,28 @@ public class DeadlineStore implements DeadlineScheduler, AutoCloseable {
         } catch (Exception recordingFailure) {
             exception.addSuppressed(recordingFailure);
             LOGGER.error("Failed to record deadline failure: deadlineId={}", deadlineId.value(), exception);
+        }
+    }
+
+    // Closing stops later polls without waiting for a running one; the executor is only shut down by close() of the store.
+    private class FiringSubscription implements DeadlineSubscription {
+
+        private final ScheduledFuture<?> firing;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        private FiringSubscription(ScheduledFuture<?> firing) {
+            this.firing = requireNonNull(firing);
+        }
+
+        @Override
+        public void close() {
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+
+            firing.cancel(false);
+            subscribed.set(false);
+            LOGGER.info("Deadline firing stopped");
         }
     }
 

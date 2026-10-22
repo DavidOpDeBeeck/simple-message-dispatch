@@ -145,19 +145,20 @@ public class DeadlineStore implements DeadlineScheduler, AutoCloseable {
 
     public DeadlineStore(DeadlineStoreConfig config) { ... }
 
-    // DeadlineScheduler methods write in the caller's transaction and work before start.
+    // DeadlineScheduler methods write in the caller's transaction and work without a subscription.
 
-    public void start(CommandGateway commandGateway) { ... }   // begins polling and firing
+    public DeadlineSubscription subscribe(CommandGateway commandGateway) { ... }   // begins polling and firing
 
     public Optional<DeadlineState> deadlineState(DeadlineId id) { ... }
 
     @Override
-    public void close() { ... }   // stops polling; an active fire finishes
+    public void close() { ... }   // shuts the scheduler down; an active fire finishes
 }
 ```
 
-Passing the gateway to `start` instead of the constructor breaks the cycle between handlers that need a `DeadlineScheduler` and a `CommandBus` built from those handlers. `start` fails if
-called twice.
+Passing the gateway to `subscribe` instead of the constructor breaks the cycle between handlers that need a `DeadlineScheduler` and a `CommandBus` built from those handlers. Like
+`EventSource.subscribe`, it returns a closeable subscription: closing it cancels later polls without waiting for an active fire and leaves the scheduler running, so the store can be
+subscribed again. `subscribe` fails while another subscription is open.
 
 ```java
 var deadlineStore = new DeadlineStore(DeadlineStoreConfig.withDefaults()
@@ -175,7 +176,7 @@ var commandBus = CommandBusSpec.withDefaults()
     .interceptors(new TransactionalCommandBusInterceptor(transactionProvider))
     .create();
 
-deadlineStore.start(commandBus);
+var firing = deadlineStore.subscribe(commandBus);
 ```
 
 `DeadlineStoreConfig` is one flat builder with `withDefaults()` and `withoutDefaults()`: scheduler, initial delay, polling delay, batch size, max retries and
@@ -399,7 +400,8 @@ smd:
   configuration both use.
 - It declares `DeadlineStorage`, `CommandTypeResolver`, `DeadlineSerializer` (Jackson 3 with `SMDJacksonModule`), `DeadlineStoreConfig` and `DeadlineStore` (`destroyMethod = "close"`),
   each `@ConditionalOnMissingBean`, and exposes it as the `DeadlineScheduler`.
-- A `SmartLifecycle` bean calls `deadlineStore.start(commandGateway)` after the context is refreshed, which also resolves the handler-gateway cycle. `smd.deadlines.scheduling.enabled=false`
+- A `SmartLifecycle` bean subscribes the command gateway after the context is refreshed, which also resolves the handler-gateway cycle, and closes the subscription on stop, so
+  the context can be stopped and started again. `smd.deadlines.scheduling.enabled=false`
   leaves it out, so an instance can schedule without firing.
 - With deadlines disabled there is no `DeadlineScheduler` bean, so a handler that injects one fails at startup rather than silently not scheduling.
 - The `smd_deadline_store` table is in a separate `deadline-store-schema.sql` and, like the event-store schema, is not applied automatically.

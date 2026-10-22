@@ -61,6 +61,9 @@ class DeadlineIntegrationTest {
     private DeadlineStore deadlineStore;
 
     @Autowired
+    private DeadlineStoreLifecycle deadlineStoreLifecycle;
+
+    @Autowired
     private TransactionProvider transactionProvider;
 
     @Autowired
@@ -183,10 +186,24 @@ class DeadlineIntegrationTest {
     }
 
     @Test
+    void start_afterStop_firesDeadlinesAgain() {
+        // Given
+        deadlineStoreLifecycle.stop();
+        deadlineStoreLifecycle.start();
+
+        // When
+        var deadlineId = deadlineScheduler.schedule(new RemindCustomerCommand("ticket-1"), ZERO);
+
+        // Then
+        await().atMost(TIMEOUT).until(() -> storedReminders().contains(deadlineId.value()));
+        assertThat(deadlineStoreLifecycle.isRunning()).isTrue();
+    }
+
+    @Test
     void fire_withTwoStoresPolling_firesEachDeadlineOnce() {
         // Given
-        try (var secondNode = new DeadlineStore(secondNodeConfig())) {
-            secondNode.start(commandGateway);
+        try (var secondNode = new DeadlineStore(secondNodeConfig());
+             var secondNodeFiring = secondNode.subscribe(commandGateway)) {
 
             // When
             var deadlineIds = new ArrayList<UUID>();

@@ -229,12 +229,34 @@ class DeadlineStoreTest {
     }
 
     @Test
-    void start_whenAlreadyStarted_throws() {
-        deadlines.start(commands);
+    void subscribe_whileSubscriptionOpen_throws() {
+        deadlines.subscribe(commands);
 
-        assertThatThrownBy(() -> deadlines.start(commands))
+        assertThatThrownBy(() -> deadlines.subscribe(commands))
             .isInstanceOf(IllegalStateException.class)
-            .hasMessage("Deadline store already started");
+            .hasMessage("Deadline store already has an open subscription");
+    }
+
+    @Test
+    void subscribe_afterSubscriptionClosed_opensNewSubscription() {
+        deadlines.subscribe(commands).close();
+
+        var subscription = deadlines.subscribe(commands);
+
+        assertThat(subscription).isNotNull();
+    }
+
+    @Test
+    void close_calledAgainAfterResubscribing_keepsNewSubscriptionOpen() {
+        var closedSubscription = deadlines.subscribe(commands);
+        closedSubscription.close();
+        deadlines.subscribe(commands);
+
+        closedSubscription.close();
+
+        assertThatThrownBy(() -> deadlines.subscribe(commands))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("Deadline store already has an open subscription");
     }
 
     private DeadlineStore deadlineStore(int maxRetries) {

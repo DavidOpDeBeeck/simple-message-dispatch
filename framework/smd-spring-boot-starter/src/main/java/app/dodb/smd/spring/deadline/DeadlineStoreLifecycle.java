@@ -2,16 +2,19 @@ package app.dodb.smd.spring.deadline;
 
 import app.dodb.smd.api.command.CommandGateway;
 import app.dodb.smd.eventstore.deadline.DeadlineStore;
+import app.dodb.smd.eventstore.deadline.DeadlineSubscription;
 import org.springframework.context.SmartLifecycle;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 import static java.util.Objects.requireNonNull;
 
-// Starts firing once the context is refreshed, so handlers that schedule deadlines and the gateway that fires them exist first.
+// Subscribes once the context is refreshed, so handlers that schedule deadlines and the gateway that fires them exist first.
 public class DeadlineStoreLifecycle implements SmartLifecycle {
 
     private final DeadlineStore deadlineStore;
     private final CommandGateway commandGateway;
-    private volatile boolean running;
+    private final AtomicReference<DeadlineSubscription> subscription = new AtomicReference<>();
 
     public DeadlineStoreLifecycle(DeadlineStore deadlineStore, CommandGateway commandGateway) {
         this.deadlineStore = requireNonNull(deadlineStore);
@@ -20,18 +23,19 @@ public class DeadlineStoreLifecycle implements SmartLifecycle {
 
     @Override
     public void start() {
-        deadlineStore.start(commandGateway);
-        running = true;
+        subscription.set(deadlineStore.subscribe(commandGateway));
     }
 
     @Override
     public void stop() {
-        deadlineStore.close();
-        running = false;
+        var openSubscription = subscription.getAndSet(null);
+        if (openSubscription != null) {
+            openSubscription.close();
+        }
     }
 
     @Override
     public boolean isRunning() {
-        return running;
+        return subscription.get() != null;
     }
 }
