@@ -13,8 +13,11 @@
   no longer inherit them; before, a subjectless event sent while handling another event could carry that event's `subjectId`.
 - `MetadataFactory` accepts a `MetadataInheritance` as a third constructor argument; the two-argument constructor uses `excludingSmdProperties()`.
 - **Breaking:** event serialization moved from `smd-event-store` to the new `smd-serialization` module. `EventSerializer`, `EventTypeResolver`, `ClassNameEventTypeResolver`,
-  `StaticEventTypeResolver`, `EventTypeResolutionException`, and `SerializedEvent` (from `app.dodb.smd.eventstore.storage`) are in `app.dodb.smd.serialization`;
+  `StaticEventTypeResolver`, and `SerializedEvent` (from `app.dodb.smd.eventstore.storage`) are in `app.dodb.smd.serialization`;
   `JacksonEventSerializer` and `SMDJacksonModule` are in `app.dodb.smd.serialization.jackson`. `smd-event-store` exposes the module, so only imports change.
+- **Breaking:** `EventTypeResolver.eventTypeFor` and `eventClassFor` return `Optional` and are empty when the resolver does not know the event; `EventTypeResolutionException` is removed.
+- Added `EventUpcaster` to read events stored under an older type name: `rename(...)` maps the type name and `transform(...)` also rewrites the JSON payload. Upcasters chain by type
+  name and invalid ones fail when the serializer is created. Spring Boot passes every `EventUpcaster` bean to the default serializer.
 - **Breaking:** `ConnectionProvider` moved from `app.dodb.smd.eventstore.storage` to `app.dodb.smd.api.framework`, `RetryBackoffStrategy` from `app.dodb.smd.eventstore` to
   `app.dodb.smd.api.event.delivery`, and `SpringConnectionProvider` from `app.dodb.smd.spring.eventstore` to `app.dodb.smd.spring`. Only imports change.
 - `EventSelector.eventType` accepts several event types, and `EventSelector.eventPackage(Package)` selects events in a package and its subpackages.

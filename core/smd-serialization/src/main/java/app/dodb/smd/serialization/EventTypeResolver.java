@@ -2,9 +2,11 @@ package app.dodb.smd.serialization;
 
 import app.dodb.smd.api.event.Event;
 
+import java.util.Optional;
+
 public interface EventTypeResolver {
 
-    String eventTypeFor(Event event) throws EventTypeResolutionException;
+    Optional<String> eventTypeFor(Event event);
 
-    Class<? extends Event> eventClassFor(String eventType) throws EventTypeResolutionException;
+    Optional<Class<? extends Event>> eventClassFor(String eventType);
 }

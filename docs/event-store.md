@@ -48,7 +48,7 @@ EventTypeResolver eventTypeResolver() {
 }
 ```
 
-Every stored type and published event class must remain in the mapping. Migrate existing `event_type` values before changing a resolver used by a live store.
+Map each event class to one type name. Every type name already in the store must stay in the mapping or be [upcast](#evolve-stored-events) to a current one.
 
 Spring Boot builds the default serializer with Jackson 3 and registers `SMDJacksonModule`. Add Jackson 3 `JacksonModule` or `JsonMapperBuilderCustomizer` beans for normal customization, or provide
 your own `EventSerializer` bean for full control.
@@ -66,6 +66,43 @@ ProcessingGroupsConfigurer processingGroupsConfigurer(EventStore eventStore) {
 ```
 
 Publishing stores events inside the publishing transaction. The scheduler polls and delivers them to `ticket-activity` in new transactions.
+
+## Evolve Stored Events
+
+Stored events keep the type name and JSON they were written with. To change an event, give it a new versioned type name, map only current names in the resolver, and register an
+`EventUpcaster` bean for each older name:
+
+```java
+@Bean
+EventTypeResolver eventTypeResolver() {
+    return new StaticEventTypeResolver(Map.of(
+        "ticket.opened.v2", TicketOpenedEvent.class
+    ));
+}
+
+// Events stored as ticket.created.v1 continue as ticket.opened.v1.
+@Bean
+EventUpcaster ticketCreatedV1Upcaster() {
+    return EventUpcaster.rename("ticket.created.v1", "ticket.opened.v1");
+}
+
+// ticket.opened.v2 added a description.
+@Bean
+EventUpcaster ticketOpenedV1Upcaster() {
+    return EventUpcaster.transform("ticket.opened.v1", "ticket.opened.v2", payload -> payload.put("description", ""));
+}
+```
+
+`transform` receives the stored payload as a Jackson `ObjectNode` and returns the payload of the next type. Upcasters chain by type name, so an event stored as `ticket.created.v1` passes
+through both upcasters and is read as a `TicketOpenedEvent`.
+
+Important rules:
+
+- The message ID, subject, and metadata come from the stored row.
+- Upcasters run on every read, including retries. Keep them pure, and never change a released upcaster.
+- Invalid upcasters fail startup: two upcasters for one type, a cycle, a type that is neither upcast nor mapped, or an upcaster for a mapped type.
+- An upcaster that fails or returns `null` fails the delivery, which is retried like any other failure.
+- A custom `EventSerializer` bean ignores `EventUpcaster` beans.
 
 ## Publication and Subscriptions
 
@@ -268,7 +305,7 @@ var eventStoreConfig = EventStoreConfig.withDefaults()
     .eventStorage(new PostgresEventStorage(connectionProvider))
     .tokenStore(new PostgresTokenStore(connectionProvider))
     .eventSequenceStore(new PostgresEventSubjectSequenceStore(connectionProvider))
-    .eventSerializer(new JacksonEventSerializer(mapper, eventTypeResolver))
+    .eventSerializer(new JacksonEventSerializer(mapper, eventTypeResolver, List.of()))
     .build();
 
 var eventStore = new EventStore(eventStoreConfig);
@@ -279,6 +316,8 @@ var eventBus = EventBusSpec.withDefaults()
     .processingGroups(locator, groups -> groups.anyProcessingGroup().source(eventStore.outlet()))
     .create();
 ```
+
+Pass any `EventUpcaster`s as the serializer's last argument.
 
 `EventStore` implements `EventMedium`: its inlet stores events through the transaction provider, and its outlet polls them. Use `.medium(eventStore)` to register both together.
 

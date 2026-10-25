@@ -2,23 +2,25 @@ package app.dodb.smd.serialization;
 
 import app.dodb.smd.api.event.Event;
 
+import java.util.Optional;
+
 public class ClassNameEventTypeResolver implements EventTypeResolver {
 
     @Override
-    public String eventTypeFor(Event event) {
-        return event.getClass().getName();
+    public Optional<String> eventTypeFor(Event event) {
+        return Optional.of(event.getClass().getName());
     }
 
     @Override
-    public Class<? extends Event> eventClassFor(String eventType) throws EventTypeResolutionException {
+    public Optional<Class<? extends Event>> eventClassFor(String eventType) {
         try {
             var eventClass = Class.forName(eventType);
-            if (!Event.class.isAssignableFrom(eventClass)) {
-                throw new EventTypeResolutionException("Event type does not implement Event: " + eventType);
+            if (Event.class.isAssignableFrom(eventClass)) {
+                return Optional.of(eventClass.asSubclass(Event.class));
             }
-            return eventClass.asSubclass(Event.class);
+            return Optional.empty();
         } catch (ClassNotFoundException e) {
-            throw new EventTypeResolutionException("Event type not found: " + eventType, e);
+            return Optional.empty();
         }
     }
 }
