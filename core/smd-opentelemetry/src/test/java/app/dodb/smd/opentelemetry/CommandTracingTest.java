@@ -93,7 +93,7 @@ class CommandTracingTest {
 
         var received = commandBus.send(new ReadMetadata(), metadata);
 
-        assertThat(received.properties())
+        assertThat(received.properties().asMap())
             .containsEntry("traceparent", traceparentOf(spans.span("send", ReadMetadata.class)))
             .containsEntry("tenant", "acme")
             .doesNotContainKey("tracestate");

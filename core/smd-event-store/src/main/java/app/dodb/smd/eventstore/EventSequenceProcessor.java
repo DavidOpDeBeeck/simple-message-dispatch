@@ -2,6 +2,7 @@ package app.dodb.smd.eventstore;
 
 import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.metadata.MetadataFactory;
+import app.dodb.smd.api.metadata.MetadataProperties;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.serialization.EventSerializer;
 import app.dodb.smd.eventstore.storage.SerializedEvent;
@@ -9,9 +10,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.UUID;
 
+import static app.dodb.smd.api.event.delivery.ProcessingMetadata.ERROR_COUNT;
+import static app.dodb.smd.api.event.delivery.ProcessingMetadata.PROCESSING_ID;
+import static app.dodb.smd.api.event.delivery.ProcessingMetadata.SEQUENCE_NUMBER;
+import static app.dodb.smd.api.event.delivery.ProcessingMetadata.SUBJECT_ID;
 import static app.dodb.smd.api.metadata.Metadata.withProperties;
 import static app.dodb.smd.eventstore.EventSequenceProcessingResult.Abandoned;
 import static app.dodb.smd.eventstore.EventSequenceProcessingResult.AlreadyProcessed;
@@ -76,12 +80,14 @@ class EventSequenceProcessor {
 
         try {
             var eventMessage = eventSerializer.deserialize(serializedEvent);
-            var eventProcessingMetadata = new HashMap<String, String>();
-            eventProcessingMetadata.put("processingId", UUID.randomUUID().toString());
-            eventProcessingMetadata.put("sequenceNumber", String.valueOf(sequenceNumber));
-            eventProcessingMetadata.put("errorCount", String.valueOf(sequence.errorCount()));
-            subjectIdOpt.ifPresent(subjectId -> eventProcessingMetadata.put("subjectId", subjectId));
-            var eventMessageWithProcessingMetadata = eventMessage.andMetadata(withProperties(eventProcessingMetadata));
+            var processingProperties = MetadataProperties.of(
+                PROCESSING_ID, UUID.randomUUID().toString(),
+                SEQUENCE_NUMBER, String.valueOf(sequenceNumber),
+                ERROR_COUNT, String.valueOf(sequence.errorCount())
+            );
+            var properties = subjectIdOpt.map(subjectId -> processingProperties.with(SUBJECT_ID, subjectId))
+                .orElse(processingProperties);
+            var eventMessageWithProcessingMetadata = eventMessage.andMetadata(withProperties(properties));
 
             MetadataFactory.runInScope(eventMessageWithProcessingMetadata, () -> listener.on(eventMessageWithProcessingMetadata));
         } catch (Exception e) {

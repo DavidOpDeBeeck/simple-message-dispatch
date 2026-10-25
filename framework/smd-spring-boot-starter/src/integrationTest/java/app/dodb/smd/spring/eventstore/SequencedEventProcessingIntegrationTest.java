@@ -6,6 +6,7 @@ import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.event.bus.EventBus;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
+import app.dodb.smd.api.event.delivery.ProcessingMetadata;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
@@ -36,8 +37,8 @@ class SequencedEventProcessingIntegrationTest {
 
     private static final String TYPED_SEQUENCE_PROCESSING_GROUP = "typed-sequence-processing-group";
     private static final int BATCH_SIZE = 10;
-    private static final String SUBJECT = "subjectId";
-    private static final String SEQUENCE_NUMBER = "sequenceNumber";
+    private static final String SUBJECT = ProcessingMetadata.SUBJECT_ID;
+    private static final String SEQUENCE_NUMBER = ProcessingMetadata.SEQUENCE_NUMBER;
 
     @Test
     void poll_withSubjectlessFailure_blocksGlobalSequenceButNotSubjectSequence() throws Exception {

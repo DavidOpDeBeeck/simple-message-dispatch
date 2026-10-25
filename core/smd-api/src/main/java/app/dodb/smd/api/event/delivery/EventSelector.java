@@ -15,13 +15,13 @@ public interface EventSelector {
 
     static EventSelector metadataProperty(String propertyName) {
         var selectedPropertyName = requireNonNull(propertyName);
-        return eventMessage -> eventMessage.metadata().properties().containsKey(selectedPropertyName);
+        return eventMessage -> eventMessage.metadata().properties().contains(selectedPropertyName);
     }
 
     static EventSelector metadataProperty(String propertyName, String propertyValue) {
         var selectedPropertyName = requireNonNull(propertyName);
         var selectedPropertyValue = requireNonNull(propertyValue);
-        return eventMessage -> selectedPropertyValue.equals(eventMessage.metadata().properties().get(selectedPropertyName));
+        return eventMessage -> eventMessage.metadata().property(selectedPropertyName).filter(selectedPropertyValue::equals).isPresent();
     }
 
     boolean selects(EventMessage<?> eventMessage);

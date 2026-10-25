@@ -214,16 +214,17 @@ startup.
 
 ## Delivery Metadata
 
-Before each delivery attempt, SMD merges these reserved properties into the event metadata:
+Before each delivery attempt, SMD merges these reserved properties into the event metadata. `ProcessingMetadata` holds their names:
 
-| Property         | Value                                             |
-|------------------|---------------------------------------------------|
-| `processingId`   | New UUID for this attempt                         |
-| `sequenceNumber` | Global store position                             |
-| `subjectId`      | Persisted subject; omitted for subjectless events |
-| `errorCount`     | Failures already recorded for the subject         |
+| Property             | Constant          | Value                                             |
+|----------------------|-------------------|---------------------------------------------------|
+| `smd.processingId`   | `PROCESSING_ID`   | New UUID for this attempt                         |
+| `smd.sequenceNumber` | `SEQUENCE_NUMBER` | Global store position                             |
+| `smd.subjectId`      | `SUBJECT_ID`      | Persisted subject; omitted for subjectless events |
+| `smd.errorCount`     | `ERROR_COUNT`     | Failures already recorded for the subject         |
 
-Handlers can read them with `@MetadataValue`. Attempt metadata replaces stored properties with the same names but does not modify the metadata stored in `smd_event_store`.
+Handlers can read them with `@MetadataValue(ProcessingMetadata.ERROR_COUNT)`. They describe one delivery, so the messages a handler sends do not inherit them (see
+[Choose Inherited Properties](core-api.md#choose-inherited-properties)). Attempt metadata replaces stored properties with the same names but does not modify the metadata stored in `smd_event_store`.
 
 ## Inspect Processing State
 

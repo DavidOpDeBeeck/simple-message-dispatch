@@ -70,11 +70,48 @@ Every message carries:
 - a `Principal`
 - an `Instant` timestamp
 - the parent message's `MessageId`, when dispatch is nested
-- immutable `Map<String, String>` properties
+- immutable `MetadataProperties`: string values by name
 
-When a handler sends another message, SMD preserves the principal and properties, sets the current message as the parent, and generates a fresh timestamp. This context also crosses SMD's built-in
+When a handler sends another message, SMD preserves the principal and the inherited properties, sets the current message as the parent, and generates a fresh timestamp. This context also crosses SMD's built-in
 asynchronous dispatchers. The current message is the one the handler received: when a bus or processing group interceptor proceeds with changed metadata, the messages its handlers send
 inherit that metadata.
+
+`MetadataProperties` reads and builds properties without copying maps by hand:
+
+```java
+Optional<String> tenant = metadata.property("tenant");
+
+var properties = MetadataProperties.of("tenant", "acme", "region", "eu")
+        .with("Idempotency-Key", key)
+        .without("region");
+
+eventPublisher.publish(event, Metadata.withProperties(properties));
+eventPublisher.publish(event, Metadata.withProperty("Idempotency-Key", key));
+```
+
+`with(...)` and `without(...)` return new properties, and `with(other)` lets the other side win on a clash. `asMap()` gives the plain map when an API needs one. In storage and on
+the wire, properties stay a plain JSON object.
+
+### Choose Inherited Properties
+
+A `MetadataInheritance` decides which properties the sent message inherits. The default, `MetadataInheritance.excludingSmdProperties()`, inherits every property except those starting with
+`smd.`: SMD keeps per-delivery values such as the event store's processing details under that prefix, and they describe the received message only.
+
+Exclude your own per-message properties by prefix or by name, and keep SMD's rule by combining with `and(...)`:
+
+```java
+var inheritance = MetadataInheritance.excludingSmdProperties()
+        .and(MetadataInheritance.excludingPrefix("request."))
+        .and(MetadataInheritance.excludingProperties("Idempotency-Key"));
+
+var eventBus = EventBusSpec.withDefaults()
+        .metadataInheritance(inheritance)
+        .processingGroups(locator)
+        .create();
+```
+
+`MetadataInheritance` is a functional interface, so any `property -> boolean` predicate works. Set the same inheritance on the command, query, and event bus specs; each bus applies its own
+to the messages it creates. A policy that inherits `smd.` properties lets one delivery's details reach the next message, so start from `excludingSmdProperties()`.
 
 The gateways also accept `CommandMessage`, `QueryMessage`, and `EventMessage` when you need to supply metadata explicitly. Supplied metadata replaces provider-generated metadata, so include every
 principal, timestamp, parent, and property value that the receiving handler needs.
@@ -100,7 +137,8 @@ var eventBus = EventBusSpec.withDefaults()
         .create();
 ```
 
-`withDefaults()` supplies system time and a simple principal. Use `withoutDefaults()` only when you provide both a `TimeProvider` and `PrincipalProvider`.
+`withDefaults()` supplies system time and a simple principal. Use `withoutDefaults()` only when you provide both a `TimeProvider` and `PrincipalProvider`. Both start with
+`MetadataInheritance.excludingSmdProperties()` until `metadataInheritance(...)` replaces it.
 
 `ConstructorBasedObjectCreator` cannot inject dependencies. Implement `ObjectCreator` and delegate to your dependency-injection container or application factory when handlers need repositories,
 gateways, or services.

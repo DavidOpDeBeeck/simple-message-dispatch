@@ -1,5 +1,6 @@
 package app.dodb.smd.spring.eventstore;
 
+import app.dodb.smd.api.event.delivery.ProcessingMetadata;
 import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.spring.eventstore.EventStoreTestFixture.SequencedEvent;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
@@ -26,7 +27,7 @@ class EventStoreSubscriptionIntegrationTest {
             var processingGroup = "duplicate-subscription";
             var received = new CopyOnWriteArrayList<String>();
             var subscriber = new EventSubscriberStub(processingGroup, message ->
-                received.add(message.metadata().properties().get("sequenceNumber")));
+                received.add(message.metadata().properties().get(ProcessingMetadata.SEQUENCE_NUMBER)));
 
             try (var first = eventStore.subscribe(subscriber);
                  var second = eventStore.subscribe(subscriber)) {
@@ -76,7 +77,7 @@ class EventStoreSubscriptionIntegrationTest {
                     Thread.currentThread().interrupt();
                     throw new IllegalStateException("Handler interrupted while subscription was closing", e);
                 }
-                received.add(message.metadata().properties().get("sequenceNumber"));
+                received.add(message.metadata().properties().get(ProcessingMetadata.SEQUENCE_NUMBER));
             });
 
             try (var subscription = eventStore.subscribe(subscriber)) {

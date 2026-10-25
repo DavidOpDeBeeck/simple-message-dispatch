@@ -3,6 +3,7 @@ package app.dodb.smd.spring.eventstore.processing;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.ProcessingGroup;
+import app.dodb.smd.api.event.delivery.ProcessingMetadata;
 import app.dodb.smd.api.metadata.MetadataValue;
 
 import java.util.List;
@@ -21,7 +22,7 @@ public class FailableTestEventHandler {
     }
 
     @EventHandler
-    public void on(TestEventWithSubjectId event, @MetadataValue("errorCount") String errorCount) {
+    public void on(TestEventWithSubjectId event, @MetadataValue(ProcessingMetadata.ERROR_COUNT) String errorCount) {
         attemptedErrorCounts.add(errorCount);
         if (failuresRemaining.getAndDecrement() > 0) {
             throw new RuntimeException("Simulated failure");

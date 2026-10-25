@@ -139,7 +139,7 @@ class ConcurrentEventDispatcherTest {
             var nestedMetadata = queryHandler.handledMetadata.get();
             assertThat(nestedMetadata).isNotNull();
             assertThat(nestedMetadata.principal()).isEqualTo(eventMetadata.principal());
-            assertThat(nestedMetadata.properties()).containsEntry("key", "value");
+            assertThat(nestedMetadata.properties().asMap()).containsEntry("key", "value");
             assertThat(nestedMetadata.parentMessageId()).isEqualTo(eventMessage.messageId());
             assertThat(nestedMetadata.timestamp()).isNotEqualTo(eventMetadata.timestamp());
         }

@@ -12,6 +12,7 @@ import app.dodb.smd.api.event.delivery.EventSubscription;
 import app.dodb.smd.api.event.delivery.FireAndForgetEventDispatcher;
 import app.dodb.smd.api.event.delivery.SynchronousEventDispatcher;
 import app.dodb.smd.api.metadata.MetadataFactory;
+import app.dodb.smd.api.metadata.MetadataInheritance;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 import app.dodb.smd.api.metadata.time.SystemTimeProvider;
@@ -51,6 +52,7 @@ public class EventBusSpec {
 
     private TimeProvider timeProvider;
     private PrincipalProvider principalProvider;
+    private MetadataInheritance metadataInheritance = MetadataInheritance.excludingSmdProperties();
     private final List<EventBusInterceptor> interceptors = new ArrayList<>();
     private final List<EventSinkInterceptor> sinkInterceptors = new ArrayList<>();
     private final List<ProcessingGroupInterceptor> processingGroupInterceptors = new ArrayList<>();
@@ -64,6 +66,11 @@ public class EventBusSpec {
 
     public EventBusSpec principal(PrincipalProvider principalProvider) {
         this.principalProvider = principalProvider;
+        return this;
+    }
+
+    public EventBusSpec metadataInheritance(MetadataInheritance metadataInheritance) {
+        this.metadataInheritance = metadataInheritance;
         return this;
     }
 
@@ -119,7 +126,7 @@ public class EventBusSpec {
             // These subscriptions need to be closed when the application shuts down, but for now we just subscribe to them and let the application exit.
             subscription.subscribe();
         }
-        return new EventBus(new MetadataFactory(principalProvider, timeProvider), interceptors, sinkInterceptors, eventSinks);
+        return new EventBus(new MetadataFactory(principalProvider, timeProvider, metadataInheritance), interceptors, sinkInterceptors, eventSinks);
     }
 
     public static class ProcessingGroupsSpec {

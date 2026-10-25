@@ -2,6 +2,7 @@ package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.event.bus.EventBus;
+import app.dodb.smd.api.event.delivery.ProcessingMetadata;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
 import app.dodb.smd.eventstore.storage.SerializedEvent;
@@ -40,8 +41,8 @@ class EventStoreProcessingIntegrationTest {
     private static final int BATCH_SIZE = 10;
     private static final String TEST_SUBJECT_ID = "testSubjectId";
     private static final String SIDE_EFFECT_TEST_SUBJECT_ID = "sideEffectTestSubjectId";
-    private static final String PROCESSING_ID = "processingId";
-    private static final String SEQUENCE_NUMBER = "sequenceNumber";
+    private static final String PROCESSING_ID = ProcessingMetadata.PROCESSING_ID;
+    private static final String SEQUENCE_NUMBER = ProcessingMetadata.SEQUENCE_NUMBER;
 
     @Test
     void publish_withScheduledDelivery_storesEventHandlesItAndMarksTokenProcessed() {

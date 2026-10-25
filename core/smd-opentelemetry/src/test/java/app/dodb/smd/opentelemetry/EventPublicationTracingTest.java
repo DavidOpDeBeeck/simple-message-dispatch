@@ -83,7 +83,7 @@ class EventPublicationTracingTest {
         eventBus(sink).publish(new OrderPlaced());
 
         assertThat(sink.received).singleElement()
-            .satisfies(event -> assertThat(event.metadata().properties())
+            .satisfies(event -> assertThat(event.metadata().properties().asMap())
                 .containsEntry("traceparent", traceparentOf(spans.span("publish", OrderPlaced.class))));
     }
 

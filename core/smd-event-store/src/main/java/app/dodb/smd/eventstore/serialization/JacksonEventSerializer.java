@@ -2,10 +2,15 @@ package app.dodb.smd.eventstore.serialization;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
+import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.eventstore.storage.SerializedEvent;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+
+import java.time.Instant;
+import java.util.Map;
 
 import static java.util.Objects.requireNonNull;
 
@@ -28,7 +33,7 @@ public class JacksonEventSerializer implements EventSerializer {
         try {
             var eventType = eventTypeResolver.eventTypeFor(eventMessage.payload());
             var payloadBytes = objectMapper.writeValueAsBytes(eventMessage.payload());
-            var metadataBytes = objectMapper.writeValueAsBytes(eventMessage.metadata());
+            var metadataBytes = objectMapper.writeValueAsBytes(MetadataJson.from(eventMessage.metadata()));
 
             return new SerializedEvent(
                 eventMessage.messageId(),
@@ -52,13 +57,24 @@ public class JacksonEventSerializer implements EventSerializer {
         try {
             var eventClass = eventTypeResolver.eventClassFor(serializedEvent.eventType());
             var payload = (E) objectMapper.readValue(serializedEvent.serializedPayload(), eventClass);
-            var metadata = objectMapper.readValue(serializedEvent.serializedMetadata(), Metadata.class);
+            var metadata = objectMapper.readValue(serializedEvent.serializedMetadata(), MetadataJson.class).toMetadata();
 
             return new EventMessage<>(serializedEvent.messageId(), serializedEvent.subjectId(), payload, metadata);
         } catch (EventTypeResolutionException e) {
             throw new EventSerializationException("Failed to resolve event type: " + serializedEvent.eventType(), e);
         } catch (JacksonException e) {
             throw new EventSerializationException("Failed to deserialize event: " + serializedEvent.messageId(), e);
+        }
+    }
+
+    record MetadataJson(Principal principal, Instant timestamp, MessageId parentMessageId, Map<String, String> properties) {
+
+        static MetadataJson from(Metadata metadata) {
+            return new MetadataJson(metadata.principal(), metadata.timestamp(), metadata.parentMessageId(), metadata.properties().asMap());
+        }
+
+        Metadata toMetadata() {
+            return new Metadata(principal, timestamp, parentMessageId, properties);
         }
     }
 

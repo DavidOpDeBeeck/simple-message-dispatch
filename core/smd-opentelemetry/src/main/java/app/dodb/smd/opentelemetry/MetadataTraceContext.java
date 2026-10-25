@@ -1,6 +1,7 @@
 package app.dodb.smd.opentelemetry;
 
 import app.dodb.smd.api.metadata.Metadata;
+import app.dodb.smd.api.metadata.MetadataProperties;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.propagation.TextMapGetter;
 import io.opentelemetry.context.propagation.TextMapPropagator;
@@ -15,7 +16,7 @@ class MetadataTraceContext {
     private static final TextMapGetter<Metadata> METADATA = new TextMapGetter<>() {
         @Override
         public Iterable<String> keys(Metadata carrier) {
-            return carrier.properties().keySet();
+            return carrier.properties().names();
         }
 
         @Override
@@ -35,9 +36,9 @@ class MetadataTraceContext {
     }
 
     Metadata inject(Context context, Metadata metadata) {
-        var properties = new HashMap<>(metadata.properties());
-        propagator.fields().forEach(properties::remove);
-        propagator.inject(context, properties, Map::put);
+        var traceContext = new HashMap<String, String>();
+        propagator.inject(context, traceContext, Map::put);
+        var properties = metadata.properties().without(propagator.fields()).with(MetadataProperties.of(traceContext));
         return new Metadata(metadata.principal(), metadata.timestamp(), metadata.parentMessageId(), properties);
     }
 }

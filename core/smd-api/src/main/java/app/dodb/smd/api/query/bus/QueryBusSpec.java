@@ -1,6 +1,7 @@
 package app.dodb.smd.api.query.bus;
 
 import app.dodb.smd.api.metadata.MetadataFactory;
+import app.dodb.smd.api.metadata.MetadataInheritance;
 import app.dodb.smd.api.metadata.time.SystemTimeProvider;
 import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
@@ -30,6 +31,7 @@ public class QueryBusSpec {
 
     private TimeProvider timeProvider;
     private PrincipalProvider principalProvider;
+    private MetadataInheritance metadataInheritance = MetadataInheritance.excludingSmdProperties();
     private QueryHandlerDispatcher dispatcher;
     private final List<QueryBusInterceptor> interceptors = new ArrayList<>();
 
@@ -40,6 +42,11 @@ public class QueryBusSpec {
 
     public QueryBusSpec principal(PrincipalProvider principalProvider) {
         this.principalProvider = requireNonNull(principalProvider);
+        return this;
+    }
+
+    public QueryBusSpec metadataInheritance(MetadataInheritance metadataInheritance) {
+        this.metadataInheritance = metadataInheritance;
         return this;
     }
 
@@ -58,6 +65,6 @@ public class QueryBusSpec {
     }
 
     public QueryBus create() {
-        return new QueryBus(new MetadataFactory(principalProvider, timeProvider), interceptors, dispatcher);
+        return new QueryBus(new MetadataFactory(principalProvider, timeProvider, metadataInheritance), interceptors, dispatcher);
     }
 }

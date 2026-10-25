@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+- **Breaking:** `Metadata.properties()` returns `MetadataProperties` instead of `Map<String, String>`. It offers `find`, `get`, `contains`, `names`, `with`, `without`,
+  `inheritedBy`, and `asMap()`; `Metadata` adds `property(name)` and `withProperty(name, value)`. The `Map` constructor and `Metadata.withProperties(Map)` remain, and the JSON form of
+  metadata is unchanged.
+- Added `MetadataInheritance`, which decides which properties a message sent by a handler inherits from the message it received. The default,
+  `MetadataInheritance.excludingSmdProperties()`, inherits everything except properties starting with `smd.`; `excludingPrefix(...)`, `excludingProperties(...)`, and `and(...)` build
+  other policies. Set it with `metadataInheritance(...)` on the bus specs, or with a `MetadataInheritance` bean in Spring Boot.
+- **Breaking:** the delivery metadata of event-store handlers moved under `smd.`: `processingId`, `sequenceNumber`, `subjectId`, and `errorCount` are now
+  `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and `smd.errorCount`, with constants in `app.dodb.smd.api.event.delivery.ProcessingMetadata`. Messages a handler sends
+  no longer inherit them; before, a subjectless event sent while handling another event could carry that event's `subjectId`.
+- `MetadataFactory` accepts a `MetadataInheritance` as a third constructor argument; the two-argument constructor uses `excludingSmdProperties()`.
+
 ## [0.0.12] - 2026-10-19
 
 - Added `smd-opentelemetry`: `MessageTracing` records each dispatch, each send to a sink, and each processing group's handling as an OpenTelemetry span, and carries the

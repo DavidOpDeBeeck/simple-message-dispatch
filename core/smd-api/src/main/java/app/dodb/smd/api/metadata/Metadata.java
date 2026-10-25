@@ -4,32 +4,47 @@ import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.principal.Principal;
 
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
-public record Metadata(Principal principal, Instant timestamp, MessageId parentMessageId, Map<String, String> properties) {
+import static java.util.Objects.requireNonNull;
+
+public record Metadata(Principal principal, Instant timestamp, MessageId parentMessageId, MetadataProperties properties) {
 
     public static Metadata withProperties(Map<String, String> properties) {
+        return withProperties(MetadataProperties.of(properties));
+    }
+
+    public static Metadata withProperties(MetadataProperties properties) {
         return new Metadata(null, null, null, properties);
     }
 
+    public static Metadata withProperty(String name, String value) {
+        return withProperties(MetadataProperties.of(name, value));
+    }
+
     public Metadata {
-        properties = Map.copyOf(properties);
+        requireNonNull(properties);
+    }
+
+    public Metadata(Principal principal, Instant timestamp, MessageId parentMessageId, Map<String, String> properties) {
+        this(principal, timestamp, parentMessageId, MetadataProperties.of(properties));
     }
 
     public Metadata(Principal principal, Instant timestamp, MessageId parentMessageId) {
-        this(principal, timestamp, parentMessageId, Map.of());
+        this(principal, timestamp, parentMessageId, MetadataProperties.empty());
+    }
+
+    public Optional<String> property(String name) {
+        return properties.find(name);
     }
 
     public Metadata and(Metadata metadata) {
-        var combined = new HashMap<>(this.properties);
-        combined.putAll(metadata.properties());
-
         return new Metadata(
             metadata.principal() != null ? metadata.principal() : this.principal,
             metadata.timestamp() != null ? metadata.timestamp() : this.timestamp,
             metadata.parentMessageId() != null ? metadata.parentMessageId() : this.parentMessageId,
-            combined
+            properties.with(metadata.properties())
         );
     }
 }

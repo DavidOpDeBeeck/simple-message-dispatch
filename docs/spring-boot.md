@@ -149,6 +149,7 @@ Provide a bean of the same type to replace these defaults:
 - `ObjectCreator`
 - `PrincipalProvider`
 - `TimeProvider`
+- `MetadataInheritance`, applied to the command, query, and event bus
 - `TransactionProvider`
 - `CommandGateway`, `QueryGateway`, or `EventPublisher`
 
