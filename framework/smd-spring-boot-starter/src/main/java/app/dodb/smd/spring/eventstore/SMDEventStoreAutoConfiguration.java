@@ -1,10 +1,10 @@
 package app.dodb.smd.spring.eventstore;
 
+import app.dodb.smd.api.framework.ConnectionProvider;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
-import app.dodb.smd.eventstore.storage.ConnectionProvider;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
 import app.dodb.smd.eventstore.storage.postgres.PostgresEventStorage;
@@ -13,6 +13,7 @@ import app.dodb.smd.eventstore.storage.postgres.PostgresTokenStore;
 import app.dodb.smd.serialization.EventSerializer;
 import app.dodb.smd.spring.EventBusSpecCustomizer;
 import app.dodb.smd.spring.SMDAutoConfiguration;
+import app.dodb.smd.spring.SpringConnectionProvider;
 import app.dodb.smd.spring.serialization.SMDEventSerializationConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;

@@ -1,10 +1,10 @@
-package app.dodb.smd.spring.eventstore;
+package app.dodb.smd.spring;
 
-import app.dodb.smd.eventstore.storage.ConnectionProvider;
+import app.dodb.smd.api.framework.ConnectionProvider;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
+import javax.sql.DataSource;
 
 import static java.util.Objects.requireNonNull;
 

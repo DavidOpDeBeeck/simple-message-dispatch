@@ -24,7 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
 
-import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
+import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.fixed;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SCHEDULING_DISABLED;

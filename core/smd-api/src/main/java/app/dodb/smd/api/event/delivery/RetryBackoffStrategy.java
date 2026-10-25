@@ -1,8 +1,9 @@
-package app.dodb.smd.eventstore;
+package app.dodb.smd.api.event.delivery;
 
 import java.time.Duration;
 
-import static java.util.Objects.requireNonNull;
+import static app.dodb.smd.api.utils.ValidationUtils.requireNonNegative;
+import static app.dodb.smd.api.utils.ValidationUtils.requirePositive;
 
 public interface RetryBackoffStrategy {
 
@@ -23,12 +24,12 @@ public interface RetryBackoffStrategy {
     record FixedRetryBackoffStrategy(Duration delay) implements RetryBackoffStrategy {
 
         public FixedRetryBackoffStrategy {
-            requireAtLeastZero(delay);
+            requireNonNegative("Retry backoff delay", delay);
         }
 
         @Override
         public Duration calculateDelay(int retryCount) {
-            requireAtLeastZero(retryCount);
+            requireNonNegative("Retry backoff retryCount", retryCount);
             return delay;
         }
     }
@@ -36,14 +37,14 @@ public interface RetryBackoffStrategy {
     record ExponentialRetryBackoffStrategy(Duration baseDelay, double multiplier, Duration maxDelay) implements RetryBackoffStrategy {
 
         public ExponentialRetryBackoffStrategy {
-            requireAtLeastZero(baseDelay);
-            requireGreaterThanZero(multiplier);
-            requireAtLeastZero(maxDelay);
+            requireNonNegative("Retry backoff baseDelay", baseDelay);
+            requirePositive("Retry backoff multiplier", multiplier);
+            requireNonNegative("Retry backoff maxDelay", maxDelay);
         }
 
         @Override
         public Duration calculateDelay(int retryCount) {
-            requireAtLeastZero(retryCount);
+            requireNonNegative("Retry backoff retryCount", retryCount);
             long delayMs = (long) (baseDelay.toMillis() * Math.pow(multiplier, retryCount));
             return Duration.ofMillis(Math.min(delayMs, maxDelay.toMillis()));
         }
@@ -52,38 +53,16 @@ public interface RetryBackoffStrategy {
     record LinearRetryBackoffStrategy(Duration baseDelay, Duration increment, Duration maxDelay) implements RetryBackoffStrategy {
 
         public LinearRetryBackoffStrategy {
-            requireAtLeastZero(baseDelay);
-            requireAtLeastZero(increment);
-            requireAtLeastZero(maxDelay);
+            requireNonNegative("Retry backoff baseDelay", baseDelay);
+            requireNonNegative("Retry backoff increment", increment);
+            requireNonNegative("Retry backoff maxDelay", maxDelay);
         }
 
         @Override
         public Duration calculateDelay(int retryCount) {
-            requireAtLeastZero(retryCount);
+            requireNonNegative("Retry backoff retryCount", retryCount);
             long delayMs = baseDelay.toMillis() + (increment.toMillis() * retryCount);
             return Duration.ofMillis(Math.min(delayMs, maxDelay.toMillis()));
         }
-    }
-
-    private static Duration requireAtLeastZero(Duration duration) {
-        var value = requireNonNull(duration);
-        if (value.isNegative()) {
-            throw new IllegalArgumentException();
-        }
-        return value;
-    }
-
-    private static int requireAtLeastZero(int value) {
-        if (value < 0) {
-            throw new IllegalArgumentException();
-        }
-        return value;
-    }
-
-    private static double requireGreaterThanZero(double value) {
-        if (value <= 0) {
-            throw new IllegalArgumentException();
-        }
-        return value;
     }
 }

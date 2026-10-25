@@ -1,7 +1,7 @@
 package app.dodb.smd.eventstore.storage.postgres;
 
+import app.dodb.smd.api.framework.ConnectionProvider;
 import app.dodb.smd.api.message.MessageId;
-import app.dodb.smd.eventstore.storage.ConnectionProvider;
 import app.dodb.smd.eventstore.storage.Cursor;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.EventStorageException;

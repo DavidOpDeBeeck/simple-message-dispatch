@@ -1,10 +1,10 @@
 package app.dodb.smd.eventstore.storage.postgres;
 
+import app.dodb.smd.api.framework.ConnectionProvider;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequence;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
-import app.dodb.smd.eventstore.storage.ConnectionProvider;
 import app.dodb.smd.eventstore.storage.TokenStoreException;
 
 import java.sql.Connection;

@@ -1,4 +1,4 @@
-package app.dodb.smd.eventstore.storage;
+package app.dodb.smd.api.framework;
 
 import java.sql.Connection;
 import java.util.function.Consumer;

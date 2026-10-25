@@ -1,5 +1,6 @@
 package app.dodb.smd.eventstore;
 
+import app.dodb.smd.api.event.delivery.RetryBackoffStrategy;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.storage.EventStorage;
@@ -9,7 +10,9 @@ import app.dodb.smd.serialization.EventSerializer;
 import java.time.Duration;
 import java.util.concurrent.ScheduledExecutorService;
 
-import static app.dodb.smd.eventstore.RetryBackoffStrategy.exponential;
+import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.exponential;
+import static app.dodb.smd.api.utils.ValidationUtils.requireNonNegative;
+import static app.dodb.smd.api.utils.ValidationUtils.requirePositive;
 import static java.time.Duration.ofMinutes;
 import static java.time.Duration.ofSeconds;
 import static java.util.Objects.requireNonNull;
@@ -141,8 +144,8 @@ public class EventStoreConfig {
         private SchedulingConfig(SchedulingConfig.Builder builder) {
             this.enabled = requireNonNull(builder.enabled);
             this.scheduler = requireNonNull(builder.scheduler);
-            this.initialDelay = requireAtLeastZero(builder.initialDelay);
-            this.pollingDelay = requireGreaterThanZero(builder.pollingDelay);
+            this.initialDelay = requireNonNegative("Event store initialDelay", builder.initialDelay);
+            this.pollingDelay = requirePositive("Event store pollingDelay", builder.pollingDelay);
         }
 
         public boolean isEnabled() {
@@ -229,10 +232,10 @@ public class EventStoreConfig {
         private final Duration gapTimeout;
 
         private ProcessingConfig(ProcessingConfig.Builder builder) {
-            this.maxRetries = requireAtLeastZero(builder.maxRetries);
-            this.batchSize = requireGreaterThanZero(builder.batchSize);
+            this.maxRetries = requireNonNegative("Event store maxRetries", builder.maxRetries);
+            this.batchSize = requirePositive("Event store batchSize", builder.batchSize);
             this.retryBackoffStrategy = requireNonNull(builder.retryBackoffStrategy);
-            this.gapTimeout = requireAtLeastZero(builder.gapTimeout);
+            this.gapTimeout = requireNonNegative("Event store gapTimeout", builder.gapTimeout);
         }
 
         public int getMaxRetries() {
@@ -298,37 +301,5 @@ public class EventStoreConfig {
             }
         }
 
-    }
-
-    private static Duration requireAtLeastZero(Duration duration) {
-        var value = requireNonNull(duration);
-        if (value.isNegative()) {
-            throw new IllegalArgumentException();
-        }
-        return value;
-    }
-
-    private static int requireAtLeastZero(Integer value) {
-        int result = requireNonNull(value);
-        if (result < 0) {
-            throw new IllegalArgumentException();
-        }
-        return result;
-    }
-
-    private static Duration requireGreaterThanZero(Duration duration) {
-        var value = requireNonNull(duration);
-        if (value.isZero() || value.isNegative()) {
-            throw new IllegalArgumentException();
-        }
-        return value;
-    }
-
-    private static int requireGreaterThanZero(Integer value) {
-        int result = requireNonNull(value);
-        if (result <= 0) {
-            throw new IllegalArgumentException();
-        }
-        return result;
     }
 }

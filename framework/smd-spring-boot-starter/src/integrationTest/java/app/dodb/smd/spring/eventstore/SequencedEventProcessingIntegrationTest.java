@@ -23,7 +23,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
+import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.fixed;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SCHEDULING_DISABLED;

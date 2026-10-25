@@ -1,6 +1,6 @@
 package app.dodb.smd.eventstore.storage.postgres;
 
-import app.dodb.smd.eventstore.storage.ConnectionProvider;
+import app.dodb.smd.api.framework.ConnectionProvider;
 import app.dodb.smd.eventstore.storage.Token;
 import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.eventstore.storage.TokenStore;

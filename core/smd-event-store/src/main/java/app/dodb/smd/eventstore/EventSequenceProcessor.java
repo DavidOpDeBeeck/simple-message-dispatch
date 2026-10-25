@@ -1,6 +1,7 @@
 package app.dodb.smd.eventstore;
 
 import app.dodb.smd.api.event.delivery.EventSubscriber;
+import app.dodb.smd.api.event.delivery.RetryBackoffStrategy;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.api.metadata.MetadataProperties;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;

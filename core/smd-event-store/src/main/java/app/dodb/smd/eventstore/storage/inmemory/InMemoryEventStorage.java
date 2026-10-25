@@ -15,6 +15,7 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.TreeMap;
 
+import static app.dodb.smd.api.utils.ValidationUtils.requirePositive;
 import static java.util.Objects.requireNonNull;
 
 public class InMemoryEventStorage implements EventStorage {
@@ -50,9 +51,7 @@ public class InMemoryEventStorage implements EventStorage {
 
     @Override
     public synchronized Cursor<SerializedEvent> load(long lastProcessedSequenceNumber, int limit) {
-        if (limit <= 0) {
-            throw new IllegalArgumentException();
-        }
+        requirePositive("Event store load limit", limit);
 
         var eventsToLoad = events.tailMap(lastProcessedSequenceNumber, false)
             .values()

@@ -31,7 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.sql.DataSource;
 
-import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
+import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.fixed;
 import static java.time.Duration.ZERO;
 import static java.time.Duration.ofMillis;
 import static java.time.Duration.ofSeconds;

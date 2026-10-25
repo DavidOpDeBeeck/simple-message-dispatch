@@ -1,10 +1,10 @@
-package app.dodb.smd.eventstore;
+package app.dodb.smd.api.event.delivery;
 
 import org.junit.jupiter.api.Test;
 
-import static app.dodb.smd.eventstore.RetryBackoffStrategy.exponential;
-import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
-import static app.dodb.smd.eventstore.RetryBackoffStrategy.linear;
+import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.exponential;
+import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.fixed;
+import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.linear;
 import static java.time.Duration.ZERO;
 import static java.time.Duration.ofMillis;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
