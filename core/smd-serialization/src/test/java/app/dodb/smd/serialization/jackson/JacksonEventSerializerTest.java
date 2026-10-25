@@ -6,11 +6,14 @@ import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.principal.SimplePrincipal;
+import app.dodb.smd.serialization.ClassNameEventTypeResolver;
 import app.dodb.smd.serialization.SerializedEvent;
+import app.dodb.smd.serialization.StaticEventTypeResolver;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,8 +30,8 @@ class JacksonEventSerializerTest {
     private static final MessageId PARENT_MESSAGE_ID = new MessageId(UUID.fromString("14d68b69-d3f7-4d61-88de-175938716af0"));
 
     @Test
-    void defaultConstructor_serializesWithClassNameEventTypeResolver() {
-        var serializer = new JacksonEventSerializer(JsonMapper.builder().build());
+    void serialize_classNameEventTypeResolver_writesClassNameAsEventType() {
+        var serializer = new JacksonEventSerializer(JsonMapper.builder().build(), new ClassNameEventTypeResolver(), List.of());
         var eventMessage = EventMessage.from(new TestEvent("value"), metadata());
 
         var serialized = serializer.serialize(eventMessage);
@@ -64,7 +67,7 @@ class JacksonEventSerializerTest {
 
     @Test
     void deserialize_withoutSmdJacksonModule_cannotRestorePrincipalType() {
-        var serializer = new JacksonEventSerializer(JsonMapper.builder().build());
+        var serializer = new JacksonEventSerializer(JsonMapper.builder().build(), new ClassNameEventTypeResolver(), List.of());
         var serialized = serializer.serialize(EventMessage.from(new TestEvent("value"), metadata()));
 
         assertThatThrownBy(() -> serializer.deserialize(serialized))
@@ -73,10 +76,34 @@ class JacksonEventSerializerTest {
     }
 
     @Test
+    void serialize_eventClassNotResolved_throwsExceptionWithContext() {
+        var serializer = new JacksonEventSerializer(JsonMapper.builder().build(), new StaticEventTypeResolver(Map.of()), List.of());
+        var eventMessage = EventMessage.from(new TestEvent("value"), metadata());
+
+        assertThatThrownBy(() -> serializer.serialize(eventMessage))
+            .isInstanceOf(EventSerializationException.class)
+            .hasMessage("Cannot serialize event %s: event class %s can not be resolved"
+                .formatted(eventMessage.messageId(), TestEvent.class.getName()));
+    }
+
+    @Test
+    void deserialize_eventTypeNotResolved_throwsExceptionWithContext() {
+        var serializer = new JacksonEventSerializer(JsonMapper.builder().build(), new ClassNameEventTypeResolver(), List.of());
+        var serialized = serializer.serialize(EventMessage.from(new TestEvent("value"), metadata()));
+        var stored = new SerializedEvent(serialized.messageId(), 1L, serialized.subjectId(), String.class.getName(),
+            serialized.serializedPayload(), serialized.serializedMetadata(), serialized.createdAt());
+
+        assertThatThrownBy(() -> serializer.deserialize(stored))
+            .isInstanceOf(EventSerializationException.class)
+            .hasMessage("Cannot deserialize event %s: event type 'java.lang.String' can not be resolved"
+                .formatted(stored.messageId()));
+    }
+
+    @Test
     void smdJacksonModule_roundTripsPrincipalTypeMetadata() {
         var serializer = new JacksonEventSerializer(JsonMapper.builder()
             .addModule(new SMDJacksonModule())
-            .build());
+            .build(), new ClassNameEventTypeResolver(), List.of());
         var eventMessage = EventMessage.from(new TestEvent("value"), metadata());
 
         var serialized = serializer.serialize(eventMessage);
@@ -117,7 +144,7 @@ class JacksonEventSerializerTest {
     void deserialize_restoresThePersistedSubjectWithoutRecomputingIt() {
         var serializer = new JacksonEventSerializer(JsonMapper.builder()
             .addModule(new SMDJacksonModule())
-            .build());
+            .build(), new ClassNameEventTypeResolver(), List.of());
         var eventMessage = new EventMessage<>(
             MessageId.generate(),
             Optional.of("captured-subjectId"),
