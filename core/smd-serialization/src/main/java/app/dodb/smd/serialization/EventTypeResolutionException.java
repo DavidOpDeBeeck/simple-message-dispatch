@@ -1,4 +1,4 @@
-package app.dodb.smd.eventstore.serialization;
+package app.dodb.smd.serialization;
 
 public class EventTypeResolutionException extends Exception {
 

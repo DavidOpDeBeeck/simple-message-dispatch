@@ -4,14 +4,14 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.EventStore;
-import app.dodb.smd.eventstore.serialization.EventSerializer;
+import app.dodb.smd.serialization.EventSerializer;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import javax.sql.DataSource;
 import java.time.Instant;
 import java.util.UUID;
+import javax.sql.DataSource;
 
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SCHEDULING_DISABLED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.eventStoreTestFixture;

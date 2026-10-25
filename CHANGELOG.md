@@ -12,6 +12,9 @@
   `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and `smd.errorCount`, with constants in `app.dodb.smd.api.event.delivery.ProcessingMetadata`. Messages a handler sends
   no longer inherit them; before, a subjectless event sent while handling another event could carry that event's `subjectId`.
 - `MetadataFactory` accepts a `MetadataInheritance` as a third constructor argument; the two-argument constructor uses `excludingSmdProperties()`.
+- **Breaking:** event serialization moved from `smd-event-store` to the new `smd-serialization` module. `EventSerializer`, `EventTypeResolver`, `ClassNameEventTypeResolver`,
+  `StaticEventTypeResolver`, `EventTypeResolutionException`, and `SerializedEvent` (from `app.dodb.smd.eventstore.storage`) are in `app.dodb.smd.serialization`;
+  `JacksonEventSerializer` and `SMDJacksonModule` are in `app.dodb.smd.serialization.jackson`. `smd-event-store` exposes the module, so only imports change.
 
 ## [0.0.12] - 2026-10-19
 

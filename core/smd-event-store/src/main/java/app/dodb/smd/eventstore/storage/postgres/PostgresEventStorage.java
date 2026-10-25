@@ -5,7 +5,7 @@ import app.dodb.smd.eventstore.storage.ConnectionProvider;
 import app.dodb.smd.eventstore.storage.Cursor;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.EventStorageException;
-import app.dodb.smd.eventstore.storage.SerializedEvent;
+import app.dodb.smd.serialization.SerializedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

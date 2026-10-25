@@ -5,8 +5,8 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.delivery.EventDelivery;
 import app.dodb.smd.api.event.delivery.EventSink;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.eventstore.serialization.EventSerializer;
 import app.dodb.smd.eventstore.storage.EventStorage;
+import app.dodb.smd.serialization.EventSerializer;
 
 import static java.util.Objects.requireNonNull;
 

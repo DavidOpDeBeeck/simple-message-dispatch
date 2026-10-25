@@ -20,6 +20,7 @@ Command, query, and event code intentionally stays symmetrical. Share code only 
 | Module                                   | Responsibility                                                     |
 |------------------------------------------|--------------------------------------------------------------------|
 | `core/smd-api`                           | Messages, buses, handlers, channels, metadata, and framework ports |
+| `core/smd-serialization`                 | Event serialization, event type resolution, and Jackson support    |
 | `core/smd-event-store`                   | PostgreSQL storage, polling, ordering, retries, and tokens         |
 | `core/smd-test`                          | Framework-independent test support                                 |
 | `core/smd-opentelemetry`                 | OpenTelemetry instrumentation                                      |

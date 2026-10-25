@@ -4,8 +4,8 @@ import app.dodb.smd.api.event.delivery.EventSubscriber;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.api.metadata.MetadataProperties;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
-import app.dodb.smd.eventstore.serialization.EventSerializer;
-import app.dodb.smd.eventstore.storage.SerializedEvent;
+import app.dodb.smd.serialization.EventSerializer;
+import app.dodb.smd.serialization.SerializedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

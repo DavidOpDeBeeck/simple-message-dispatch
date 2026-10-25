@@ -1,4 +1,4 @@
-package app.dodb.smd.eventstore.serialization;
+package app.dodb.smd.serialization.jackson;
 
 import app.dodb.smd.api.metadata.principal.Principal;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;

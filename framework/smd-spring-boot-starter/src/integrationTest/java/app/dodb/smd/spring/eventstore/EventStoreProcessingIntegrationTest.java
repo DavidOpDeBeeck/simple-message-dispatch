@@ -5,8 +5,8 @@ import app.dodb.smd.api.event.bus.EventBus;
 import app.dodb.smd.api.event.delivery.ProcessingMetadata;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
-import app.dodb.smd.eventstore.storage.SerializedEvent;
 import app.dodb.smd.eventstore.storage.TokenState;
+import app.dodb.smd.serialization.SerializedEvent;
 import app.dodb.smd.spring.eventstore.EventStoreTestFixture.SequencedEvent;
 import app.dodb.smd.spring.eventstore.processing.FailableTestEventHandler;
 import app.dodb.smd.spring.eventstore.processing.SideEffectTestEventWithSubjectId;
@@ -15,7 +15,6 @@ import app.dodb.smd.test.EventSubscriberStub;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import javax.sql.DataSource;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +22,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.sql.DataSource;
 
 import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
 import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;

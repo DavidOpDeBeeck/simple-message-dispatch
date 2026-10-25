@@ -4,36 +4,32 @@ import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
-import app.dodb.smd.eventstore.serialization.ClassNameEventTypeResolver;
-import app.dodb.smd.eventstore.serialization.EventSerializer;
-import app.dodb.smd.eventstore.serialization.EventTypeResolver;
-import app.dodb.smd.eventstore.serialization.JacksonEventSerializer;
-import app.dodb.smd.eventstore.serialization.SMDJacksonModule;
 import app.dodb.smd.eventstore.storage.ConnectionProvider;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
 import app.dodb.smd.eventstore.storage.postgres.PostgresEventStorage;
 import app.dodb.smd.eventstore.storage.postgres.PostgresEventSubjectSequenceStore;
 import app.dodb.smd.eventstore.storage.postgres.PostgresTokenStore;
+import app.dodb.smd.serialization.EventSerializer;
 import app.dodb.smd.spring.EventBusSpecCustomizer;
 import app.dodb.smd.spring.SMDAutoConfiguration;
+import app.dodb.smd.spring.serialization.SMDEventSerializationConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import tools.jackson.databind.json.JsonMapper;
+import org.springframework.context.annotation.Import;
 
 import javax.sql.DataSource;
 
 import static java.util.concurrent.Executors.newScheduledThreadPool;
-import static tools.jackson.databind.SerializationFeature.FAIL_ON_EMPTY_BEANS;
 
 @AutoConfiguration(after = JacksonAutoConfiguration.class, before = SMDAutoConfiguration.class)
 @ConditionalOnProperty(name = "smd.event-store.enabled", havingValue = "true")
 @EnableConfigurationProperties(SMDEventStoreProperties.class)
+@Import(SMDEventSerializationConfiguration.class)
 public class SMDEventStoreAutoConfiguration {
 
     @Bean
@@ -58,23 +54,6 @@ public class SMDEventStoreAutoConfiguration {
     @ConditionalOnMissingBean
     public EventSubjectSequenceStore eventSequenceStore(ConnectionProvider smdConnectionProvider) {
         return new PostgresEventSubjectSequenceStore(smdConnectionProvider);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public EventTypeResolver eventTypeResolver() {
-        return new ClassNameEventTypeResolver();
-    }
-
-    @Bean
-    @ConditionalOnBean(JsonMapper.Builder.class)
-    @ConditionalOnMissingBean(EventSerializer.class)
-    public EventSerializer eventSerializer(JsonMapper.Builder jsonMapperBuilder, EventTypeResolver eventTypeResolver) {
-        var objectMapper = jsonMapperBuilder
-            .disable(FAIL_ON_EMPTY_BEANS)
-            .addModule(new SMDJacksonModule())
-            .build();
-        return new JacksonEventSerializer(objectMapper, eventTypeResolver);
     }
 
     @Bean

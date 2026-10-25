@@ -251,8 +251,9 @@ dependencies {
 }
 ```
 
-`EventStore` and its configuration live in `app.dodb.smd.eventstore`; persistence types and serializers use the `storage` and `serialization` subpackages. Supply a `ConnectionProvider` and
-`TransactionProvider`, then construct the store:
+`EventStore` and its configuration live in `app.dodb.smd.eventstore`, and persistence types in its `storage` subpackage. Serializers come from `smd-serialization`, in
+`app.dodb.smd.serialization` with the Jackson support in its `jackson` subpackage, which `smd-event-store` exposes. Supply a `ConnectionProvider` and `TransactionProvider`,
+then construct the store:
 
 ```java
 var mapper = JsonMapper.builder()

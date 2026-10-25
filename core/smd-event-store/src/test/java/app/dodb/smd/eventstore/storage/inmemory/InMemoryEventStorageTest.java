@@ -1,6 +1,6 @@
 package app.dodb.smd.eventstore.storage.inmemory;
 
-import app.dodb.smd.eventstore.storage.SerializedEvent;
+import app.dodb.smd.serialization.SerializedEvent;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

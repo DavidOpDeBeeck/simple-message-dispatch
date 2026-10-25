@@ -1,4 +1,4 @@
-package app.dodb.smd.eventstore.serialization;
+package app.dodb.smd.serialization;
 
 import app.dodb.smd.api.event.Event;
 

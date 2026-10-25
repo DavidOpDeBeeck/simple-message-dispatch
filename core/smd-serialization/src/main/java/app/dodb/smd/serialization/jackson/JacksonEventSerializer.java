@@ -1,11 +1,15 @@
-package app.dodb.smd.eventstore.serialization;
+package app.dodb.smd.serialization.jackson;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.principal.Principal;
-import app.dodb.smd.eventstore.storage.SerializedEvent;
+import app.dodb.smd.serialization.ClassNameEventTypeResolver;
+import app.dodb.smd.serialization.EventSerializer;
+import app.dodb.smd.serialization.EventTypeResolutionException;
+import app.dodb.smd.serialization.EventTypeResolver;
+import app.dodb.smd.serialization.SerializedEvent;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 

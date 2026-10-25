@@ -1,5 +1,6 @@
 dependencies {
     api(project(":smd-api"))
+    api(project(":smd-serialization"))
     api(project(":smd-event-store"))
     api(project(":smd-opentelemetry"))
 

@@ -10,16 +10,15 @@ import app.dodb.smd.eventstore.EventStoreConfig;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
-import app.dodb.smd.eventstore.serialization.EventSerializer;
 import app.dodb.smd.eventstore.storage.EventStorage;
-import app.dodb.smd.eventstore.storage.SerializedEvent;
 import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.eventstore.storage.TokenStore;
+import app.dodb.smd.serialization.EventSerializer;
+import app.dodb.smd.serialization.SerializedEvent;
 import app.dodb.smd.spring.eventstore.processing.EventStoreProcessingTestConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
-import javax.sql.DataSource;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -30,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
+import javax.sql.DataSource;
 
 import static app.dodb.smd.eventstore.RetryBackoffStrategy.fixed;
 import static java.time.Duration.ZERO;

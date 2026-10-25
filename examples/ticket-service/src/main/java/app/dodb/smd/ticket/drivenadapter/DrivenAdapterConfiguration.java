@@ -2,8 +2,8 @@ package app.dodb.smd.ticket.drivenadapter;
 
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.eventstore.EventStore;
-import app.dodb.smd.eventstore.serialization.EventTypeResolver;
-import app.dodb.smd.eventstore.serialization.StaticEventTypeResolver;
+import app.dodb.smd.serialization.EventTypeResolver;
+import app.dodb.smd.serialization.StaticEventTypeResolver;
 import app.dodb.smd.spring.EnableSMD;
 import app.dodb.smd.ticket.drivingport.event.TicketAssignedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketOpenedEvent;

@@ -7,14 +7,15 @@ integration.
 
 ## Modules
 
-| Module                         | Purpose                                                   | Guide                                    |
-|--------------------------------|-----------------------------------------------------------|------------------------------------------|
-| `smd-api`                      | Core command, query, event, metadata, and bus APIs        | [Core API](docs/core-api.md)             |
-| `smd-event-store`              | PostgreSQL 15+ event store, polling, sequencing           | [Event Store Guide](docs/event-store.md) |
-| `smd-test`                     | Test helpers and gateway/publisher stubs                  | [Testing Guide](docs/testing.md)         |
-| `smd-opentelemetry`            | OpenTelemetry spans for every bus invocation              | [OpenTelemetry](docs/opentelemetry.md)   |
-| `smd-spring-boot-starter`      | Spring Boot autoconfiguration and event-store integration | [Spring Boot Guide](docs/spring-boot.md) |
-| `smd-spring-boot-starter-test` | Spring Boot test-scope stubs and lifecycle support        | [Testing Guide](docs/testing.md)         |
+| Module                         | Purpose                                                   | Guide                                                                |
+|--------------------------------|-----------------------------------------------------------|----------------------------------------------------------------------|
+| `smd-api`                      | Core command, query, event, metadata, and bus APIs        | [Core API](docs/core-api.md)                                         |
+| `smd-serialization`            | Event serializers, type resolvers, and the Jackson module | [Event Store Guide](docs/event-store.md#use-stable-event-type-names) |
+| `smd-event-store`              | PostgreSQL 15+ event store, polling, sequencing           | [Event Store Guide](docs/event-store.md)                             |
+| `smd-test`                     | Test helpers and gateway/publisher stubs                  | [Testing Guide](docs/testing.md)                                     |
+| `smd-opentelemetry`            | OpenTelemetry spans for every bus invocation              | [OpenTelemetry](docs/opentelemetry.md)                               |
+| `smd-spring-boot-starter`      | Spring Boot autoconfiguration and event-store integration | [Spring Boot Guide](docs/spring-boot.md)                             |
+| `smd-spring-boot-starter-test` | Spring Boot test-scope stubs and lifecycle support        | [Testing Guide](docs/testing.md)                                     |
 
 ## Install
 

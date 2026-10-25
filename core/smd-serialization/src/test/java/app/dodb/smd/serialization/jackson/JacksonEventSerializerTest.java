@@ -1,4 +1,4 @@
-package app.dodb.smd.eventstore.serialization;
+package app.dodb.smd.serialization.jackson;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
@@ -6,7 +6,7 @@ import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.principal.SimplePrincipal;
-import app.dodb.smd.eventstore.storage.SerializedEvent;
+import app.dodb.smd.serialization.SerializedEvent;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static app.dodb.smd.eventstore.serialization.JacksonEventSerializer.EventSerializationException;
+import static app.dodb.smd.serialization.jackson.JacksonEventSerializer.EventSerializationException;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

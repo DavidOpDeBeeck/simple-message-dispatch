@@ -4,7 +4,7 @@ import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.eventstore.storage.Cursor;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.EventStorageException;
-import app.dodb.smd.eventstore.storage.SerializedEvent;
+import app.dodb.smd.serialization.SerializedEvent;
 
 import java.util.ArrayDeque;
 import java.util.Deque;

@@ -2,9 +2,9 @@ package app.dodb.smd.eventstore;
 
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
-import app.dodb.smd.eventstore.serialization.EventSerializer;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
+import app.dodb.smd.serialization.EventSerializer;
 
 import java.time.Duration;
 import java.util.concurrent.ScheduledExecutorService;
