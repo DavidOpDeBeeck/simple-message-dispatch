@@ -14,6 +14,7 @@ import app.dodb.smd.api.event.bus.EventBusInterceptor;
 import app.dodb.smd.api.event.bus.EventBusSpec;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.event.bus.TransactionalEventBusInterceptor;
+import app.dodb.smd.api.event.delivery.EventRoute;
 import app.dodb.smd.api.event.delivery.EventSinkInterceptor;
 import app.dodb.smd.api.framework.ObjectCreator;
 import app.dodb.smd.api.framework.TransactionProvider;
@@ -146,6 +147,7 @@ public class SMDAutoConfiguration {
                                          List<EventBusInterceptor> interceptors,
                                          List<EventSinkInterceptor> sinkInterceptors,
                                          List<ProcessingGroupInterceptor> processingGroupInterceptors,
+                                         List<EventRoute> routes,
                                          List<EventBusSpecCustomizer> customizers) {
         var spec = EventBusSpec.withoutDefaults()
             .time(timeProvider)
@@ -154,7 +156,8 @@ public class SMDAutoConfiguration {
             .processingGroups(locator, multi(processingGroupsConfigurers))
             .interceptors(interceptors)
             .sinkInterceptors(sinkInterceptors)
-            .processingGroupInterceptors(processingGroupInterceptors);
+            .processingGroupInterceptors(processingGroupInterceptors)
+            .routes(routes);
         customizers.forEach(customizer -> customizer.customize(spec));
         return spec.create();
     }

@@ -15,6 +15,7 @@ public final class MessageSpans {
     public static final AttributeKey<String> MESSAGE_ID = stringKey("messaging.message.id");
     public static final AttributeKey<String> PROCESSING_GROUP = stringKey("messaging.consumer.group.name");
     public static final AttributeKey<String> MESSAGE_KIND = stringKey("messaging.smd.message.kind");
+    public static final AttributeKey<String> ROUTE = stringKey("messaging.smd.route");
     public static final AttributeKey<String> DELIVERY = stringKey("messaging.smd.delivery");
     public static final AttributeKey<String> THREAD_NAME = stringKey("thread.name");
     public static final AttributeKey<String> ERROR_TYPE = stringKey("error.type");

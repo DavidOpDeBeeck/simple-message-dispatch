@@ -90,6 +90,20 @@ EventBusSpecCustomizer auditEvents(EventSink auditSink) {
 Multiple customizers are applied in Spring order. Declaring an `EventSink` bean alone does not register it; use an `EventBusSpecCustomizer` as shown above. Customizers affect only the default
 autoconfigured bus, not a user-provided `CommandGateway`, `EventPublisher`, or `QueryGateway`.
 
+## Route Between Media
+
+Declare an `EventRoute` bean to move events from a source into a sink, such as from the event store to a broker:
+
+```java
+@Bean
+EventRoute ticketRelay(EventStore eventStore, EventMedium ticketEvents) {
+    return new EventRoute("tickets.relay", eventStore.outlet(), ticketEvents.inlet());
+}
+```
+
+Every `EventRoute` bean joins the autoconfigured event bus, which subscribes it at startup. See
+[Route Between Media](core-api.md#route-between-media) for how a route sends and fails.
+
 ## Add Interceptors
 
 Expose interceptors as beans. Spring ordering controls the chain:
@@ -123,7 +137,7 @@ implementation("org.springframework.boot:spring-boot-starter-opentelemetry")
 `io.micrometer:micrometer-tracing-bridge-otel` instead, with `io.opentelemetry:opentelemetry-exporter-otlp` to export over OTLP.
 
 When an `OpenTelemetry` bean exists, such as the one of Spring Boot's OpenTelemetry SDK auto-configuration, the starter registers a `MessageTracing` bean and installs it on
-the autoconfigured buses, their sinks, and their processing groups; without one, it records nothing. Tracing runs at `TRACING_INTERCEPTOR_ORDER`, outside the transactional
+the autoconfigured buses, their sinks, their routes, and their processing groups; without one, it records nothing. Tracing runs at `TRACING_INTERCEPTOR_ORDER`, outside the transactional
 interceptors, so a span covers the transaction and records a failure raised at its commit, such as deferred work that throws. Set `smd.opentelemetry.enabled=false` to turn it
 off, or declare a `MessageTracing` bean to replace it. Annotate that bean with `@Order(SMDAutoConfiguration.TRACING_INTERCEPTOR_ORDER)`: without it, it runs inside the
 transaction and its spans miss failures at commit. A `CommandGateway`, `QueryGateway`, or `EventPublisher` bean you build yourself needs `MessageTracing` installed explicitly,

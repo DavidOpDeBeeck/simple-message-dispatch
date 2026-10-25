@@ -68,6 +68,23 @@ class EventBusIntegrationTest {
         }
     }
 
+    @Test
+    void publish_withRouteBean_handlesEventsTheRouteCarries() {
+        // Given
+        try (var context = createContext(EventIntegrationTestConfigurationWithRoute.class)) {
+            var eventBus = context.getBean(EventBus.class);
+            var testEventHandler = context.getBean(TestEventHandler.class);
+
+            var event = new TestEvent();
+
+            // When
+            eventBus.publish(event);
+
+            // Then
+            assertThat(testEventHandler.getHandledEvents()).containsExactly(event);
+        }
+    }
+
     private ConfigurableApplicationContext createContext(Class<?> configClass) {
         return new SpringApplicationBuilder(configClass)
             .web(NONE)

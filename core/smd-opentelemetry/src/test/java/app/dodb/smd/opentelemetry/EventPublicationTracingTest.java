@@ -132,6 +132,10 @@ class EventPublicationTracingTest {
         public EventDelivery delivery() {
             return delivery;
         }
+
+        List<EventMessage<?>> received() {
+            return received;
+        }
     }
 
     record FailingSink(RuntimeException failure) implements EventSink {

@@ -17,8 +17,11 @@
   `JacksonEventSerializer` and `SMDJacksonModule` are in `app.dodb.smd.serialization.jackson`. `smd-event-store` exposes the module, so only imports change.
 - **Breaking:** `ConnectionProvider` moved from `app.dodb.smd.eventstore.storage` to `app.dodb.smd.api.framework`, `RetryBackoffStrategy` from `app.dodb.smd.eventstore` to
   `app.dodb.smd.api.event.delivery`, and `SpringConnectionProvider` from `app.dodb.smd.spring.eventstore` to `app.dodb.smd.spring`. Only imports change.
-- **Breaking:** `EventSubscriber.processingGroup()` is now `EventSubscriber.name()`.
 - `EventSelector.eventType` accepts several event types, and `EventSelector.eventPackage(Package)` selects events in a package and its subpackages.
+- Added `EventRoute`, which moves events from a source into a sink. Declare routes with `route(name, source, sink)` or `routes(...)` on `EventBusSpec`, or as `EventRoute` beans in
+  Spring Boot. The bus subscribes them after its processing groups and sends through the sink interceptors; `EventSinkContext.route()` names the route, and
+  tracing records it as `messaging.smd.route`. A bus no longer needs processing groups. See [Route Between Media](docs/core-api.md#route-between-media).
+- **Breaking:** `EventSubscriber.processingGroup()` is now `EventSubscriber.name()`, because routes subscribe as well as processing groups.
 
 ## [0.0.12] - 2026-10-19
 

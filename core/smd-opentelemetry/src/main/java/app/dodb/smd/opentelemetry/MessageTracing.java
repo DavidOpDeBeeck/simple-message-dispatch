@@ -29,6 +29,7 @@ import static app.dodb.smd.opentelemetry.MessageSpans.PROCESS;
 import static app.dodb.smd.opentelemetry.MessageSpans.PROCESSING_GROUP;
 import static app.dodb.smd.opentelemetry.MessageSpans.PUBLISH;
 import static app.dodb.smd.opentelemetry.MessageSpans.QUERY;
+import static app.dodb.smd.opentelemetry.MessageSpans.ROUTE;
 import static app.dodb.smd.opentelemetry.MessageSpans.SEND;
 import static io.opentelemetry.api.trace.SpanKind.CONSUMER;
 import static io.opentelemetry.api.trace.SpanKind.PRODUCER;
@@ -69,10 +70,10 @@ public class MessageTracing implements CommandBusInterceptor, QueryBusIntercepto
     @Override
     public <E extends Event> void intercept(EventSinkContext<E> context, EventSinkInterceptorChain<E> chain) {
         var attributes = EVENTS.toBuilder()
-            .put(DELIVERY, context.sink().delivery().name())
-            .build();
+            .put(DELIVERY, context.sink().delivery().name());
+        context.route().ifPresent(route -> attributes.put(ROUTE, route.name()));
 
-        tracer.trace(SENDING, attributes, context.eventMessage(), _ -> {
+        tracer.trace(SENDING, attributes.build(), context.eventMessage(), _ -> {
             chain.proceed(context);
             return null;
         });

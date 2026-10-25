@@ -4,6 +4,7 @@ import app.dodb.smd.api.event.ProcessingGroupInterceptor;
 import app.dodb.smd.api.event.ProcessingGroupLocator;
 import app.dodb.smd.api.event.delivery.ConcurrentEventDispatcher;
 import app.dodb.smd.api.event.delivery.EventMedium;
+import app.dodb.smd.api.event.delivery.EventRoute;
 import app.dodb.smd.api.event.delivery.EventSink;
 import app.dodb.smd.api.event.delivery.EventSinkInterceptor;
 import app.dodb.smd.api.event.delivery.EventSource;
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +59,7 @@ public class EventBusSpec {
     private final List<EventSinkInterceptor> sinkInterceptors = new ArrayList<>();
     private final List<ProcessingGroupInterceptor> processingGroupInterceptors = new ArrayList<>();
     private final Set<EventSink> eventSinks = new LinkedHashSet<>();
+    private final List<EventRoute> routes = new ArrayList<>();
     private ProcessingGroupsSpec processingGroupsSpec;
 
     public EventBusSpec time(TimeProvider timeProvider) {
@@ -110,6 +113,19 @@ public class EventBusSpec {
         return this;
     }
 
+    public EventBusSpec route(String name, EventSource source, EventSink sink) {
+        return routes(new EventRoute(name, source, sink));
+    }
+
+    public EventBusSpec routes(EventRoute... routes) {
+        return routes(List.of(routes));
+    }
+
+    public EventBusSpec routes(List<EventRoute> routes) {
+        this.routes.addAll(routes);
+        return this;
+    }
+
     public EventBusSpec processingGroups(ProcessingGroupLocator locator) {
         return processingGroups(locator, defaultSynchronous());
     }
@@ -121,12 +137,32 @@ public class EventBusSpec {
     }
 
     public EventBus create() {
-        var subscriptions = processingGroupsSpec.configure(this);
+        var subscriptions = new ArrayList<EventSourceSubscription>();
+        if (processingGroupsSpec != null) {
+            subscriptions.addAll(processingGroupsSpec.configure(this));
+        }
+        for (var route : routes) {
+            subscriptions.add(new EventSourceSubscription(route.source(), new RouteSubscriber(route, sinkInterceptors)));
+        }
+        validateUniqueSubscriberNames(subscriptions);
+
         for (var subscription : subscriptions) {
             // These subscriptions need to be closed when the application shuts down, but for now we just subscribe to them and let the application exit.
             subscription.subscribe();
         }
         return new EventBus(new MetadataFactory(principalProvider, timeProvider, metadataInheritance), interceptors, sinkInterceptors, eventSinks);
+    }
+
+    private static void validateUniqueSubscriberNames(List<EventSourceSubscription> subscriptions) {
+        var names = new HashSet<String>();
+        for (var subscription : subscriptions) {
+            var name = subscription.subscriber().name();
+            if (!names.add(name)) {
+                throw new IllegalArgumentException("""
+                    Event route '%s' has the name of another route or processing group. Sources name their subscriptions after it, \
+                    so give every route a name that no other route or processing group uses.""".formatted(name));
+            }
+        }
     }
 
     public static class ProcessingGroupsSpec {

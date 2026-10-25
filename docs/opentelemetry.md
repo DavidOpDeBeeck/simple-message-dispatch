@@ -71,7 +71,7 @@ Every span belongs to the instrumentation scope `app.dodb.smd` and is named afte
 |------------------------|------------|------------------------------------------------------|
 | `send <command/query>` | `PRODUCER` | Each command or query dispatch, covering its handler |
 | `publish <event>`      | `PRODUCER` | Each event publication                               |
-| `send <event>`         | `PRODUCER` | Each sink the publication is sent to                 |
+| `send <event>`         | `PRODUCER` | Each sink the publication or a route sends to        |
 | `process <event>`      | `CONSUMER` | Each processing group handling the event             |
 
 A span ends when the interceptor chain or the handlers it wraps return. A sink's span is also recorded for events a selecting sink's selector then drops. SMD does not record
@@ -87,11 +87,14 @@ a span per handler method within a processing group.
 | `messaging.consumer.group.name` | The processing group; only on `process` spans                                     |
 | `messaging.smd.message.kind`    | `command`, `query`, or `event`                                                    |
 | `messaging.smd.delivery`        | The sink's delivery on an event's `send` span, the source's on a `process` span   |
+| `messaging.smd.route`           | The route's name; only on the `send` spans of a route                             |
 | `thread.name`                   | The thread the invocation ran on                                                  |
 | `error.type`                    | The failure's class name, set with the span status `ERROR`                        |
 
 `messaging.smd.delivery` is the `EventDelivery` name: `sync`, `async-await`, `async-fire-and-forget`, `event-store`, or the medium a custom sink or source names. The
-attributes follow the OpenTelemetry messaging semantic conventions; only the message kind and the delivery are SMD's own, in the `messaging.smd` namespace. The attribute keys
+attributes follow the OpenTelemetry messaging semantic conventions; only the message kind, the delivery, and the route are SMD's own, in the `messaging.smd` namespace. A route's
+`send` runs on its source's thread, such as an outbox's polling thread, and joins the trace its message carries, so every hop between applications appears in the publication's
+trace. The attribute keys
 are constants of `MessageSpans`.
 
 ## Parents and Links

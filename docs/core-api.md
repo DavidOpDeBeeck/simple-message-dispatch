@@ -176,6 +176,7 @@ The contracts in `app.dodb.smd.api.event.delivery` separate publication from sub
 | `EventSink`   | Receives event messages through `send(message)` and names its `delivery()`       |
 | `EventSource` | Registers subscribers through `subscribe(subscriber)` and names its `delivery()` |
 | `EventMedium` | Pairs an `inlet()` sink with an `outlet()` source                                |
+| `EventRoute`  | Connects a `source` to a `sink` under a `name`, so events flow between media     |
 
 Application code publishes through `EventPublisher`, which creates message envelopes, establishes metadata, and runs publication interceptors. The bus sends to sinks in registration order;
 if a sink throws, the bus skips the remaining sinks. Reusing the same sink does not duplicate publication.
@@ -224,6 +225,26 @@ public EventDelivery delivery() {
 ```
 
 Tracing records this name as `messaging.smd.delivery`.
+
+### Route Between Media
+
+A route moves events from a source into a sink without a handler: from an outbox to a broker, from a broker into an inbox, or from one topic to another. Declare routes on the
+bus, next to its sinks and processing groups:
+
+```java
+var eventBus = EventBusSpec.withDefaults()
+        .sinks(outgoing.inlet())
+        .route("orders.relay", outgoing.outlet(), broker.inlet())
+        .processingGroups(locator)
+        .create();
+```
+
+The bus subscribes each route to its source under the route's name after it subscribes the processing groups, for the application's lifetime. A route sends on the source's
+thread through the sink interceptors, so tracing records each hop as a `send` span with `messaging.smd.route`. A failing sink fails the source's delivery, and the source retries,
+rejects, or logs it as it would for a failing processing group.
+
+Sources name their subscriptions after the subscriber, a processing group or a route, so the bus rejects a route whose name another route or processing group already uses.
+Filter a route with `.selecting(...)` on its source or its sink. A bus needs no processing groups to carry routes.
 
 ### Subscriptions
 

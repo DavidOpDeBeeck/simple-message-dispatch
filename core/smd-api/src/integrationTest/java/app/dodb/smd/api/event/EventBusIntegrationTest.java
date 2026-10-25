@@ -1,6 +1,7 @@
 package app.dodb.smd.api.event;
 
 import app.dodb.smd.api.event.bus.EventBusSpec;
+import app.dodb.smd.api.event.delivery.SynchronousEventDispatcher;
 import app.dodb.smd.api.framework.ConstructorBasedObjectCreator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -138,6 +139,41 @@ class EventBusIntegrationTest {
         assertThatThrownBy(spec::create)
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Processing group '2' has no configuration");
+    }
+
+    @Test
+    void create_withRouteNamedAfterAProcessingGroup_throwsException() {
+        // Given
+        var incoming = new SynchronousEventDispatcher();
+        var outgoing = new SynchronousEventDispatcher();
+        var spec = EventBusSpec.withDefaults()
+            .processingGroups(new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()))
+            .route("1", incoming.outlet(), outgoing.inlet());
+
+        // When / Then
+        assertThatThrownBy(spec::create)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Event route '1' has the name of another route or processing group.");
+    }
+
+    @Test
+    void publish_intoMediumRoutedToProcessingGroups_handlesRoutedEvents() {
+        // Given
+        var outgoing = new SynchronousEventDispatcher();
+        var incoming = new SynchronousEventDispatcher();
+        var eventBus = EventBusSpec.withDefaults()
+            .sinks(outgoing.inlet())
+            .route("outgoing-to-incoming", outgoing.outlet(), incoming.inlet())
+            .processingGroups(new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()),
+                groups -> groups.anyProcessingGroup().source(incoming.outlet()))
+            .create();
+        var event = new TestEvent();
+
+        // When
+        eventBus.publish(event);
+
+        // Then
+        assertThat(TestEventHandler.handledEvents).containsExactly(event);
     }
 
     private record RecordingProcessingGroupInterceptor(String name, List<String> interceptions) implements ProcessingGroupInterceptor {
