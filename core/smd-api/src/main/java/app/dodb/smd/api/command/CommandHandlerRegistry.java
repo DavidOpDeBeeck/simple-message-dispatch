@@ -53,7 +53,7 @@ public record CommandHandlerRegistry(Set<CommandHandlerBehaviour<?, ?>> commandH
                     """.formatted(
                     commandHandler.commandType().getName(),
                     overlappingHandlers.stream()
-                        .map(CommandHandlerBehaviour::method)
+                        .map(CommandHandlerBehaviour::executable)
                         .map(LoggingUtils::logMethod)
                         .collect(Collectors.joining("\n"))));
             }

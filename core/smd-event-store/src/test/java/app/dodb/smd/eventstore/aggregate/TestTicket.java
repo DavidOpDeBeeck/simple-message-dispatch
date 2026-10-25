@@ -13,13 +13,12 @@ public class TestTicket {
     private TestTicketStatus status;
     private String assignee;
 
-    protected TestTicket() {
+    private TestTicket() {
     }
 
     @CommandHandler
-    public UUID handle(OpenTestTicketCommand command, AggregateEvents<Event> events) {
+    public TestTicket(OpenTestTicketCommand command, AggregateEvents<Event> events) {
         events.apply(new TestTicketOpenedEvent(command.ticketId(), command.title()));
-        return ticketId;
     }
 
     @CommandHandler

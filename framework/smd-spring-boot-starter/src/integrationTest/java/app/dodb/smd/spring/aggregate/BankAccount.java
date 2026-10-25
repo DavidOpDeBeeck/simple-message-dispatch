@@ -16,13 +16,12 @@ public class BankAccount {
     private UUID accountId;
     private long balance;
 
-    protected BankAccount() {
+    private BankAccount() {
     }
 
     @CommandHandler
-    public UUID handle(OpenBankAccountCommand command, AggregateEvents<Event> events) {
+    public BankAccount(OpenBankAccountCommand command, AggregateEvents<Event> events) {
         events.apply(new BankAccountOpenedEvent(command.accountId()));
-        return accountId;
     }
 
     @CommandHandler

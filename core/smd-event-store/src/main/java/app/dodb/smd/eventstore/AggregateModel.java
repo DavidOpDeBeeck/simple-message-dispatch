@@ -11,6 +11,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,23 +28,26 @@ final class AggregateModel<A> {
 
     private final Class<A> aggregateClass;
     private final String aggregateType;
-    private final Constructor<A> constructor;
+    private final Constructor<A> replayConstructor;
     private final Field idField;
     private final List<Method> eventSourcingHandlers;
+    private final List<Constructor<A>> creationHandlers;
     private final List<Method> commandHandlers;
     private final ConcurrentMap<Class<?>, Optional<Method>> eventSourcingHandlersByEventType = new ConcurrentHashMap<>();
 
     private AggregateModel(Class<A> aggregateClass,
                            String aggregateType,
-                           Constructor<A> constructor,
+                           Constructor<A> replayConstructor,
                            Field idField,
                            List<Method> eventSourcingHandlers,
+                           List<Constructor<A>> creationHandlers,
                            List<Method> commandHandlers) {
         this.aggregateClass = requireNonNull(aggregateClass);
         this.aggregateType = requireNonNull(aggregateType);
-        this.constructor = requireNonNull(constructor);
+        this.replayConstructor = requireNonNull(replayConstructor);
         this.idField = requireNonNull(idField);
         this.eventSourcingHandlers = List.copyOf(eventSourcingHandlers);
+        this.creationHandlers = List.copyOf(creationHandlers);
         this.commandHandlers = List.copyOf(commandHandlers);
     }
 
@@ -51,9 +55,10 @@ final class AggregateModel<A> {
         return new AggregateModel<>(
             aggregateClass,
             findAggregateType(aggregateClass),
-            findConstructor(aggregateClass),
+            findReplayConstructor(aggregateClass),
             findIdField(aggregateClass),
             findEventSourcingHandlers(aggregateClass),
+            findCreationHandlers(aggregateClass),
             findCommandHandlers(aggregateClass)
         );
     }
@@ -66,13 +71,21 @@ final class AggregateModel<A> {
         return aggregateType;
     }
 
+    Type aggregateIdType() {
+        return idField.getGenericType();
+    }
+
+    List<Constructor<A>> creationHandlers() {
+        return creationHandlers;
+    }
+
     List<Method> commandHandlers() {
         return commandHandlers;
     }
 
     A newInstance() {
         try {
-            return constructor.newInstance();
+            return replayConstructor.newInstance();
         } catch (InvocationTargetException e) {
             throw rethrow(e.getCause());
         } catch (ReflectiveOperationException e) {
@@ -95,12 +108,16 @@ final class AggregateModel<A> {
         }
     }
 
-    Optional<String> aggregateId(A aggregate) {
+    Optional<Object> aggregateIdValue(A aggregate) {
         try {
-            return Optional.ofNullable(idField.get(aggregate)).map(Object::toString);
+            return Optional.ofNullable(idField.get(aggregate));
         } catch (IllegalAccessException e) {
             throw new IllegalStateException("Failed to read @AggregateId field: %s#%s".formatted(logClass(aggregateClass), idField.getName()), e);
         }
+    }
+
+    Optional<String> aggregateId(A aggregate) {
+        return aggregateIdValue(aggregate).map(Object::toString);
     }
 
     private Optional<Method> findEventSourcingHandler(Class<?> eventType) {
@@ -122,7 +139,7 @@ final class AggregateModel<A> {
         return aggregate.value();
     }
 
-    private static <A> Constructor<A> findConstructor(Class<A> aggregateClass) {
+    private static <A> Constructor<A> findReplayConstructor(Class<A> aggregateClass) {
         try {
             var constructor = aggregateClass.getDeclaredConstructor();
             if (!constructor.trySetAccessible()) {
@@ -131,7 +148,7 @@ final class AggregateModel<A> {
             return constructor;
         } catch (NoSuchMethodException e) {
             throw new IllegalArgumentException("""
-                Invalid aggregate: a no-argument constructor is required to create and replay the aggregate.
+                Invalid aggregate: a no-argument constructor is required to replay the aggregate from its events.
 
                     Aggregate:
                     %s
@@ -201,18 +218,26 @@ final class AggregateModel<A> {
         return handlers;
     }
 
-    private static List<Method> findCommandHandlers(Class<?> aggregateClass) {
-        var handlers = stream(aggregateClass.getDeclaredMethods())
-            .filter(method -> method.isAnnotationPresent(CommandHandler.class))
+    @SuppressWarnings("unchecked")
+    private static <A> List<Constructor<A>> findCreationHandlers(Class<A> aggregateClass) {
+        var handlers = stream(aggregateClass.getDeclaredConstructors())
+            .filter(constructor -> constructor.isAnnotationPresent(CommandHandler.class))
+            .map(constructor -> (Constructor<A>) constructor)
             .toList();
         if (handlers.isEmpty()) {
             throw new IllegalArgumentException("""
-                Invalid aggregate: at least one @CommandHandler method must be declared.
+                Invalid aggregate: at least one @CommandHandler constructor must create the aggregate.
 
                     Aggregate:
                     %s
                 """.formatted(logClass(aggregateClass)));
         }
         return handlers;
+    }
+
+    private static List<Method> findCommandHandlers(Class<?> aggregateClass) {
+        return stream(aggregateClass.getDeclaredMethods())
+            .filter(method -> method.isAnnotationPresent(CommandHandler.class))
+            .toList();
     }
 }

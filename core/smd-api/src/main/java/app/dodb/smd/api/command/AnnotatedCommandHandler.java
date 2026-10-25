@@ -13,6 +13,7 @@ import app.dodb.smd.api.utils.parameterstrategy.ExactlyOneAssignableParameterStr
 import app.dodb.smd.api.utils.parameterstrategy.MetadataValueParameterStrategy;
 import app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy;
 
+import java.lang.reflect.Executable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -26,6 +27,7 @@ import java.util.Set;
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
 import static app.dodb.smd.api.utils.LoggingUtils.logClass;
 import static app.dodb.smd.api.utils.LoggingUtils.logMethod;
+import static app.dodb.smd.api.utils.LoggingUtils.logMethods;
 import static app.dodb.smd.api.utils.MessageArgumentBinder.fromMethodParameters;
 import static app.dodb.smd.api.utils.TypeUtils.haveSameBounds;
 import static app.dodb.smd.api.utils.TypeUtils.resolveGenericType;
@@ -56,6 +58,17 @@ public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provi
     public static CommandHandlerRegistry from(Provider<?> provider) {
         Set<CommandHandlerBehaviour<?, ?>> handlers = new HashSet<>();
         Class<?> clazz = provider.getType();
+        var constructorHandlers = stream(clazz.getDeclaredConstructors())
+            .filter(constructor -> constructor.isAnnotationPresent(CommandHandler.class))
+            .toList();
+        if (!constructorHandlers.isEmpty()) {
+            throw new IllegalArgumentException("""
+                Invalid command handler: @CommandHandler constructors are only supported on event-sourced aggregates.
+
+                    Constructors:
+                    %s
+                """.formatted(logMethods(constructorHandlers)));
+        }
 
         for (Method method : clazz.getDeclaredMethods()) {
             if (method.isAnnotationPresent(CommandHandler.class)) {
@@ -104,6 +117,11 @@ public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provi
         }
 
         return new AnnotatedCommandHandler<>(provider, method, commandType, fromMethodParameters(commandType, parameters));
+    }
+
+    @Override
+    public Executable executable() {
+        return method;
     }
 
     public AnnotatedCommandHandler {

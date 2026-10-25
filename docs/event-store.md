@@ -170,8 +170,8 @@ Crashes and rollbacks can cause redelivery, so handlers must remain idempotent.
 
 ## Event-Sourced Aggregates
 
-An aggregate annotated with `@Aggregate` keeps its state as a stream of events in the store instead of in its own table. SMD loads the stream, replays it into the aggregate,
-calls the command handler, and appends the events it applies:
+An aggregate annotated with `@Aggregate` keeps its state as a stream of events in the store instead of in its own table. A `@CommandHandler` constructor creates the
+aggregate from a command. For later commands, SMD loads the stream, replays it into the aggregate, calls the command handler method, and appends the events it applies:
 
 ```java
 @Aggregate("ticket")
@@ -181,13 +181,12 @@ public class Ticket {
     private UUID ticketId;
     private TicketStatus status;
 
-    protected Ticket() {
+    private Ticket() {
     }
 
     @CommandHandler
-    public UUID handle(OpenTicketCommand command, AggregateEvents<TicketEvent> events) {
+    public Ticket(OpenTicketCommand command, AggregateEvents<TicketEvent> events) {
         events.apply(new TicketOpenedEvent(command.ticketId(), command.title()));
-        return ticketId;
     }
 
     @CommandHandler
@@ -211,6 +210,9 @@ public class Ticket {
     }
 }
 
+public record OpenTicketCommand(UUID ticketId, String title) implements Command<UUID> {
+}
+
 public record AssignTicketCommand(@TargetAggregateId UUID ticketId, String assignee) implements Command<UUID> {
 }
 ```
@@ -219,18 +221,24 @@ public record AssignTicketCommand(@TargetAggregateId UUID ticketId, String assig
 |-------------------------|-----------------------------|----------------------------------------------------------------------------------|
 | `@Aggregate("ticket")`  | class                       | Event-sourced aggregate. The name is stored with every event and must be stable  |
 | `@AggregateId`          | field                       | Identity. Stored as `aggregate_id` and delivered as each event's subject         |
-| `@CommandHandler`       | method                      | Handles a command on the aggregate                                               |
-| `@TargetAggregateId`    | command method or component | Selects the stream to load. A command without it creates a new aggregate         |
+| `@CommandHandler`       | constructor or method       | A constructor creates the aggregate; a method handles later commands             |
+| `@TargetAggregateId`    | command method or component | Selects the stream to load. Required on the commands of handler methods          |
 | `@EventSourcingHandler` | method                      | Applies one event to the aggregate's state. Events without a handler are ignored |
 
-Command handlers take the command and optionally `AggregateEvents`, `MessageId`, `Metadata`, `Principal`, `Instant`, and `@MetadataValue` strings. `events.apply(event)` runs the
-matching `@EventSourcingHandler` immediately, so the handler sees the new state, and records the event for appending. Keep event sourcing handlers free of side effects: they
-also run on every replay. The aggregate needs a no-argument constructor of any visibility; it holds no dependencies and is created for each command.
+Command handlers, constructors and methods alike, are public and take the command and optionally `AggregateEvents`, `MessageId`, `Metadata`, `Principal`, `Instant`, and
+`@MetadataValue` strings. Keep event sourcing handlers free of side effects: they also run on every replay.
+
+- A creating constructor's command returns the aggregate ID, so its result type must match the `@AggregateId` field: `OpenTicketCommand` is a `Command<UUID>`. The constructor must
+  apply at least one event, and its `@EventSourcingHandler`s must assign the ID. Inside the constructor, `events.apply(event)` only records the event; SMD applies it once the
+  constructor returns, so code after `apply` in the constructor does not see the new state.
+- In a handler method, `events.apply(event)` runs the matching `@EventSourcingHandler` immediately, so the method sees the new state, and records the event for appending.
+- The aggregate also needs a no-argument constructor of any visibility to replay its stream. It holds no dependencies and is created for each command.
 
 For each command, in one transaction:
 
-1. A command with `@TargetAggregateId` loads the stream and replays it; an empty stream fails with `AggregateNotFoundException`. A command without it starts from a new instance.
-2. The command handler runs. If it throws, nothing is appended.
+1. A creating command calls its constructor. Any other command loads the stream selected by `@TargetAggregateId` and replays it; an empty stream fails with
+   `AggregateNotFoundException`.
+2. The command handler method runs. If a constructor or method throws, nothing is appended.
 3. Each applied event is published through the event publisher with the next aggregate version, after the loaded version. The event store's inlet stores it with
    `aggregate_type`, `aggregate_id`, and `aggregate_version`; other sinks and processing groups receive it as usual.
 
@@ -239,6 +247,8 @@ version order. Sinks that receive the event directly see only a declared `@Subje
 
 A unique index on `(aggregate_type, aggregate_id, aggregate_version)` guards concurrent changes. When another transaction already stored the same version, storing fails with
 `ConcurrentAggregateChangeException` and the transaction rolls back. SMD does not retry; send the command again to handle it against the new state.
+
+Creating an aggregate whose ID already has a stream fails the same way, with an expected version of 0.
 
 Event storage is deferred until the transaction completes, so a second command for the same aggregate in the same transaction loads the stream without the first command's
 events and fails with `ConcurrentAggregateChangeException`.

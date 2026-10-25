@@ -22,13 +22,12 @@ public class Ticket {
     private UUID ticketId;
     private TicketStatus status;
 
-    protected Ticket() {
+    private Ticket() {
     }
 
     @CommandHandler
-    public UUID handle(OpenTicketCommand command, AggregateEvents<TicketEvent> events) {
+    public Ticket(OpenTicketCommand command, AggregateEvents<TicketEvent> events) {
         events.apply(new TicketOpenedEvent(UUID.randomUUID(), command.title(), command.description()));
-        return ticketId;
     }
 
     @CommandHandler

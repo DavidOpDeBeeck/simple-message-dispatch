@@ -13,21 +13,22 @@ import static java.util.Objects.requireNonNull;
 final class EventSourcedAggregate<A> implements AggregateEvents<Event> {
 
     private final AggregateModel<A> model;
-    private final A instance;
     private final Optional<String> loadedAggregateId;
     private final long loadedVersion;
     private final List<Event> appliedEvents = new ArrayList<>();
+    // Null while a creation constructor runs: its events are applied once the constructor returns the instance.
+    private A instance;
     private boolean handled;
 
     private EventSourcedAggregate(AggregateModel<A> model, A instance, Optional<String> loadedAggregateId, long loadedVersion) {
         this.model = requireNonNull(model);
-        this.instance = requireNonNull(instance);
+        this.instance = instance;
         this.loadedAggregateId = requireNonNull(loadedAggregateId);
         this.loadedVersion = loadedVersion;
     }
 
-    static <A> EventSourcedAggregate<A> create(AggregateModel<A> model) {
-        return new EventSourcedAggregate<>(model, model.newInstance(), Optional.empty(), 0L);
+    static <A> EventSourcedAggregate<A> creating(AggregateModel<A> model) {
+        return new EventSourcedAggregate<>(model, null, Optional.empty(), 0L);
     }
 
     static <A> EventSourcedAggregate<A> replay(AggregateModel<A> model, String aggregateId, List<Event> history) {
@@ -51,8 +52,15 @@ final class EventSourcedAggregate<A> implements AggregateEvents<Event> {
                 """.formatted(logClass(model.aggregateClass()), logClass(event.getClass())));
         }
 
-        model.applyEvent(instance, event);
+        if (instance != null) {
+            model.applyEvent(instance, event);
+        }
         appliedEvents.add(event);
+    }
+
+    void created(A instance) {
+        this.instance = requireNonNull(instance);
+        appliedEvents.forEach(event -> model.applyEvent(instance, event));
     }
 
     A instance() {

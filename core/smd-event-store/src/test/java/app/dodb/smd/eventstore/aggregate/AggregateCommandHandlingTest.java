@@ -1,5 +1,6 @@
 package app.dodb.smd.eventstore.aggregate;
 
+import app.dodb.smd.api.command.Command;
 import app.dodb.smd.api.command.CommandHandler;
 import app.dodb.smd.api.command.CommandMessage;
 import app.dodb.smd.api.command.bus.CommandBus;
@@ -56,7 +57,7 @@ class AggregateCommandHandlingTest {
     }
 
     @Test
-    void send_commandWithoutTargetAggregateId_createsStreamAtVersionOne() {
+    void send_creatingCommand_createsStreamAtVersionOneAndReturnsAggregateId() {
         UUID result = commandBus.send(new OpenTestTicketCommand(TICKET_ID, "Cannot sign in"));
 
         assertThat(result).isEqualTo(TICKET_ID);
@@ -78,6 +79,33 @@ class AggregateCommandHandlingTest {
             new TestTicketAssignedEvent(TICKET_ID, "alice"),
             new TestTicketResolvedEvent(TICKET_ID, "Reset mail resent")
         );
+    }
+
+    @Test
+    void send_creatingCommandForExistingAggregate_throwsConcurrentAggregateChange() {
+        commandBus.send(new OpenTestTicketCommand(TICKET_ID, "Cannot sign in"));
+
+        assertThatThrownBy(() -> commandBus.send(new OpenTestTicketCommand(TICKET_ID, "Opened twice")))
+            .isInstanceOfSatisfying(ConcurrentAggregateChangeException.class, exception -> {
+                assertThat(exception.aggregateId()).isEqualTo(TICKET_ID.toString());
+                assertThat(exception.expectedVersion()).isZero();
+            });
+
+        assertThat(stream(TICKET_ID)).containsExactly(new TestTicketOpenedEvent(TICKET_ID, "Cannot sign in"));
+    }
+
+    @Test
+    void send_creatingConstructorApplyingNoEvents_failsAndStoresNothing() {
+        var eventlessCommandBus = CommandBusSpec.withDefaults()
+            .commandHandlers(eventStore.aggregateCommandHandlers(List.of(EventlessAggregate.class), eventBus(true)))
+            .create();
+
+        assertThatThrownBy(() -> eventlessCommandBus.send(new OpenTestTicketCommand(TICKET_ID, "Cannot sign in")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("the constructor applied no events")
+            .hasMessageContaining(EventlessAggregate.class.getName());
+
+        assertThat(eventStorage.events()).isEmpty();
     }
 
     @Test
@@ -176,6 +204,36 @@ class AggregateCommandHandlingTest {
     }
 
     @Test
+    void locate_aggregateWithoutCreatingConstructor_fails() {
+        var locator = eventStore.aggregateCommandHandlers(List.of(AggregateWithoutCreatingConstructor.class), eventBus(true));
+
+        assertThatThrownBy(locator::locate)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("at least one @CommandHandler constructor must create the aggregate")
+            .hasMessageContaining(AggregateWithoutCreatingConstructor.class.getName());
+    }
+
+    @Test
+    void locate_methodHandlerWithoutTargetAggregateId_fails() {
+        var locator = eventStore.aggregateCommandHandlers(List.of(AggregateWithUntargetedCommand.class), eventBus(true));
+
+        assertThatThrownBy(locator::locate)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("the command must declare @TargetAggregateId")
+            .hasMessageContaining(ReopenTestTicketCommand.class.getName());
+    }
+
+    @Test
+    void locate_creatingCommandNotReturningAggregateId_fails() {
+        var locator = eventStore.aggregateCommandHandlers(List.of(AggregateWithWrongCreationResult.class), eventBus(true));
+
+        assertThatThrownBy(locator::locate)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("a creating command must return the aggregate ID")
+            .hasMessageContaining(AggregateWithWrongCreationResult.class.getName());
+    }
+
+    @Test
     void locate_aggregateWithoutAggregateId_fails() {
         var locator = eventStore.aggregateCommandHandlers(List.of(AggregateWithoutId.class), eventBus(true));
 
@@ -220,10 +278,75 @@ class AggregateCommandHandlingTest {
     @Aggregate("without-id")
     public static class AggregateWithoutId {
 
-        @CommandHandler
-        public UUID handle(OpenTestTicketCommand command) {
-            return null;
+        private AggregateWithoutId() {
         }
+
+        @CommandHandler
+        public AggregateWithoutId(OpenTestTicketCommand command) {
+        }
+    }
+
+    @Aggregate("without-creating-constructor")
+    public static class AggregateWithoutCreatingConstructor {
+
+        @AggregateId
+        private UUID id;
+
+        @CommandHandler
+        public UUID handle(ResolveTestTicketCommand command) {
+            return id;
+        }
+    }
+
+    @Aggregate("untargeted")
+    public static class AggregateWithUntargetedCommand {
+
+        @AggregateId
+        private UUID id;
+
+        private AggregateWithUntargetedCommand() {
+        }
+
+        @CommandHandler
+        public AggregateWithUntargetedCommand(OpenTestTicketCommand command, AggregateEvents<Event> events) {
+            events.apply(new TestTicketOpenedEvent(command.ticketId(), command.title()));
+        }
+
+        @CommandHandler
+        public UUID handle(ReopenTestTicketCommand command) {
+            return id;
+        }
+    }
+
+    @Aggregate("wrong-creation-result")
+    public static class AggregateWithWrongCreationResult {
+
+        @AggregateId
+        private UUID id;
+
+        private AggregateWithWrongCreationResult() {
+        }
+
+        @CommandHandler
+        public AggregateWithWrongCreationResult(AssignTestTicketCommand command) {
+        }
+    }
+
+    @Aggregate("eventless")
+    public static class EventlessAggregate {
+
+        @AggregateId
+        private UUID id;
+
+        private EventlessAggregate() {
+        }
+
+        @CommandHandler
+        public EventlessAggregate(OpenTestTicketCommand command) {
+        }
+    }
+
+    public record ReopenTestTicketCommand(UUID ticketId) implements Command<UUID> {
     }
 
     // Joins an outer transaction and runs deferred work when the outermost transaction completes, like SpringTransactionProvider.

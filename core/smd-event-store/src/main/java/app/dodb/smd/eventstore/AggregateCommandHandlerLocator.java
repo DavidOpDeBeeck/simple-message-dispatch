@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static app.dodb.smd.api.utils.LoggingUtils.logClass;
 import static java.util.Objects.requireNonNull;
@@ -45,10 +46,18 @@ final class AggregateCommandHandlerLocator implements CommandHandlerLocator {
                         %s, %s
                     """.formatted(model.aggregateType(), logClass(duplicate), logClass(aggregateClass)));
             }
-            model.commandHandlers().forEach(method -> handlers.add(AggregateCommandHandler.from(model, method, config, eventPublisher)));
+            handlers.addAll(commandHandlers(model));
         }
 
         LOGGER.info("Located {} aggregate command handlers on aggregates {}", handlers.size(), aggregateClassesByType.keySet());
         return new CommandHandlerRegistry(handlers);
+    }
+
+    private <A> List<CommandHandlerBehaviour<?, ?>> commandHandlers(AggregateModel<A> model) {
+        var creationHandlers = model.creationHandlers().stream()
+            .map(constructor -> AggregateCommandHandler.creating(model, constructor, config, eventPublisher));
+        var commandHandlers = model.commandHandlers().stream()
+            .map(method -> AggregateCommandHandler.handling(model, method, config, eventPublisher));
+        return Stream.<CommandHandlerBehaviour<?, ?>>concat(creationHandlers, commandHandlers).toList();
     }
 }

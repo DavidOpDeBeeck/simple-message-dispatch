@@ -140,6 +140,14 @@ class AnnotatedCommandHandlerTest {
             .hasMessageStartingWith("Invalid command handler: method must be public.");
     }
 
+    @Test
+    void handle_withAnnotatedConstructor() {
+        assertThatThrownBy(() -> AnnotatedCommandHandler.from(new ConstructorCommandHandler()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageStartingWith("Invalid command handler: @CommandHandler constructors are only supported on event-sourced aggregates.")
+            .hasMessageContaining(ConstructorCommandHandler.class.getName());
+    }
+
     public record CommandForTest() implements Command<String> {
     }
 
@@ -297,6 +305,16 @@ class AnnotatedCommandHandlerTest {
         @CommandHandler
         String handle(CommandForTest command) {
             return "";
+        }
+    }
+
+    public static class ConstructorCommandHandler {
+
+        public ConstructorCommandHandler() {
+        }
+
+        @CommandHandler
+        public ConstructorCommandHandler(CommandForTest command) {
         }
     }
 }

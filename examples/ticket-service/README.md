@@ -24,7 +24,7 @@ HTTP -> CommandGateway -> Ticket (replayed from its stream)
                                             `-> ticket-activity
 ```
 
-`OpenTicketCommand` has no `@TargetAggregateId`, so it starts a new stream. `AssignTicketCommand` and `ResolveTicketCommand` target an existing ticket: an unknown ticket fails with
+`Ticket`'s `@CommandHandler` constructor handles `OpenTicketCommand` and starts a new stream. `AssignTicketCommand` and `ResolveTicketCommand` target an existing ticket: an unknown ticket fails with
 `AggregateNotFoundException` (404), and a concurrent change of the same version fails with `ConcurrentAggregateChangeException` (409).
 
 The controller adds the required `X-Customer-Id` header to message metadata. Nested events inherit that property and receive a parent message ID. `MessageLoggingInterceptor` logs the message type,

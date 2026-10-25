@@ -17,6 +17,8 @@ import app.dodb.smd.eventstore.aggregate.TargetAggregateId;
 import app.dodb.smd.eventstore.storage.AggregateRevision;
 import app.dodb.smd.eventstore.storage.EventStorage;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -43,7 +45,7 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
     private static final List<Class<?>> CONTEXT_PARAMETER_TYPES = List.of(MessageId.class, Metadata.class, Principal.class, Instant.class);
 
     private final AggregateModel<A> model;
-    private final Method method;
+    private final Executable executable;
     private final Class<C> commandType;
     private final MessageArgumentBinder<C, CommandMessage<R, C>> argumentBinder;
     private final OptionalInt aggregateEventsParameterIndex;
@@ -54,16 +56,16 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
     private final EventPublisher eventPublisher;
 
     private AggregateCommandHandler(AggregateModel<A> model,
-                                    Method method,
+                                    Executable executable,
                                     Class<C> commandType,
                                     OptionalInt aggregateEventsParameterIndex,
                                     Optional<Method> targetAggregateIdAccessor,
                                     EventStoreConfig config,
                                     EventPublisher eventPublisher) {
         this.model = requireNonNull(model);
-        this.method = requireNonNull(method);
+        this.executable = requireNonNull(executable);
         this.commandType = requireNonNull(commandType);
-        this.argumentBinder = fromMethodParameters(commandType, method.getParameters());
+        this.argumentBinder = fromMethodParameters(commandType, executable.getParameters());
         this.aggregateEventsParameterIndex = requireNonNull(aggregateEventsParameterIndex);
         this.targetAggregateIdAccessor = requireNonNull(targetAggregateIdAccessor);
         this.transactionProvider = config.getTransactionProvider();
@@ -72,25 +74,41 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
         this.eventPublisher = requireNonNull(eventPublisher);
     }
 
-    @SuppressWarnings("unchecked")
-    static <A> AggregateCommandHandler<?, ?, A> from(AggregateModel<A> model, Method method, EventStoreConfig config, EventPublisher eventPublisher) {
-        if (!Modifier.isPublic(method.getModifiers()) || Modifier.isStatic(method.getModifiers())) {
+    static <A> AggregateCommandHandler<?, ?, A> creating(AggregateModel<A> model, Constructor<A> constructor, EventStoreConfig config, EventPublisher eventPublisher) {
+        var commandType = commandType(constructor);
+        var commandReturnType = resolveGenericType(commandType, Command.class);
+        if (!haveSameBounds(model.aggregateIdType(), commandReturnType)) {
             throw new IllegalArgumentException("""
-                Invalid aggregate command handler: the method must be public and non-static.
+                Invalid aggregate command handler: a creating command must return the aggregate ID.
+
+                    Constructor:
+                    %s
+
+                    Expected:
+                    %s
+
+                    Found:
+                    %s
+                """.formatted(logMethod(constructor), logClass(model.aggregateIdType()), logClass(commandReturnType)));
+        }
+        if (!constructor.trySetAccessible()) {
+            throw new IllegalArgumentException("Invalid aggregate command handler: the constructor is not accessible: " + logMethod(constructor));
+        }
+
+        return from(model, constructor, commandType, Optional.empty(), config, eventPublisher);
+    }
+
+    static <A> AggregateCommandHandler<?, ?, A> handling(AggregateModel<A> model, Method method, EventStoreConfig config, EventPublisher eventPublisher) {
+        if (Modifier.isStatic(method.getModifiers())) {
+            throw new IllegalArgumentException("""
+                Invalid aggregate command handler: the method must be non-static.
 
                     Method:
                     %s
                 """.formatted(logMethod(method)));
         }
 
-        var parameters = method.getParameters();
-        validateParameters(method, parameters);
-
-        var commandType = (Class<? extends Command<?>>) stream(parameters)
-            .map(Parameter::getType)
-            .filter(Command.class::isAssignableFrom)
-            .findFirst()
-            .orElseThrow();
+        var commandType = commandType(method);
         var commandReturnType = resolveGenericType(commandType, Command.class);
         var methodReturnType = method.getGenericReturnType();
         if (!haveSameBounds(methodReturnType, commandReturnType)) {
@@ -108,11 +126,55 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
                 """.formatted(logMethod(method), logClass(commandReturnType), logClass(methodReturnType)));
         }
 
+        var targetAggregateIdAccessor = findTargetAggregateIdAccessor(commandType);
+        if (targetAggregateIdAccessor.isEmpty()) {
+            throw new IllegalArgumentException("""
+                Invalid aggregate command handler: the command must declare @TargetAggregateId to select the aggregate.
+                A @CommandHandler constructor creates the aggregate instead.
+
+                    Method:
+                    %s
+
+                    Command:
+                    %s
+                """.formatted(logMethod(method), logClass(commandType)));
+        }
+
+        return from(model, method, commandType, targetAggregateIdAccessor, config, eventPublisher);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static <A> AggregateCommandHandler<?, ?, A> from(AggregateModel<A> model,
+                                                             Executable executable,
+                                                             Class<? extends Command<?>> commandType,
+                                                             Optional<Method> targetAggregateIdAccessor,
+                                                             EventStoreConfig config,
+                                                             EventPublisher eventPublisher) {
+        var parameters = executable.getParameters();
         var aggregateEventsParameterIndex = IntStream.range(0, parameters.length)
             .filter(index -> parameters[index].getType() == AggregateEvents.class)
             .findFirst();
-        return new AggregateCommandHandler<>(model, method, (Class) commandType, aggregateEventsParameterIndex, findTargetAggregateIdAccessor(commandType),
-            config, eventPublisher);
+        return new AggregateCommandHandler<>(model, executable, (Class) commandType, aggregateEventsParameterIndex, targetAggregateIdAccessor, config, eventPublisher);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Class<? extends Command<?>> commandType(Executable executable) {
+        if (!Modifier.isPublic(executable.getModifiers())) {
+            throw new IllegalArgumentException("""
+                Invalid aggregate command handler: the handler must be public.
+
+                    Handler:
+                    %s
+                """.formatted(logMethod(executable)));
+        }
+
+        var parameters = executable.getParameters();
+        validateParameters(executable, parameters);
+        return (Class<? extends Command<?>>) stream(parameters)
+            .map(Parameter::getType)
+            .filter(Command.class::isAssignableFrom)
+            .findFirst()
+            .orElseThrow();
     }
 
     @Override
@@ -121,21 +183,43 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
     }
 
     @Override
-    public Method method() {
-        return method;
+    public Executable executable() {
+        return executable;
     }
 
     @Override
     public R handle(CommandMessage<R, C> commandMessage) {
-        return transactionProvider.doInTransaction(() -> {
-            var aggregate = targetAggregateId(commandMessage.payload())
-                .map(this::load)
-                .orElseGet(() -> EventSourcedAggregate.create(model));
+        return transactionProvider.doInTransaction(() -> executable instanceof Constructor<?> constructor
+            ? create(constructor, commandMessage)
+            : update((Method) executable, commandMessage));
+    }
 
-            var result = invoke(aggregate, commandMessage);
-            append(aggregate, aggregate.completeHandling());
-            return result;
-        });
+    @SuppressWarnings("unchecked")
+    private R create(Constructor<?> constructor, CommandMessage<R, C> commandMessage) {
+        var aggregate = EventSourcedAggregate.creating(model);
+        var instance = (A) invoke(() -> constructor.newInstance(arguments(aggregate, commandMessage)));
+        aggregate.created(instance);
+
+        var appliedEvents = aggregate.completeHandling();
+        if (appliedEvents.isEmpty()) {
+            throw new IllegalStateException("""
+                Invalid aggregate creation: the constructor applied no events, so there is no stream to store.
+
+                    Constructor:
+                    %s
+                """.formatted(logMethod(constructor)));
+        }
+
+        append(aggregate, appliedEvents);
+        return (R) model.aggregateIdValue(instance).orElseThrow();
+    }
+
+    @SuppressWarnings("unchecked")
+    private R update(Method method, CommandMessage<R, C> commandMessage) {
+        var aggregate = load(targetAggregateId(commandMessage.payload()));
+        var result = (R) invoke(() -> method.invoke(aggregate.instance(), arguments(aggregate, commandMessage)));
+        append(aggregate, aggregate.completeHandling());
+        return result;
     }
 
     private EventSourcedAggregate<A> load(String aggregateId) {
@@ -150,16 +234,19 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
         return EventSourcedAggregate.replay(model, aggregateId, events);
     }
 
-    @SuppressWarnings("unchecked")
-    private R invoke(EventSourcedAggregate<A> aggregate, CommandMessage<R, C> commandMessage) {
+    private Object[] arguments(EventSourcedAggregate<A> aggregate, CommandMessage<R, C> commandMessage) {
         var arguments = argumentBinder.toArguments(commandMessage);
         aggregateEventsParameterIndex.ifPresent(index -> arguments[index] = aggregate);
+        return arguments;
+    }
+
+    private Object invoke(ReflectiveCall call) {
         try {
-            return (R) method.invoke(aggregate.instance(), arguments);
+            return call.invoke();
         } catch (InvocationTargetException e) {
             throw rethrow(e.getCause());
-        } catch (IllegalAccessException e) {
-            throw new IllegalStateException("Failed to invoke aggregate command handler: " + logMethod(method), e);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to invoke aggregate command handler: " + logMethod(executable), e);
         }
     }
 
@@ -182,7 +269,7 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
 
                 Command handler:
                 %s
-            """.formatted(logMethod(method))));
+            """.formatted(logMethod(executable))));
 
         var loadedAggregateId = aggregate.loadedAggregateId();
         if (loadedAggregateId.isPresent() && !loadedAggregateId.get().equals(aggregateId)) {
@@ -197,35 +284,34 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
 
                     Found:
                     %s
-                """.formatted(logMethod(method), loadedAggregateId.get(), aggregateId));
+                """.formatted(logMethod(executable), loadedAggregateId.get(), aggregateId));
         }
         return aggregateId;
     }
 
-    private Optional<String> targetAggregateId(C command) {
-        return targetAggregateIdAccessor.map(accessor -> {
-            Object value;
-            try {
-                value = accessor.invoke(command);
-            } catch (InvocationTargetException | IllegalAccessException e) {
-                throw new IllegalArgumentException("Failed to resolve @TargetAggregateId: " + logMethod(accessor), e);
-            }
-            if (value == null || value.toString().isBlank()) {
-                throw new IllegalArgumentException("""
-                    Invalid command: @TargetAggregateId must resolve to a non-blank value.
+    private String targetAggregateId(C command) {
+        var accessor = targetAggregateIdAccessor.orElseThrow();
+        Object value;
+        try {
+            value = accessor.invoke(command);
+        } catch (InvocationTargetException | IllegalAccessException e) {
+            throw new IllegalArgumentException("Failed to resolve @TargetAggregateId: " + logMethod(accessor), e);
+        }
+        if (value == null || value.toString().isBlank()) {
+            throw new IllegalArgumentException("""
+                Invalid command: @TargetAggregateId must resolve to a non-blank value.
 
-                        Command:
-                        %s
+                    Command:
+                    %s
 
-                        Accessor:
-                        %s
-                    """.formatted(logClass(commandType), logMethod(accessor)));
-            }
-            return value.toString();
-        });
+                    Accessor:
+                    %s
+                """.formatted(logClass(commandType), logMethod(accessor)));
+        }
+        return value.toString();
     }
 
-    private static void validateParameters(Method method, Parameter[] parameters) {
+    private static void validateParameters(Executable executable, Parameter[] parameters) {
         var commandParameterCount = stream(parameters).filter(parameter -> Command.class.isAssignableFrom(parameter.getType())).count();
         var aggregateEventsParameterCount = stream(parameters).filter(parameter -> parameter.getType() == AggregateEvents.class).count();
         var unsupportedParameters = stream(parameters)
@@ -240,9 +326,9 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
                 Invalid aggregate command handler: expected exactly one command parameter, at most one AggregateEvents parameter,
                 and otherwise only MessageId, Metadata, Principal, Instant, or @MetadataValue String parameters.
 
-                    Method:
+                    Handler:
                     %s
-                """.formatted(logMethod(method)));
+                """.formatted(logMethod(executable)));
         }
     }
 
@@ -272,5 +358,11 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
                 """.formatted(logClass(commandType), logMethods(accessors)));
         }
         return Optional.of(accessor);
+    }
+
+    @FunctionalInterface
+    private interface ReflectiveCall {
+
+        Object invoke() throws ReflectiveOperationException;
     }
 }

@@ -23,10 +23,12 @@
   tracing records it as `messaging.smd.route`. A bus no longer needs processing groups. See [Route Between Media](docs/core-api.md#route-between-media).
 - **Breaking:** `EventSubscriber.processingGroup()` is now `EventSubscriber.name()`, because routes subscribe as well as processing groups.
 - Added event-sourced aggregates in `smd-event-store` (`app.dodb.smd.eventstore.aggregate`): `@Aggregate`, `@AggregateId`, `@TargetAggregateId`, `@EventSourcingHandler`, and
-  `AggregateEvents`. `EventStore.aggregateCommandHandlers(...)` loads and replays an aggregate's stream for each command and appends the applied events with a per-aggregate
-  version; a concurrent change of the same version fails with `ConcurrentAggregateChangeException`. Applied events need no `@SubjectId`: the store records the aggregate ID and
-  delivers it as the subject. The schema adds `aggregate_type`, `aggregate_version`, and the `smd_event_store_aggregate_stream` index. `EventStorage` adds
-  `append(event, revision)` and `loadAggregateStream(...)`. See [Event-Sourced Aggregates](docs/event-store.md#event-sourced-aggregates).
+  `AggregateEvents`. A `@CommandHandler` constructor creates the aggregate and its command returns the aggregate ID; `@CommandHandler` methods handle commands that select an
+  existing aggregate with `@TargetAggregateId`, and a no-argument constructor replays it. `EventStore.aggregateCommandHandlers(...)` loads and replays an aggregate's stream for
+  each command and appends the applied events with a per-aggregate version; a concurrent change of the same version fails with `ConcurrentAggregateChangeException`.
+  Applied events need no `@SubjectId`: the store records the aggregate ID and delivers it as the subject. The schema adds `aggregate_type`, `aggregate_version`, and the
+  `smd_event_store_aggregate_stream` index. `EventStorage` adds `append(event, revision)` and `loadAggregateStream(...)`. See
+  [Event-Sourced Aggregates](docs/event-store.md#event-sourced-aggregates).
 - **Breaking:** the event store uses domain-driven design names, and SMD maps them to messages: `aggregate_id` is the subject and `global_position` the delivered sequence
   number. See [Store Model](docs/event-store.md#store-model). Existing databases need the upgrade in [Schema and Upgrades](docs/event-store.md#schema-and-upgrades).
   - `smd_event_store` renames `message_id`, `subject_id`, `serialized_payload`, `serialized_metadata`, `created_at`, and `sequence_number` to `event_id`, `aggregate_id`,
@@ -38,7 +40,8 @@
     `PostgresEventSequenceStore` and `InMemoryEventSequenceStore`. `claimSubject(...)` is now `claimAggregate(...)`, and `EventSequenceState.subjectId()` is `aggregateId()`.
   - `lastProcessedSequenceNumber()` is now `lastProcessedPosition()` on `Token`, `TokenState`, `EventSequence`, and `EventSequenceState`; `TokenState.gapSequenceNumber()` is
     `gapPosition()`.
-- `CommandHandlerRegistry` holds any `CommandHandlerBehaviour`, which now exposes `method()`. `PackageBasedCommandHandlerLocator` accepts a filter for handler classes.
+- `CommandHandlerRegistry` holds any `CommandHandlerBehaviour`, which now exposes the handling constructor or method as `executable()`. `@CommandHandler` may annotate
+  constructors, which only aggregates support; a handler class with one fails discovery. `PackageBasedCommandHandlerLocator` accepts a filter for handler classes.
 - The Spring Boot starter registers the command handlers of `@Aggregate` classes in the `@EnableSMD` packages when the event store is enabled. The default
   `CommandHandlerLocator` bean is now `@ConditionalOnMissingBean`.
 
