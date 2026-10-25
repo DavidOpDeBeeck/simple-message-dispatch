@@ -18,6 +18,7 @@
 - **Breaking:** `ConnectionProvider` moved from `app.dodb.smd.eventstore.storage` to `app.dodb.smd.api.framework`, `RetryBackoffStrategy` from `app.dodb.smd.eventstore` to
   `app.dodb.smd.api.event.delivery`, and `SpringConnectionProvider` from `app.dodb.smd.spring.eventstore` to `app.dodb.smd.spring`. Only imports change.
 - **Breaking:** `EventSubscriber.processingGroup()` is now `EventSubscriber.name()`.
+- `EventSelector.eventType` accepts several event types, and `EventSelector.eventPackage(Package)` selects events in a package and its subpackages.
 
 ## [0.0.12] - 2026-10-19
 

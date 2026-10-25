@@ -3,14 +3,28 @@ package app.dodb.smd.api.event.delivery;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static java.util.Objects.requireNonNull;
 
 @FunctionalInterface
 public interface EventSelector {
 
-    static EventSelector eventType(Class<? extends Event> eventType) {
-        var selectedEventType = requireNonNull(eventType);
-        return eventMessage -> selectedEventType.isInstance(eventMessage.payload());
+    @SafeVarargs
+    static EventSelector eventType(Class<? extends Event> eventType, Class<? extends Event>... moreEventTypes) {
+        var selectedEventTypes = new ArrayList<Class<? extends Event>>();
+        selectedEventTypes.add(requireNonNull(eventType));
+        selectedEventTypes.addAll(List.of(moreEventTypes));
+        return eventMessage -> selectedEventTypes.stream().anyMatch(selected -> selected.isInstance(eventMessage.payload()));
+    }
+
+    static EventSelector eventPackage(Package eventPackage) {
+        var packageName = eventPackage.getName();
+        return eventMessage -> {
+            var payloadPackage = eventMessage.payload().getClass().getPackageName();
+            return payloadPackage.equals(packageName) || payloadPackage.startsWith(packageName + ".");
+        };
     }
 
     static EventSelector metadataProperty(String propertyName) {

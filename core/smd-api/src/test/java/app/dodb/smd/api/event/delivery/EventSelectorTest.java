@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
+import static app.dodb.smd.api.event.delivery.EventSelector.eventPackage;
 import static app.dodb.smd.api.event.delivery.EventSelector.eventType;
 import static app.dodb.smd.api.event.delivery.EventSelector.metadataProperty;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.METADATA;
@@ -29,6 +30,50 @@ class EventSelectorTest {
         var selector = eventType(AuditEvent.class);
 
         var selected = selector.selects(message(new OtherEvent()));
+
+        assertThat(selected).isFalse();
+    }
+
+    @Test
+    void eventType_withSeveralTypes_thenSelectsEachOfThem() {
+        var selector = eventType(AuditedEvent.class, OtherEvent.class);
+
+        assertThat(selector.selects(message(new AuditedEvent()))).isTrue();
+        assertThat(selector.selects(message(new OtherEvent()))).isTrue();
+    }
+
+    @Test
+    void eventType_withSeveralTypes_thenDoesNotSelectOtherEvents() {
+        var selector = eventType(AuditEvent.class, AuditedEvent.class);
+
+        var selected = selector.selects(message(new OtherEvent()));
+
+        assertThat(selected).isFalse();
+    }
+
+    @Test
+    void eventPackage_withEventInPackage_thenSelectsEvent() {
+        var selector = eventPackage(AuditedEvent.class.getPackage());
+
+        var selected = selector.selects(message(new AuditedEvent()));
+
+        assertThat(selected).isTrue();
+    }
+
+    @Test
+    void eventPackage_withEventInSubpackage_thenSelectsEvent() {
+        var selector = eventPackage(Event.class.getPackage());
+
+        var selected = selector.selects(message(new AuditedEvent()));
+
+        assertThat(selected).isTrue();
+    }
+
+    @Test
+    void eventPackage_withEventInOtherPackage_thenDoesNotSelectEvent() {
+        var selector = eventPackage(Test.class.getPackage());
+
+        var selected = selector.selects(message(new AuditedEvent()));
 
         assertThat(selected).isFalse();
     }

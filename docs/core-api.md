@@ -195,7 +195,8 @@ Publishing sends to `auditSink` and the synchronous groups. Billing receives onl
 
 The built-in media are `SynchronousEventDispatcher`, `ConcurrentEventDispatcher`, and `FireAndForgetEventDispatcher`; `.sync()` and `.async()` configure them.
 
-Use `.selecting(selector)` to filter a sink, source, or both directions of a medium. `EventSelector` supports assignable event types, metadata-property presence or values, and custom lambdas.
+Use `.selecting(selector)` to filter a sink, source, or both directions of a medium. `EventSelector` supports assignable event types (`eventType(A.class, B.class)`), event packages and their subpackages
+(`eventPackage(TicketEvent.class.getPackage())`), metadata-property presence or values, and custom lambdas.
 Combine selectors with `and(...)`, `or(...)`, and `negate()`:
 
 ```java
