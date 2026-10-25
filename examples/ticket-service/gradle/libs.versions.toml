@@ -1,5 +1,5 @@
 [versions]
-smd = "0.0.12"
+smd = "0.0.13"
 assertj = "3.27.7"
 awaitility = "4.3.0"
 junit = "6.0.3"

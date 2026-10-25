@@ -60,7 +60,8 @@ This keeps the domain and use cases independent of the REST and JDBC adapters wh
 
 You need Java 25 and Docker with the Compose plugin.
 
-To use local SMD changes, publish them from the repository root before running the example:
+The example builds against the SMD version in [`gradle/libs.versions.toml`](gradle/libs.versions.toml). To use local SMD changes, or a version not yet released, publish it
+from the repository root before running the example:
 
 ```bash
 ./gradlew publishToMavenLocal
