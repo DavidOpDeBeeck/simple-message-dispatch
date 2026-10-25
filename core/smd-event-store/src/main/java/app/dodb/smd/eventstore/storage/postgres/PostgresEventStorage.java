@@ -2,6 +2,8 @@ package app.dodb.smd.eventstore.storage.postgres;
 
 import app.dodb.smd.api.framework.ConnectionProvider;
 import app.dodb.smd.api.message.MessageId;
+import app.dodb.smd.eventstore.aggregate.ConcurrentAggregateChangeException;
+import app.dodb.smd.eventstore.storage.AggregateRevision;
 import app.dodb.smd.eventstore.storage.Cursor;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.EventStorageException;
@@ -14,7 +16,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
@@ -58,6 +62,39 @@ public class PostgresEventStorage implements EventStorage {
     }
 
     @Override
+    public void store(SerializedEvent event, AggregateRevision revision) {
+        connectionProvider.doWithConnection(connection -> {
+            // A concurrent writer of the same aggregate version makes ON CONFLICT wait for its outcome:
+            // a commit leaves this insert without a row, a rollback lets it proceed.
+            try (PreparedStatement stmt = connection.prepareStatement("""
+                INSERT INTO smd_event_store
+                    (message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at, aggregate_type, aggregate_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (aggregate_type, subject_id, aggregate_version) WHERE aggregate_type IS NOT NULL DO NOTHING
+                """)) {
+                stmt.setObject(1, event.messageId().value());
+                stmt.setString(2, revision.aggregateId());
+                stmt.setString(3, event.eventType());
+                stmt.setBytes(4, event.serializedPayload());
+                stmt.setBytes(5, event.serializedMetadata());
+                stmt.setTimestamp(6, Timestamp.from(event.createdAt()));
+                stmt.setString(7, revision.aggregateType());
+                stmt.setLong(8, revision.version());
+
+                if (stmt.executeUpdate() != 1) {
+                    throw new ConcurrentAggregateChangeException(revision.aggregateType(), revision.aggregateId(), revision.expectedVersion());
+                }
+
+                LOGGER.debug("Stored aggregate event: messageId={}, aggregateType={}, aggregateId={}, version={}",
+                    event.messageId(), revision.aggregateType(), revision.aggregateId(), revision.version());
+            } catch (SQLException e) {
+                throw new EventStorageException("Failed to store aggregate event: messageId=%s, aggregateType=%s, aggregateId=%s, version=%d"
+                    .formatted(event.messageId(), revision.aggregateType(), revision.aggregateId(), revision.version()), e);
+            }
+        });
+    }
+
+    @Override
     public Cursor<SerializedEvent> load(long lastProcessedSequenceNumber, int limit) {
         return connectionProvider.doWithConnection(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
@@ -80,6 +117,30 @@ public class PostgresEventStorage implements EventStorage {
                 return cursor(events);
             } catch (SQLException e) {
                 throw new EventStorageException("Failed to load events: lastProcessedSequenceNumber=" + lastProcessedSequenceNumber, e);
+            }
+        });
+    }
+
+    @Override
+    public List<SerializedEvent> loadAggregateStream(String aggregateType, String aggregateId) {
+        return connectionProvider.doWithConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at, sequence_number
+                FROM smd_event_store
+                WHERE aggregate_type = ? AND subject_id = ?
+                ORDER BY aggregate_version
+                """)) {
+                statement.setString(1, aggregateType);
+                statement.setString(2, aggregateId);
+
+                var resultSet = statement.executeQuery();
+                var events = new ArrayList<SerializedEvent>();
+                while (resultSet.next()) {
+                    events.add(mapToSerializedEvent(resultSet));
+                }
+                return List.copyOf(events);
+            } catch (SQLException e) {
+                throw new EventStorageException("Failed to load aggregate stream: aggregateType=%s, aggregateId=%s".formatted(aggregateType, aggregateId), e);
             }
         });
     }

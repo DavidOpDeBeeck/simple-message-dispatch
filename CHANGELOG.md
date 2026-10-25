@@ -22,6 +22,13 @@
   Spring Boot. The bus subscribes them after its processing groups and sends through the sink interceptors; `EventSinkContext.route()` names the route, and
   tracing records it as `messaging.smd.route`. A bus no longer needs processing groups. See [Route Between Media](docs/core-api.md#route-between-media).
 - **Breaking:** `EventSubscriber.processingGroup()` is now `EventSubscriber.name()`, because routes subscribe as well as processing groups.
+- Added event-sourced aggregates in `smd-event-store` (`app.dodb.smd.eventstore.aggregate`): `@Aggregate`, `@AggregateId`, `@TargetAggregateId`, `@EventSourcingHandler`, and
+  `AggregateEvents`. `EventStore.aggregateCommandHandlers(...)` loads and replays an aggregate's stream for each command and appends the applied events with a per-aggregate
+  version; a concurrent change of the same version fails with `ConcurrentAggregateChangeException`. The schema adds `aggregate_type`, `aggregate_version`, and the
+  `smd_event_store_aggregate_stream` index. `EventStorage` adds `store(event, revision)` and `loadAggregateStream(...)`. See [Event-Sourced Aggregates](docs/event-store.md#event-sourced-aggregates).
+- `CommandHandlerRegistry` holds any `CommandHandlerBehaviour`, which now exposes `method()`. `PackageBasedCommandHandlerLocator` accepts a filter for handler classes.
+- The Spring Boot starter registers the command handlers of `@Aggregate` classes in the `@EnableSMD` packages when the event store is enabled. The default
+  `CommandHandlerLocator` bean is now `@ConditionalOnMissingBean`.
 
 ## [0.0.12] - 2026-10-19
 

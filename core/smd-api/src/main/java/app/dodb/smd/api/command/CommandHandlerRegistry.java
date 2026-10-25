@@ -10,7 +10,7 @@ import static app.dodb.smd.api.utils.CollectionUtils.combine;
 import static app.dodb.smd.api.utils.LoggingUtils.logClass;
 import static java.util.Objects.requireNonNull;
 
-public record CommandHandlerRegistry(Set<AnnotatedCommandHandler<?, ?>> commandHandlers) {
+public record CommandHandlerRegistry(Set<CommandHandlerBehaviour<?, ?>> commandHandlers) {
 
     public static CommandHandlerRegistry empty() {
         return new CommandHandlerRegistry(new HashSet<>());
@@ -35,8 +35,8 @@ public record CommandHandlerRegistry(Set<AnnotatedCommandHandler<?, ?>> commandH
         return new CommandHandlerRegistry(combine(commandHandlers, other.commandHandlers));
     }
 
-    private void validateUniqueCommandTypeMatchers(Set<AnnotatedCommandHandler<?, ?>> commandHandlers) {
-        for (AnnotatedCommandHandler<?, ?> commandHandler : commandHandlers) {
+    private void validateUniqueCommandTypeMatchers(Set<CommandHandlerBehaviour<?, ?>> commandHandlers) {
+        for (CommandHandlerBehaviour<?, ?> commandHandler : commandHandlers) {
             var overlappingHandlers = commandHandlers.stream()
                 .filter(handler -> commandHandler.commandType().isAssignableFrom(handler.commandType()))
                 .toList();
@@ -53,7 +53,7 @@ public record CommandHandlerRegistry(Set<AnnotatedCommandHandler<?, ?>> commandH
                     """.formatted(
                     commandHandler.commandType().getName(),
                     overlappingHandlers.stream()
-                        .map(AnnotatedCommandHandler::method)
+                        .map(CommandHandlerBehaviour::method)
                         .map(LoggingUtils::logMethod)
                         .collect(Collectors.joining("\n"))));
             }

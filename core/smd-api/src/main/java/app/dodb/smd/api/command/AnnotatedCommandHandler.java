@@ -54,7 +54,7 @@ public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provi
     }
 
     public static CommandHandlerRegistry from(Provider<?> provider) {
-        Set<AnnotatedCommandHandler<?, ?>> handlers = new HashSet<>();
+        Set<CommandHandlerBehaviour<?, ?>> handlers = new HashSet<>();
         Class<?> clazz = provider.getType();
 
         for (Method method : clazz.getDeclaredMethods()) {

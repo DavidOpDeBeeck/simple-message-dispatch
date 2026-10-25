@@ -149,6 +149,90 @@ Crashes and rollbacks can cause redelivery, so handlers must remain idempotent.
 
 `batch-size` limits the number of stored events inspected per poll. A subject beyond that window waits for a later poll even when an earlier subject is in backoff.
 
+## Event-Sourced Aggregates
+
+An aggregate annotated with `@Aggregate` keeps its state as a stream of events in the store instead of in its own table. SMD loads the stream, replays it into the aggregate,
+calls the command handler, and appends the events it applies:
+
+```java
+@Aggregate("ticket")
+public class Ticket {
+
+    @AggregateId
+    private UUID ticketId;
+    private TicketStatus status;
+
+    protected Ticket() {
+    }
+
+    @CommandHandler
+    public UUID handle(OpenTicketCommand command, AggregateEvents<TicketEvent> events) {
+        events.apply(new TicketOpenedEvent(command.ticketId(), command.title()));
+        return ticketId;
+    }
+
+    @CommandHandler
+    public UUID handle(AssignTicketCommand command, AggregateEvents<TicketEvent> events) {
+        if (status != TicketStatus.OPEN) {
+            throw new InvalidTicketTransitionException(ticketId, status);
+        }
+        events.apply(new TicketAssignedEvent(ticketId, command.assignee()));
+        return ticketId;
+    }
+
+    @EventSourcingHandler
+    void on(TicketOpenedEvent event) {
+        ticketId = event.ticketId();
+        status = TicketStatus.OPEN;
+    }
+
+    @EventSourcingHandler
+    void on(TicketAssignedEvent event) {
+        status = TicketStatus.ASSIGNED;
+    }
+}
+
+public record AssignTicketCommand(@TargetAggregateId UUID ticketId, String assignee) implements Command<UUID> {
+}
+```
+
+| Annotation              | Target                      | Meaning                                                                          |
+|-------------------------|-----------------------------|----------------------------------------------------------------------------------|
+| `@Aggregate("ticket")`  | class                       | Event-sourced aggregate. The name is stored with every event and must be stable  |
+| `@AggregateId`          | field                       | Identity. Every applied event's `@SubjectId` must resolve to the same value      |
+| `@CommandHandler`       | method                      | Handles a command on the aggregate                                               |
+| `@TargetAggregateId`    | command method or component | Selects the stream to load. A command without it creates a new aggregate         |
+| `@EventSourcingHandler` | method                      | Applies one event to the aggregate's state. Events without a handler are ignored |
+
+Command handlers take the command and optionally `AggregateEvents`, `MessageId`, `Metadata`, `Principal`, `Instant`, and `@MetadataValue` strings. `events.apply(event)` runs the
+matching `@EventSourcingHandler` immediately, so the handler sees the new state, and records the event for appending. Keep event sourcing handlers free of side effects: they
+also run on every replay. The aggregate needs a no-argument constructor of any visibility; it holds no dependencies and is created for each command.
+
+For each command, in one transaction:
+
+1. A command with `@TargetAggregateId` loads the stream and replays it; an empty stream fails with `AggregateNotFoundException`. A command without it starts from a new instance.
+2. The command handler runs. If it throws, nothing is appended.
+3. Each applied event is published through the event publisher with the next aggregate version, after the loaded version. The event store's inlet stores it with
+   `aggregate_type` and `aggregate_version`; other sinks and processing groups receive it as usual.
+
+A unique index on `(aggregate_type, subject_id, aggregate_version)` guards concurrent changes. When another transaction already stored the same version, storing fails with
+`ConcurrentAggregateChangeException` and the transaction rolls back. SMD does not retry; send the command again to handle it against the new state.
+
+Event storage is deferred until the transaction completes, so a second command for the same aggregate in the same transaction loads the stream without the first command's
+events and fails with `ConcurrentAggregateChangeException`.
+
+Publication fails if no event store inlet receives an aggregate event, and if an applied event's `@SubjectId` differs from the aggregate's `@AggregateId`.
+
+With Spring Boot and `smd.event-store.enabled=true`, classes annotated with `@Aggregate` in the `@EnableSMD` packages register their command handlers next to the bean-based ones.
+They are not beans. Without Spring, register them on the command bus explicitly:
+
+```java
+var aggregates = eventStore.aggregateCommandHandlers(List.of(Ticket.class), eventBus);
+var commandBus = CommandBusSpec.withDefaults()
+    .commandHandlers(() -> commandHandlers.locate().and(aggregates.locate()))
+    .create();
+```
+
 ## Configuration
 
 The defaults are suitable for a basic installation:
@@ -295,3 +379,20 @@ Fresh installations need all three tables from the bundled schema:
 
 The schema uses PostgreSQL `UNIQUE NULLS NOT DISTINCT`, which requires PostgreSQL 15 or newer. It is not applied automatically. Copy it into a versioned Flyway migration or include it through
 Liquibase `sqlFile`.
+
+Event-sourced aggregates need the `aggregate_type` and `aggregate_version` columns and the `smd_event_store_aggregate_stream` index. Existing installations can add them with:
+
+```sql
+ALTER TABLE smd_event_store
+    ADD COLUMN aggregate_type    VARCHAR(255),
+    ADD COLUMN aggregate_version BIGINT,
+    ADD CONSTRAINT smd_event_store_aggregate_revision_check
+        CHECK ((aggregate_type IS NULL AND aggregate_version IS NULL)
+            OR (aggregate_type IS NOT NULL AND aggregate_version IS NOT NULL AND subject_id IS NOT NULL));
+
+CREATE UNIQUE INDEX smd_event_store_aggregate_stream
+    ON smd_event_store (aggregate_type, subject_id, aggregate_version)
+    WHERE aggregate_type IS NOT NULL;
+```
+
+Events published outside aggregates leave both columns empty and behave as before.

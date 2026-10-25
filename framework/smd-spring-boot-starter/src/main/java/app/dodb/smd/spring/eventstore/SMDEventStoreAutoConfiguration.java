@@ -1,9 +1,14 @@
 package app.dodb.smd.spring.eventstore;
 
+import app.dodb.smd.api.command.CommandHandlerLocator;
+import app.dodb.smd.api.command.PackageBasedCommandHandlerLocator;
+import app.dodb.smd.api.event.EventPublisher;
 import app.dodb.smd.api.framework.ConnectionProvider;
+import app.dodb.smd.api.framework.ObjectCreator;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
+import app.dodb.smd.eventstore.aggregate.Aggregate;
 import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
@@ -13,6 +18,7 @@ import app.dodb.smd.eventstore.storage.postgres.PostgresTokenStore;
 import app.dodb.smd.serialization.EventSerializer;
 import app.dodb.smd.spring.EventBusSpecCustomizer;
 import app.dodb.smd.spring.SMDAutoConfiguration;
+import app.dodb.smd.spring.SMDProperties;
 import app.dodb.smd.spring.SpringConnectionProvider;
 import app.dodb.smd.spring.serialization.SMDEventSerializationConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -21,11 +27,16 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
 
+import java.util.List;
 import javax.sql.DataSource;
 
+import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
+import static org.springframework.util.ClassUtils.resolveClassName;
 
 @AutoConfiguration(after = JacksonAutoConfiguration.class, before = SMDAutoConfiguration.class)
 @ConditionalOnProperty(name = "smd.event-store.enabled", havingValue = "true")
@@ -97,5 +108,30 @@ public class SMDEventStoreAutoConfiguration {
     @Bean
     public EventBusSpecCustomizer eventStoreSinkEventBusSpecCustomizer(EventStore eventStore) {
         return spec -> spec.sinks(eventStore.inlet());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CommandHandlerLocator commandHandlerLocator(List<SMDProperties> properties,
+                                                       ObjectCreator objectCreator,
+                                                       EventStore eventStore,
+                                                       EventPublisher eventPublisher) {
+        var packages = properties.stream()
+            .map(SMDProperties::packages)
+            .flatMap(List::stream)
+            .toList();
+        var commandHandlers = new PackageBasedCommandHandlerLocator(packages, objectCreator, type -> !type.isAnnotationPresent(Aggregate.class));
+        var aggregateCommandHandlers = eventStore.aggregateCommandHandlers(findAggregateClasses(packages), eventPublisher);
+        return () -> commandHandlers.locate().and(aggregateCommandHandlers.locate());
+    }
+
+    private static List<Class<?>> findAggregateClasses(List<String> packages) {
+        var scanner = new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AnnotationTypeFilter(Aggregate.class));
+        return packages.stream()
+            .flatMap(packageName -> scanner.findCandidateComponents(packageName).stream())
+            .<Class<?>>map(beanDefinition -> resolveClassName(requireNonNull(beanDefinition.getBeanClassName()), SMDEventStoreAutoConfiguration.class.getClassLoader()))
+            .distinct()
+            .toList();
     }
 }

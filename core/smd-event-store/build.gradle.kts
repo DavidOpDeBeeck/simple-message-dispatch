@@ -4,4 +4,6 @@ dependencies {
 
     implementation(libs.guava)
     implementation(libs.slf4j)
+
+    testImplementation(libs.jackson.databind)
 }

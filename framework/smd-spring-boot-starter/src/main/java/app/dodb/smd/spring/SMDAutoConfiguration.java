@@ -78,6 +78,7 @@ public class SMDAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public CommandHandlerLocator commandHandlerLocator(List<SMDProperties> properties, ObjectCreator objectCreator) {
         List<String> packages = combinePackages(properties);
         return new PackageBasedCommandHandlerLocator(packages, objectCreator);

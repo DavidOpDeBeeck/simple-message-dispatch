@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.function.Predicate;
 
 import static java.util.Objects.requireNonNull;
 import static org.reflections.scanners.Scanners.MethodsAnnotated;
@@ -20,10 +21,16 @@ public class PackageBasedCommandHandlerLocator implements CommandHandlerLocator 
 
     private final List<String> packageNames;
     private final ObjectCreator objectCreator;
+    private final Predicate<Class<?>> handlerTypeFilter;
 
     public PackageBasedCommandHandlerLocator(List<String> packageNames, ObjectCreator objectCreator) {
+        this(packageNames, objectCreator, _ -> true);
+    }
+
+    public PackageBasedCommandHandlerLocator(List<String> packageNames, ObjectCreator objectCreator, Predicate<Class<?>> handlerTypeFilter) {
         this.packageNames = requireNonNull(packageNames);
         this.objectCreator = requireNonNull(objectCreator);
+        this.handlerTypeFilter = requireNonNull(handlerTypeFilter);
     }
 
     @Override
@@ -43,6 +50,7 @@ public class PackageBasedCommandHandlerLocator implements CommandHandlerLocator 
             .getMethodsAnnotatedWith(CommandHandler.class).parallelStream()
             .map(Method::getDeclaringClass)
             .distinct()
+            .filter(handlerTypeFilter)
             .map(objectCreator::create)
             .map(AnnotatedCommandHandler::from)
             .reduce(CommandHandlerRegistry.empty(), CommandHandlerRegistry::and);
