@@ -28,7 +28,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       - name: Build
-        run: ./gradlew build :ticket-service:build
+        run: ./gradlew build publishToMavenLocal
+
+      # The example resolves SMD from Maven local, so it builds after publishing in a separate invocation.
+      - name: Build example
+        run: ./gradlew :ticket-service:build
 
       - name: Upload test reports
         if: failure()
