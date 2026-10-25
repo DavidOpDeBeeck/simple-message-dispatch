@@ -61,4 +61,8 @@ public class TestTicket {
     void on(TestTicketResolvedEvent event) {
         status = TestTicketStatus.RESOLVED;
     }
+
+    TestTicketStatus status() {
+        return status;
+    }
 }

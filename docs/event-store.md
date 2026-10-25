@@ -265,6 +265,52 @@ var commandBus = CommandBusSpec.withDefaults()
     .create();
 ```
 
+### Test Aggregates
+
+`AggregateTestFixture` tests one aggregate in given-when-then style, without a database or Spring:
+
+```java
+class TicketTest {
+
+    private final AggregateTestFixture<Ticket> fixture = AggregateTestFixture.of(Ticket.class);
+
+    @Test
+    void assignTicketCommand_openTicket_appendsAssignedEvent() {
+        fixture.given(new TicketOpenedEvent(ticketId, "Cannot sign in"))
+            .when(new AssignTicketCommand(ticketId, "alice"))
+            .expectEvents(new TicketAssignedEvent(ticketId, "alice"))
+            .expectResult(ticketId);
+    }
+
+    @Test
+    void resolveTicketCommand_openTicket_rejectsTransition() {
+        fixture.given(new TicketOpenedEvent(ticketId, "Cannot sign in"))
+            .when(new ResolveTicketCommand(ticketId, "Reset mail resent"))
+            .expectException(InvalidTicketTransitionException.class)
+            .expectNoEvents();
+    }
+}
+```
+
+The fixture runs the aggregate's real command handlers against an in-memory event store, so events and results pass through the same serialization and checks as in
+production. `AggregateTestFixture.of(Ticket.class)` serializes with Jackson; pass an `EventSerializer` as the second argument to use your own, such as one with a
+`StaticEventTypeResolver`.
+
+| Step                         | Meaning                                                                               |
+|------------------------------|---------------------------------------------------------------------------------------|
+| `givenNoPriorActivity()`     | The aggregate does not exist yet                                                      |
+| `given(events...)`           | Past events of the aggregate under test. Together they must assign its `@AggregateId` |
+| `givenCommands(commands...)` | Commands handled before the tested one                                                |
+| `when(command)`              | Handles the tested command and records its events, result, or exception               |
+| `expectEvents(events...)`    | The command applied exactly these events, in order                                    |
+| `expectNoEvents()`           | The command applied no events                                                         |
+| `expectResult(result)`       | The command returned this result                                                      |
+| `expectException(type)`      | The command failed with this exception type; an overload takes assertions on it       |
+| `expectState(assertions)`    | Assertions on the aggregate, replayed from its stream after the command               |
+| `expect...Satisfying(...)`   | Assertions on the events or the result, for values the test cannot predict            |
+
+A failed expectation throws an `AssertionError` whose cause is the command's exception, if any.
+
 ## Configuration
 
 The defaults are suitable for a basic installation:

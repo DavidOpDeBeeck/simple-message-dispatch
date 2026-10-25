@@ -29,6 +29,9 @@
   Applied events need no `@SubjectId`: the store records the aggregate ID and delivers it as the subject. The schema adds `aggregate_type`, `aggregate_version`, and the
   `smd_event_store_aggregate_stream` index. `EventStorage` adds `append(event, revision)` and `loadAggregateStream(...)`. See
   [Event-Sourced Aggregates](docs/event-store.md#event-sourced-aggregates).
+- Added `AggregateTestFixture` in `smd-event-store` for given-when-then aggregate tests: `given(events...)`, `givenCommands(...)`, or `givenNoPriorActivity()`, then
+  `when(command)` and `expectEvents`, `expectResult`, `expectException`, or `expectState`. It runs the real handlers against an in-memory store and serializes with Jackson
+  unless given an `EventSerializer`. See [Test Aggregates](docs/event-store.md#test-aggregates).
 - **Breaking:** the event store uses domain-driven design names, and SMD maps them to messages: `aggregate_id` is the subject and `global_position` the delivered sequence
   number. See [Store Model](docs/event-store.md#store-model). Existing databases need the upgrade in [Schema and Upgrades](docs/event-store.md#schema-and-upgrades).
   - `smd_event_store` renames `message_id`, `subject_id`, `serialized_payload`, `serialized_metadata`, `created_at`, and `sequence_number` to `event_id`, `aggregate_id`,

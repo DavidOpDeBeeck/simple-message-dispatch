@@ -163,6 +163,7 @@ assertThat(queries.send(query)).contains(ticket);
 
 - Use `@EnableSMDStubs` for a focused handler flow with real discovery, binding, metadata, and application repositories.
 - Test a handler directly when only its decisions and immediate collaborators matter.
+- Test an event-sourced aggregate's decisions with [`AggregateTestFixture`](event-store.md#test-aggregates): given past events, when a command, expect events.
 - Use real integration infrastructure for transaction boundaries, asynchronous delivery, serialization, JDBC, or PostgreSQL event processing.
 - Use an acceptance test for the complete external entry point and its observable projections.
 
