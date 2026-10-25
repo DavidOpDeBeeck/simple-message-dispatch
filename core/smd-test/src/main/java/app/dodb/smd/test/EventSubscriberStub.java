@@ -10,17 +10,17 @@ import static java.util.Objects.requireNonNull;
 
 public class EventSubscriberStub implements EventSubscriber {
 
-    private final String processingGroup;
+    private final String name;
     private final Consumer<EventMessage<? extends Event>> eventHandler;
 
-    public EventSubscriberStub(String processingGroup, Consumer<EventMessage<? extends Event>> eventHandler) {
-        this.processingGroup = requireNonNull(processingGroup);
+    public EventSubscriberStub(String name, Consumer<EventMessage<? extends Event>> eventHandler) {
+        this.name = requireNonNull(name);
         this.eventHandler = requireNonNull(eventHandler);
     }
 
     @Override
-    public String processingGroup() {
-        return processingGroup;
+    public String name() {
+        return name;
     }
 
     @Override

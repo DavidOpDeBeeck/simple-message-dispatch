@@ -42,7 +42,7 @@ class EventStoreTokenProcessor {
     }
 
     void poll(EventSubscriber listener) {
-        var processingGroup = listener.processingGroup();
+        var processingGroup = listener.name();
         try {
             var batchSize = processingConfig.getBatchSize();
             while (batchSize > 0) {
@@ -67,9 +67,9 @@ class EventStoreTokenProcessor {
 
     private void processBatchInNewTransaction(EventSubscriber listener, int batchSize) {
         transactionProvider.doInNewTransaction(() -> {
-            var claimedToken = tokenStore.claimToken(listener.processingGroup());
+            var claimedToken = tokenStore.claimToken(listener.name());
             if (claimedToken.isEmpty()) {
-                LOGGER.debug("Token already claimed, skipping poll: processingGroup={}", listener.processingGroup());
+                LOGGER.debug("Token already claimed, skipping poll: processingGroup={}", listener.name());
                 return;
             }
 
@@ -86,7 +86,7 @@ class EventStoreTokenProcessor {
 
         try (var events = eventStorage.load(initialSequenceNumber, batchSize)) {
             if (!events.hasNext()) {
-                LOGGER.debug("No events to process: processingGroup={}, lastProcessedSequence={}", listener.processingGroup(), initialSequenceNumber);
+                LOGGER.debug("No events to process: processingGroup={}, lastProcessedSequence={}", listener.name(), initialSequenceNumber);
                 return;
             }
 
@@ -102,7 +102,7 @@ class EventStoreTokenProcessor {
                     if (gapDetectedAt.isEmpty()) {
                         token.markGapDetected(expectedSequence);
                         LOGGER.warn("Gap detected: processingGroup={}, expectedSequence={}, actualSequence={}",
-                            listener.processingGroup(), expectedSequence, sequenceNumber);
+                            listener.name(), expectedSequence, sequenceNumber);
                         break;
                     }
 
@@ -111,7 +111,7 @@ class EventStoreTokenProcessor {
                     }
 
                     LOGGER.error("Gap timeout expired, skipping: processingGroup={}, fromSequence={}, toSequence={}",
-                        listener.processingGroup(), expectedSequence, sequenceNumber - 1);
+                        listener.name(), expectedSequence, sequenceNumber - 1);
                     if (committableSequenceNumber + 1 == expectedSequence) {
                         committableSequenceNumber = sequenceNumber - 1;
                     }

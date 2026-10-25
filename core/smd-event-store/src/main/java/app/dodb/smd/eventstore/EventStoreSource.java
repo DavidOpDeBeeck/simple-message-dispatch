@@ -30,7 +30,7 @@ class EventStoreSource implements EventSource, AutoCloseable {
     @Override
     public EventSubscription subscribe(EventSubscriber listener) {
         if (!schedulingConfig.isEnabled()) {
-            LOGGER.info("Event store polling disabled: processingGroup={}", listener.processingGroup());
+            LOGGER.info("Event store polling disabled: processingGroup={}", listener.name());
             return EventSubscription.EMPTY;
         }
 

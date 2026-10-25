@@ -53,7 +53,7 @@ public class FireAndForgetEventDispatcher implements EventMedium {
                 try {
                     MetadataFactory.runInScope(eventMessage, () -> subscriber.on(eventMessage));
                 } catch (Exception e) {
-                    LOGGER.error("Unhandled event error: processingGroup={}", subscriber.processingGroup(), e);
+                    LOGGER.error("Unhandled event error: processingGroup={}", subscriber.name(), e);
                 }
             }));
         }

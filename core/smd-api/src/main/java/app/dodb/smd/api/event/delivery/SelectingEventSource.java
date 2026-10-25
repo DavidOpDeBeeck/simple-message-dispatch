@@ -34,8 +34,8 @@ public class SelectingEventSource implements EventSource {
         }
 
         @Override
-        public String processingGroup() {
-            return delegate.processingGroup();
+        public String name() {
+            return delegate.name();
         }
 
         @Override

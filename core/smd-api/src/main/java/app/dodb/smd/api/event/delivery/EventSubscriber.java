@@ -5,7 +5,7 @@ import app.dodb.smd.api.event.EventMessage;
 
 public interface EventSubscriber {
 
-    String processingGroup();
+    String name();
 
     <E extends Event> void on(EventMessage<E> eventMessage);
 }

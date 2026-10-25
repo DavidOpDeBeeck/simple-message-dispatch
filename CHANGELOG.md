@@ -17,6 +17,7 @@
   `JacksonEventSerializer` and `SMDJacksonModule` are in `app.dodb.smd.serialization.jackson`. `smd-event-store` exposes the module, so only imports change.
 - **Breaking:** `ConnectionProvider` moved from `app.dodb.smd.eventstore.storage` to `app.dodb.smd.api.framework`, `RetryBackoffStrategy` from `app.dodb.smd.eventstore` to
   `app.dodb.smd.api.event.delivery`, and `SpringConnectionProvider` from `app.dodb.smd.spring.eventstore` to `app.dodb.smd.spring`. Only imports change.
+- **Breaking:** `EventSubscriber.processingGroup()` is now `EventSubscriber.name()`.
 
 ## [0.0.12] - 2026-10-19
 

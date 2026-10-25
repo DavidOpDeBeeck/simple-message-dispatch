@@ -18,7 +18,7 @@ record EventHandlersSubscriber(EventHandlerRegistry registry) implements EventSu
     }
 
     @Override
-    public String processingGroup() {
+    public String name() {
         return registry.processingGroup();
     }
 

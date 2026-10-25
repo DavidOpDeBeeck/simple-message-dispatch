@@ -28,7 +28,7 @@ class ProcessingGroupSubscriber implements EventSubscriber {
     }
 
     @Override
-    public String processingGroup() {
+    public String name() {
         return registry.processingGroup();
     }
 

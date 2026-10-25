@@ -212,7 +212,7 @@ class ConcurrentEventDispatcherTest {
         }
 
         @Override
-        public String processingGroup() {
+        public String name() {
             return DEFAULT;
         }
 
@@ -231,7 +231,7 @@ class ConcurrentEventDispatcherTest {
         }
 
         @Override
-        public String processingGroup() {
+        public String name() {
             return DEFAULT;
         }
 
@@ -252,7 +252,7 @@ class ConcurrentEventDispatcherTest {
         }
 
         @Override
-        public String processingGroup() {
+        public String name() {
             return DEFAULT;
         }
 

@@ -236,7 +236,7 @@ class FireAndForgetEventDispatcherTest {
         }
 
         @Override
-        public String processingGroup() {
+        public String name() {
             return DEFAULT;
         }
 

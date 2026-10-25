@@ -43,7 +43,7 @@ class EventSequenceProcessor {
     }
 
     EventSequenceProcessingResult process(EventSubscriber listener, SerializedEvent serializedEvent) {
-        var processingGroup = listener.processingGroup();
+        var processingGroup = listener.name();
         var sequenceNumber = serializedEvent.sequenceNumber();
         var subjectIdOpt = serializedEvent.subjectId();
 

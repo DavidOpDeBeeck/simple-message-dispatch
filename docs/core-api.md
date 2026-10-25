@@ -206,7 +206,7 @@ var auditSink = externalAuditSink.selecting(auditEvents);
 var auditSource = externalAuditSource.selecting(auditEvents);
 ```
 
-Nonmatching messages are ignored. Matching messages and processing-group names are preserved; selector failures follow the underlying delivery's failure handling.
+Nonmatching messages are ignored. Matching messages and subscriber names are preserved; selector failures follow the underlying delivery's failure handling.
 
 A sink defines what completion of `send()` means. A source owns delivery threads, ordering, retries, failures, and lifecycle. Custom sources must invoke subscribers inside
 `MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata.

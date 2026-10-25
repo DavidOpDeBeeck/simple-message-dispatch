@@ -22,7 +22,7 @@ class SelectingEventSourceTest {
         var source = new SelectingEventSource(new CapturingSource(subscribedSubscriber), message -> true);
 
         try (var _ = source.subscribe(new RecordingEventSubscriber("ticket-view"))) {
-            assertThat(subscribedSubscriber.get().processingGroup()).isEqualTo("ticket-view");
+            assertThat(subscribedSubscriber.get().name()).isEqualTo("ticket-view");
         }
     }
 
@@ -106,7 +106,7 @@ class SelectingEventSourceTest {
         }
 
         @Override
-        public String processingGroup() {
+        public String name() {
             return processingGroup;
         }
 

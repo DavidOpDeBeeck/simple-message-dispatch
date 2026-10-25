@@ -60,7 +60,7 @@ class EventSubscriptionTest {
     private record TestEvent() implements Event {
     }
 
-    private record RecordingSubscriber(String processingGroup, List<EventMessage<?>> received) implements EventSubscriber {
+    private record RecordingSubscriber(String name, List<EventMessage<?>> received) implements EventSubscriber {
 
         @Override
         public <E extends Event> void on(EventMessage<E> eventMessage) {

@@ -22,7 +22,7 @@ public class EventSourceStub implements EventSource {
 
     @Override
     public EventSubscription subscribe(EventSubscriber subscriber) {
-        var registration = new EventSubscriberStub(subscriber.processingGroup(), subscriber::on);
+        var registration = new EventSubscriberStub(subscriber.name(), subscriber::on);
         subscribers.add(registration);
         return () -> subscribers.remove(registration);
     }

@@ -18,8 +18,8 @@ class EventSubscriberRegistration implements EventSubscriber, EventSubscription 
     }
 
     @Override
-    public String processingGroup() {
-        return subscriber.processingGroup();
+    public String name() {
+        return subscriber.name();
     }
 
     @Override
