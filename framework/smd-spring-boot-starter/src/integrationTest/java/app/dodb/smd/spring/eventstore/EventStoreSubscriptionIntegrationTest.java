@@ -40,7 +40,7 @@ class EventStoreSubscriptionIntegrationTest {
                 // Then
                 assertThat(received).containsExactly("1");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
 
                 // When
                 second.close();
@@ -50,7 +50,7 @@ class EventStoreSubscriptionIntegrationTest {
                 // Then
                 assertThat(received).containsExactly("1");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
             }
         }
     }
@@ -97,7 +97,7 @@ class EventStoreSubscriptionIntegrationTest {
                 assertThat(interrupted).isFalse();
                 assertThat(received).containsExactly("1");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
 
                 // When
                 fixture.storeEvents(new SequencedEvent<>(2L, new TestEventWithSubjectId("subscription")));
@@ -108,10 +108,10 @@ class EventStoreSubscriptionIntegrationTest {
 
                     // Then
                     assertThat(fixture.tokenState("other-subscription")
-                        .flatMap(TokenState::lastProcessedSequenceNumber)).contains(2L);
+                        .flatMap(TokenState::lastProcessedPosition)).contains(2L);
                     assertThat(received).containsExactly("1");
                     assertThat(fixture.tokenState(processingGroup)
-                        .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                        .flatMap(TokenState::lastProcessedPosition)).contains(1L);
                 }
             }
         }

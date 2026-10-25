@@ -2,7 +2,7 @@ package app.dodb.smd.eventstore;
 
 import app.dodb.smd.api.event.delivery.RetryBackoffStrategy;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
+import app.dodb.smd.eventstore.sequence.EventSequenceStore;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
 import app.dodb.smd.serialization.EventSerializer;
@@ -24,7 +24,7 @@ public class EventStoreConfig {
     private final EventStorage eventStorage;
     private final EventSerializer eventSerializer;
     private final TokenStore tokenStore;
-    private final EventSubjectSequenceStore eventSubjectSequenceStore;
+    private final EventSequenceStore eventSequenceStore;
     private final SchedulingConfig schedulingConfig;
     private final ProcessingConfig processingConfig;
 
@@ -33,7 +33,7 @@ public class EventStoreConfig {
         this.eventStorage = requireNonNull(builder.eventStorage);
         this.eventSerializer = requireNonNull(builder.eventSerializer);
         this.tokenStore = requireNonNull(builder.tokenStore);
-        this.eventSubjectSequenceStore = requireNonNull(builder.eventSubjectSequenceStore);
+        this.eventSequenceStore = requireNonNull(builder.eventSequenceStore);
         this.schedulingConfig = requireNonNull(builder.schedulingConfig);
         this.processingConfig = requireNonNull(builder.processingConfig);
     }
@@ -54,8 +54,8 @@ public class EventStoreConfig {
         return tokenStore;
     }
 
-    public EventSubjectSequenceStore getEventSequenceStore() {
-        return eventSubjectSequenceStore;
+    public EventSequenceStore getEventSequenceStore() {
+        return eventSequenceStore;
     }
 
     public SchedulingConfig getSchedulingConfig() {
@@ -80,7 +80,7 @@ public class EventStoreConfig {
 
         private TransactionProvider transactionProvider;
         private TokenStore tokenStore;
-        private EventSubjectSequenceStore eventSubjectSequenceStore;
+        private EventSequenceStore eventSequenceStore;
         private EventStorage eventStorage;
         private EventSerializer eventSerializer;
         private SchedulingConfig schedulingConfig;
@@ -99,8 +99,8 @@ public class EventStoreConfig {
             return this;
         }
 
-        public Builder eventSequenceStore(EventSubjectSequenceStore eventSubjectSequenceStore) {
-            this.eventSubjectSequenceStore = eventSubjectSequenceStore;
+        public Builder eventSequenceStore(EventSequenceStore eventSequenceStore) {
+            this.eventSequenceStore = eventSequenceStore;
             return this;
         }
 

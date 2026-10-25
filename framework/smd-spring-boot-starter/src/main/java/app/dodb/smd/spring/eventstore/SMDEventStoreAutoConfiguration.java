@@ -9,11 +9,11 @@ import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
 import app.dodb.smd.eventstore.aggregate.Aggregate;
-import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
+import app.dodb.smd.eventstore.sequence.EventSequenceStore;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.TokenStore;
 import app.dodb.smd.eventstore.storage.postgres.PostgresEventStorage;
-import app.dodb.smd.eventstore.storage.postgres.PostgresEventSubjectSequenceStore;
+import app.dodb.smd.eventstore.storage.postgres.PostgresEventSequenceStore;
 import app.dodb.smd.eventstore.storage.postgres.PostgresTokenStore;
 import app.dodb.smd.serialization.EventSerializer;
 import app.dodb.smd.spring.EventBusSpecCustomizer;
@@ -64,8 +64,8 @@ public class SMDEventStoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public EventSubjectSequenceStore eventSequenceStore(ConnectionProvider smdConnectionProvider) {
-        return new PostgresEventSubjectSequenceStore(smdConnectionProvider);
+    public EventSequenceStore eventSequenceStore(ConnectionProvider smdConnectionProvider) {
+        return new PostgresEventSequenceStore(smdConnectionProvider);
     }
 
     @Bean
@@ -73,7 +73,7 @@ public class SMDEventStoreAutoConfiguration {
     public EventStoreConfig eventStoreConfig(EventStorage eventStorage,
                                              EventSerializer eventSerializer,
                                              TokenStore tokenStore,
-                                             EventSubjectSequenceStore eventSubjectSequenceStore,
+                                             EventSequenceStore eventSequenceStore,
                                              TransactionProvider transactionProvider,
                                              SMDEventStoreProperties properties) {
         var scheduling = properties.getScheduling();
@@ -82,7 +82,7 @@ public class SMDEventStoreAutoConfiguration {
             .eventStorage(eventStorage)
             .eventSerializer(eventSerializer)
             .tokenStore(tokenStore)
-            .eventSequenceStore(eventSubjectSequenceStore)
+            .eventSequenceStore(eventSequenceStore)
             .transactionProvider(transactionProvider)
             .schedulingConfig(EventStoreConfig.SchedulingConfig.withoutDefaults()
                 .enabled(scheduling.isEnabled())

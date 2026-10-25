@@ -18,7 +18,7 @@ to the stream with the next aggregate version and published to the processing gr
 ```text
 HTTP -> CommandGateway -> Ticket (replayed from its stream)
                                       |
-                                      `-> applied events -> smd_event_store (aggregate_type = ticket, aggregate_version = n)
+                                      `-> applied events -> smd_event_store (aggregate_type = ticket, aggregate_id = ticket ID, aggregate_version = n)
                                             |-> ticket-view
                                             |-> notifications
                                             `-> ticket-activity

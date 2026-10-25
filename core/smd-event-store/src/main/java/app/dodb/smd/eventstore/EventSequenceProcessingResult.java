@@ -48,10 +48,10 @@ sealed interface EventSequenceProcessingResult {
         }
     }
 
-    record Failure(long sequenceNumber, Optional<String> subjectId, Exception exception) implements EventSequenceProcessingResult {
+    record Failure(long globalPosition, Optional<String> aggregateId, Exception exception) implements EventSequenceProcessingResult {
 
         public Failure {
-            requireNonNull(subjectId);
+            requireNonNull(aggregateId);
             requireNonNull(exception);
         }
 

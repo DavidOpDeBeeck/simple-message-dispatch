@@ -6,7 +6,8 @@ import app.dodb.smd.eventstore.storage.AggregateRevision;
 import app.dodb.smd.eventstore.storage.Cursor;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.EventStorageException;
-import app.dodb.smd.serialization.SerializedEvent;
+import app.dodb.smd.eventstore.storage.NewEvent;
+import app.dodb.smd.eventstore.storage.StoredEvent;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -25,58 +26,56 @@ import static java.util.Objects.requireNonNull;
 
 public class InMemoryEventStorage implements EventStorage {
 
-    private final NavigableMap<Long, SerializedEvent> events = new TreeMap<>();
-    private final Set<MessageId> messageIds = new HashSet<>();
-    private final Map<AggregateStreamId, NavigableMap<Long, SerializedEvent>> aggregateStreams = new HashMap<>();
-    private long nextSequenceNumber = 1L;
+    private final NavigableMap<Long, StoredEvent> events = new TreeMap<>();
+    private final Set<MessageId> eventIds = new HashSet<>();
+    private final Map<AggregateStreamId, NavigableMap<Long, StoredEvent>> aggregateStreams = new HashMap<>();
+    private long nextGlobalPosition = 1L;
 
-    public InMemoryEventStorage(SerializedEvent... events) {
+    public InMemoryEventStorage(StoredEvent... events) {
         for (var event : requireNonNull(events)) {
             store(event);
         }
     }
 
     @Override
-    public synchronized void store(SerializedEvent event) {
-        storeWithSequenceNumber(event);
+    public synchronized void append(NewEvent event) {
+        store(atNextGlobalPosition(event, event.aggregateId()));
     }
 
     @Override
-    public synchronized void store(SerializedEvent event, AggregateRevision revision) {
+    public synchronized void append(NewEvent event, AggregateRevision revision) {
         var streamId = new AggregateStreamId(revision.aggregateType(), revision.aggregateId());
         var stream = aggregateStreams.computeIfAbsent(streamId, _ -> new TreeMap<>());
         if (stream.containsKey(revision.version())) {
             throw new ConcurrentAggregateChangeException(revision.aggregateType(), revision.aggregateId(), revision.expectedVersion());
         }
 
-        var storedEvent = storeWithSequenceNumber(withSubjectId(event, revision.aggregateId()));
+        var storedEvent = store(atNextGlobalPosition(event, Optional.of(revision.aggregateId())));
         stream.put(revision.version(), storedEvent);
     }
 
-    private SerializedEvent storeWithSequenceNumber(SerializedEvent event) {
-        var eventToStore = withSequenceNumber(requireNonNull(event));
-        var sequenceNumber = eventToStore.sequenceNumber();
-
-        if (sequenceNumber < 1L) {
-            throw new EventStorageException("Event sequence number must be greater than zero: " + sequenceNumber);
+    private StoredEvent store(StoredEvent event) {
+        var globalPosition = event.globalPosition();
+        if (globalPosition < 1L) {
+            throw new EventStorageException("Event global position must be greater than zero: " + globalPosition);
         }
-        if (events.containsKey(sequenceNumber)) {
-            throw new EventStorageException("Event sequence number already stored: " + sequenceNumber);
+        if (events.containsKey(globalPosition)) {
+            throw new EventStorageException("Event global position already stored: " + globalPosition);
         }
-        if (!messageIds.add(eventToStore.messageId())) {
-            throw new EventStorageException("Event message ID already stored: " + eventToStore.messageId());
+        if (!eventIds.add(event.eventId())) {
+            throw new EventStorageException("Event ID already stored: " + event.eventId());
         }
 
-        events.put(sequenceNumber, eventToStore);
-        nextSequenceNumber = Math.max(nextSequenceNumber, sequenceNumber + 1L);
-        return eventToStore;
+        events.put(globalPosition, event);
+        nextGlobalPosition = Math.max(nextGlobalPosition, globalPosition + 1L);
+        return event;
     }
 
     @Override
-    public synchronized Cursor<SerializedEvent> load(long lastProcessedSequenceNumber, int limit) {
+    public synchronized Cursor<StoredEvent> load(long afterGlobalPosition, int limit) {
         requirePositive("Event store load limit", limit);
 
-        var eventsToLoad = events.tailMap(lastProcessedSequenceNumber, false)
+        var eventsToLoad = events.tailMap(afterGlobalPosition, false)
             .values()
             .stream()
             .limit(limit)
@@ -85,43 +84,28 @@ public class InMemoryEventStorage implements EventStorage {
     }
 
     @Override
-    public synchronized List<SerializedEvent> loadAggregateStream(String aggregateType, String aggregateId) {
+    public synchronized List<StoredEvent> loadAggregateStream(String aggregateType, String aggregateId) {
         var stream = aggregateStreams.get(new AggregateStreamId(aggregateType, aggregateId));
         return stream == null ? List.of() : List.copyOf(stream.values());
     }
 
-    public synchronized List<SerializedEvent> events() {
+    public synchronized List<StoredEvent> events() {
         return List.copyOf(events.values());
     }
 
-    private SerializedEvent withSequenceNumber(SerializedEvent event) {
-        if (event.sequenceNumber() != null) {
-            return event;
-        }
-        return new SerializedEvent(
-            event.messageId(),
-            nextSequenceNumber,
-            event.subjectId(),
+    private StoredEvent atNextGlobalPosition(NewEvent event, Optional<String> aggregateId) {
+        return new StoredEvent(
+            nextGlobalPosition,
+            event.eventId(),
+            aggregateId,
             event.eventType(),
-            event.serializedPayload(),
-            event.serializedMetadata(),
-            event.createdAt()
+            event.payload(),
+            event.metadata(),
+            event.occurredAt()
         );
     }
 
-    private static SerializedEvent withSubjectId(SerializedEvent event, String subjectId) {
-        return new SerializedEvent(
-            event.messageId(),
-            event.sequenceNumber(),
-            Optional.of(subjectId),
-            event.eventType(),
-            event.serializedPayload(),
-            event.serializedMetadata(),
-            event.createdAt()
-        );
-    }
-
-    private static Cursor<SerializedEvent> cursor(Deque<SerializedEvent> events) {
+    private static Cursor<StoredEvent> cursor(Deque<StoredEvent> events) {
         return new Cursor<>() {
 
             @Override
@@ -130,7 +114,7 @@ public class InMemoryEventStorage implements EventStorage {
             }
 
             @Override
-            public SerializedEvent next() {
+            public StoredEvent next() {
                 if (hasNext()) {
                     return events.remove();
                 }

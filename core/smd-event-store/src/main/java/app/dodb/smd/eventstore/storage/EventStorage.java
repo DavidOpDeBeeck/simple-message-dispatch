@@ -1,16 +1,14 @@
 package app.dodb.smd.eventstore.storage;
 
-import app.dodb.smd.serialization.SerializedEvent;
-
 import java.util.List;
 
 public interface EventStorage {
 
-    void store(SerializedEvent event);
+    void append(NewEvent event);
 
-    void store(SerializedEvent event, AggregateRevision revision);
+    void append(NewEvent event, AggregateRevision revision);
 
-    Cursor<SerializedEvent> load(long lastProcessedSequenceNumber, int limit);
+    Cursor<StoredEvent> load(long afterGlobalPosition, int limit);
 
-    List<SerializedEvent> loadAggregateStream(String aggregateType, String aggregateId);
+    List<StoredEvent> loadAggregateStream(String aggregateType, String aggregateId);
 }

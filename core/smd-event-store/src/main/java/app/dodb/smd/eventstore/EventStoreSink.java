@@ -7,7 +7,6 @@ import app.dodb.smd.api.event.delivery.EventSink;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.storage.AggregateRevision;
 import app.dodb.smd.eventstore.storage.EventStorage;
-import app.dodb.smd.serialization.EventSerializer;
 
 import java.util.Optional;
 
@@ -17,13 +16,13 @@ class EventStoreSink implements EventSink {
 
     private final TransactionProvider transactionProvider;
     private final EventStorage eventStorage;
-    private final EventSerializer eventSerializer;
+    private final StoredEventSerializer storedEventSerializer;
 
     EventStoreSink(EventStoreConfig config) {
         requireNonNull(config);
         this.transactionProvider = config.getTransactionProvider();
         this.eventStorage = config.getEventStorage();
-        this.eventSerializer = config.getEventSerializer();
+        this.storedEventSerializer = new StoredEventSerializer(config.getEventSerializer());
     }
 
     @Override
@@ -33,10 +32,10 @@ class EventStoreSink implements EventSink {
     }
 
     private <E extends Event> void store(EventMessage<E> eventMessage, Optional<AggregateRevision> aggregateRevision) {
-        var serializedEvent = eventSerializer.serialize(eventMessage);
+        var event = storedEventSerializer.serialize(eventMessage, aggregateRevision);
         aggregateRevision.ifPresentOrElse(
-            revision -> eventStorage.store(serializedEvent, revision),
-            () -> eventStorage.store(serializedEvent)
+            revision -> eventStorage.append(event, revision),
+            () -> eventStorage.append(event)
         );
     }
 

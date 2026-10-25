@@ -16,7 +16,6 @@ import app.dodb.smd.eventstore.aggregate.AggregateNotFoundException;
 import app.dodb.smd.eventstore.aggregate.TargetAggregateId;
 import app.dodb.smd.eventstore.storage.AggregateRevision;
 import app.dodb.smd.eventstore.storage.EventStorage;
-import app.dodb.smd.serialization.EventSerializer;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -51,7 +50,7 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
     private final Optional<Method> targetAggregateIdAccessor;
     private final TransactionProvider transactionProvider;
     private final EventStorage eventStorage;
-    private final EventSerializer eventSerializer;
+    private final StoredEventSerializer storedEventSerializer;
     private final EventPublisher eventPublisher;
 
     private AggregateCommandHandler(AggregateModel<A> model,
@@ -69,7 +68,7 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
         this.targetAggregateIdAccessor = requireNonNull(targetAggregateIdAccessor);
         this.transactionProvider = config.getTransactionProvider();
         this.eventStorage = config.getEventStorage();
-        this.eventSerializer = config.getEventSerializer();
+        this.storedEventSerializer = new StoredEventSerializer(config.getEventSerializer());
         this.eventPublisher = requireNonNull(eventPublisher);
     }
 
@@ -146,7 +145,7 @@ final class AggregateCommandHandler<R, C extends Command<R>, A> implements Comma
         }
 
         List<Event> events = history.stream()
-            .map(serializedEvent -> eventSerializer.deserialize(serializedEvent).payload())
+            .map(storedEvent -> storedEventSerializer.deserialize(storedEvent).payload())
             .toList();
         return EventSourcedAggregate.replay(model, aggregateId, events);
     }

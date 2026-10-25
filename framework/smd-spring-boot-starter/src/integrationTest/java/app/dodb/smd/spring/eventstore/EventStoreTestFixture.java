@@ -9,8 +9,9 @@ import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
-import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
+import app.dodb.smd.eventstore.sequence.EventSequenceStore;
 import app.dodb.smd.eventstore.storage.EventStorage;
+import app.dodb.smd.eventstore.storage.StoredEvent;
 import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.eventstore.storage.TokenStore;
 import app.dodb.smd.serialization.EventSerializer;
@@ -73,7 +74,7 @@ final class EventStoreTestFixture implements AutoCloseable {
             .eventStorage(bean(EventStorage.class))
             .eventSerializer(bean(EventSerializer.class))
             .tokenStore(bean(TokenStore.class))
-            .eventSequenceStore(bean(EventSubjectSequenceStore.class))
+            .eventSequenceStore(bean(EventSequenceStore.class))
             .schedulingConfig(EventStoreConfig.SchedulingConfig.withoutDefaults()
                 .enabled(true)
                 .scheduler(scheduler)
@@ -86,12 +87,12 @@ final class EventStoreTestFixture implements AutoCloseable {
 
     @SafeVarargs
     final void storeEvents(SequencedEvent<? extends Event>... sequencedEvents) {
-        long highestSequenceNumber = 0L;
+        long highestGlobalPosition = 0L;
         for (var sequencedEvent : sequencedEvents) {
             storeEvent(sequencedEvent);
-            highestSequenceNumber = Math.max(highestSequenceNumber, sequencedEvent.sequenceNumber());
+            highestGlobalPosition = Math.max(highestGlobalPosition, sequencedEvent.globalPosition());
         }
-        advanceEventStoreSequenceTo(highestSequenceNumber);
+        advanceGlobalPositionTo(highestGlobalPosition);
     }
 
     private <E extends Event> void storeEvent(SequencedEvent<E> sequencedEvent) {
@@ -100,7 +101,7 @@ final class EventStoreTestFixture implements AutoCloseable {
         try (var connection = bean(DataSource.class).getConnection();
              var statement = connection.prepareStatement("""
                  INSERT INTO smd_event_store
-                     (message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at, sequence_number)
+                     (event_id, aggregate_id, event_type, payload, metadata, occurred_at, global_position)
                  VALUES (?, ?, ?, ?, ?, ?, ?)
                  """)) {
             statement.setObject(1, serializedEvent.messageId().value());
@@ -109,48 +110,48 @@ final class EventStoreTestFixture implements AutoCloseable {
             statement.setBytes(4, serializedEvent.serializedPayload());
             statement.setBytes(5, serializedEvent.serializedMetadata());
             statement.setTimestamp(6, Timestamp.from(serializedEvent.createdAt()));
-            statement.setLong(7, sequencedEvent.sequenceNumber());
+            statement.setLong(7, sequencedEvent.globalPosition());
             statement.executeUpdate();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to store event at sequence number " + sequencedEvent.sequenceNumber(), e);
+            throw new RuntimeException("Failed to store event at global position " + sequencedEvent.globalPosition(), e);
         }
     }
 
-    record SequencedEvent<E extends Event>(long sequenceNumber, EventMessage<E> eventMessage) {
+    record SequencedEvent<E extends Event>(long globalPosition, EventMessage<E> eventMessage) {
 
-        SequencedEvent(long sequenceNumber, E event) {
-            this(sequenceNumber, EventMessage.from(event, new Metadata(null, Instant.now(), null)));
+        SequencedEvent(long globalPosition, E event) {
+            this(globalPosition, EventMessage.from(event, new Metadata(null, Instant.now(), null)));
         }
     }
 
-    void advanceEventStoreSequenceTo(long sequenceNumber) {
+    void advanceGlobalPositionTo(long globalPosition) {
         try (var connection = bean(DataSource.class).getConnection();
-             var statement = connection.prepareStatement("SELECT setval('smd_event_store_sequence_number_seq', ?, true)")) {
-            statement.setLong(1, sequenceNumber);
+             var statement = connection.prepareStatement("SELECT setval('smd_event_store_global_position_seq', ?, true)")) {
+            statement.setLong(1, globalPosition);
             statement.execute();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to advance the event store sequence to " + sequenceNumber, e);
+            throw new RuntimeException("Failed to advance the event store global position to " + globalPosition, e);
         }
     }
 
-    List<SerializedEvent> storedEvents() {
+    List<StoredEvent> storedEvents() {
         try (var connection = bean(DataSource.class).getConnection();
              var statement = connection.prepareStatement("""
-                 SELECT message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at, sequence_number
+                 SELECT global_position, event_id, aggregate_id, event_type, payload, metadata, occurred_at
                  FROM smd_event_store
-                 ORDER BY sequence_number
+                 ORDER BY global_position
                  """);
              var resultSet = statement.executeQuery()) {
-            var events = new ArrayList<SerializedEvent>();
+            var events = new ArrayList<StoredEvent>();
             while (resultSet.next()) {
-                events.add(new SerializedEvent(
-                    new MessageId((UUID) resultSet.getObject("message_id")),
-                    resultSet.getLong("sequence_number"),
-                    Optional.ofNullable(resultSet.getString("subject_id")),
+                events.add(new StoredEvent(
+                    resultSet.getLong("global_position"),
+                    new MessageId((UUID) resultSet.getObject("event_id")),
+                    Optional.ofNullable(resultSet.getString("aggregate_id")),
                     resultSet.getString("event_type"),
-                    resultSet.getBytes("serialized_payload"),
-                    resultSet.getBytes("serialized_metadata"),
-                    resultSet.getTimestamp("created_at").toInstant()
+                    resultSet.getBytes("payload"),
+                    resultSet.getBytes("metadata"),
+                    resultSet.getTimestamp("occurred_at").toInstant()
                 ));
             }
             return List.copyOf(events);
@@ -159,12 +160,17 @@ final class EventStoreTestFixture implements AutoCloseable {
         }
     }
 
+    <E extends Event> EventMessage<E> deserialize(StoredEvent storedEvent) {
+        return bean(EventSerializer.class).deserialize(new SerializedEvent(storedEvent.eventId(), storedEvent.globalPosition(), storedEvent.aggregateId(),
+            storedEvent.eventType(), storedEvent.payload(), storedEvent.metadata(), storedEvent.occurredAt()));
+    }
+
     Optional<TokenState> tokenState(String processingGroup) {
         return bean(TokenStore.class).tokenState(processingGroup);
     }
 
-    Optional<EventSequenceState> eventSequenceState(String processingGroup, String subjectId) {
-        return bean(EventSubjectSequenceStore.class).eventSequenceState(processingGroup, subjectId);
+    Optional<EventSequenceState> eventSequenceState(String processingGroup, String aggregateId) {
+        return bean(EventSequenceStore.class).eventSequenceState(processingGroup, aggregateId);
     }
 
     @Override

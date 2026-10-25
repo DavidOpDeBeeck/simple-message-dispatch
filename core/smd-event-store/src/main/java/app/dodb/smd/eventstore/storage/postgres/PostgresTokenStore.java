@@ -54,9 +54,9 @@ public class PostgresTokenStore implements TokenStore {
         return connectionProvider.doWithConnection(connection -> {
             try (var stmt = connection.prepareStatement("""
                 SELECT processing_group,
-                       last_processed_sequence_number,
+                       last_processed_position,
                        last_gap_detected_at,
-                       gap_sequence_number
+                       gap_position
                 FROM smd_token_store
                 WHERE processing_group = ?
                 """)) {
@@ -67,9 +67,9 @@ public class PostgresTokenStore implements TokenStore {
                     }
                     return Optional.of(new TokenState(
                         rs.getString("processing_group"),
-                        optionalLong(rs, "last_processed_sequence_number"),
+                        optionalLong(rs, "last_processed_position"),
                         optionalTimestamp(rs, "last_gap_detected_at"),
-                        optionalLong(rs, "gap_sequence_number")
+                        optionalLong(rs, "gap_position")
                     ));
                 }
             } catch (SQLException e) {
@@ -108,7 +108,7 @@ public class PostgresTokenStore implements TokenStore {
 
     private Optional<Token> claimTokenRow(Connection connection, String processingGroup) {
         try (var stmt = connection.prepareStatement("""
-            SELECT last_processed_sequence_number, last_gap_detected_at
+            SELECT last_processed_position, last_gap_detected_at
             FROM smd_token_store
             WHERE processing_group = ?
             FOR UPDATE SKIP LOCKED
@@ -128,13 +128,13 @@ public class PostgresTokenStore implements TokenStore {
 
     record PostgresToken(String processingGroup,
                          ConnectionProvider connectionProvider,
-                         Optional<Long> lastProcessedSequenceNumber,
+                         Optional<Long> lastProcessedPosition,
                          Optional<Instant> lastGapDetectedAt) implements Token {
 
         PostgresToken {
             requireNonNull(processingGroup);
             requireNonNull(connectionProvider);
-            requireNonNull(lastProcessedSequenceNumber);
+            requireNonNull(lastProcessedPosition);
             requireNonNull(lastGapDetectedAt);
         }
 
@@ -142,25 +142,25 @@ public class PostgresTokenStore implements TokenStore {
             return new PostgresToken(
                 processingGroup,
                 connectionProvider,
-                optionalLong(rs, "last_processed_sequence_number"),
+                optionalLong(rs, "last_processed_position"),
                 optionalTimestamp(rs, "last_gap_detected_at")
             );
         }
 
         @Override
-        public void markProcessed(long sequenceNumber) {
+        public void markProcessed(long globalPosition) {
             connectionProvider.doWithConnection(connection -> {
                 try (PreparedStatement stmt = connection.prepareStatement("""
                     UPDATE smd_token_store
-                    SET last_processed_sequence_number = ?,
+                    SET last_processed_position = ?,
                         last_gap_detected_at = NULL,
-                        gap_sequence_number = NULL
+                        gap_position = NULL
                     WHERE processing_group = ?
                     """)) {
-                    stmt.setLong(1, sequenceNumber);
+                    stmt.setLong(1, globalPosition);
                     stmt.setString(2, processingGroup);
                     stmt.executeUpdate();
-                    LOGGER.debug("Marked processed: processingGroup={}, sequenceNumber={}", processingGroup, sequenceNumber);
+                    LOGGER.debug("Marked processed: processingGroup={}, globalPosition={}", processingGroup, globalPosition);
                 } catch (SQLException e) {
                     throw new TokenStoreException("Failed to mark processed for processing group: " + processingGroup, e);
                 }
@@ -168,19 +168,19 @@ public class PostgresTokenStore implements TokenStore {
         }
 
         @Override
-        public void markGapDetected(long sequenceNumber) {
+        public void markGapDetected(long globalPosition) {
             connectionProvider.doWithConnection(connection -> {
                 try (PreparedStatement stmt = connection.prepareStatement("""
                     UPDATE smd_token_store
                     SET last_gap_detected_at = ?,
-                        gap_sequence_number = ?
+                        gap_position = ?
                     WHERE processing_group = ?
                     """)) {
                     stmt.setTimestamp(1, Timestamp.from(Instant.now()));
-                    stmt.setLong(2, sequenceNumber);
+                    stmt.setLong(2, globalPosition);
                     stmt.setString(3, processingGroup);
                     stmt.executeUpdate();
-                    LOGGER.warn("Gap detected: processingGroup={}, gapSequenceNumber={}", processingGroup, sequenceNumber);
+                    LOGGER.warn("Gap detected: processingGroup={}, gapPosition={}", processingGroup, globalPosition);
                 } catch (SQLException e) {
                     throw new TokenStoreException("Failed to mark gap detected for processing group: " + processingGroup, e);
                 }

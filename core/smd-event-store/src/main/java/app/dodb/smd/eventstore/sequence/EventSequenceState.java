@@ -6,18 +6,18 @@ import java.util.Optional;
 import static java.util.Objects.requireNonNull;
 
 public record EventSequenceState(String processingGroup,
-                                 Optional<String> subjectId,
-                                 EventSubjectSequenceStatus status,
-                                 Optional<Long> lastProcessedSequenceNumber,
+                                 Optional<String> aggregateId,
+                                 EventSequenceStatus status,
+                                 Optional<Long> lastProcessedPosition,
                                  int errorCount,
                                  Optional<String> lastErrorMessage,
                                  Optional<Instant> lastErrorAt) {
 
     public EventSequenceState {
         requireNonNull(processingGroup);
-        requireNonNull(subjectId);
+        requireNonNull(aggregateId);
         requireNonNull(status);
-        requireNonNull(lastProcessedSequenceNumber);
+        requireNonNull(lastProcessedPosition);
         requireNonNull(lastErrorMessage);
         requireNonNull(lastErrorAt);
     }

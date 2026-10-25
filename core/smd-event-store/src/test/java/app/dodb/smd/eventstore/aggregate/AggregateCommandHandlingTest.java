@@ -12,10 +12,11 @@ import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
+import app.dodb.smd.eventstore.storage.inmemory.InMemoryEventSequenceStore;
 import app.dodb.smd.eventstore.storage.inmemory.InMemoryEventStorage;
-import app.dodb.smd.eventstore.storage.inmemory.InMemoryEventSubjectSequenceStore;
 import app.dodb.smd.eventstore.storage.inmemory.InMemoryTokenStore;
 import app.dodb.smd.serialization.EventSerializer;
+import app.dodb.smd.serialization.SerializedEvent;
 import app.dodb.smd.serialization.jackson.JacksonEventSerializer;
 import app.dodb.smd.serialization.jackson.SMDJacksonModule;
 import org.junit.jupiter.api.AfterEach;
@@ -45,7 +46,7 @@ class AggregateCommandHandlingTest {
         .eventStorage(eventStorage)
         .eventSerializer(eventSerializer)
         .tokenStore(new InMemoryTokenStore())
-        .eventSequenceStore(new InMemoryEventSubjectSequenceStore())
+        .eventSequenceStore(new InMemoryEventSequenceStore())
         .build());
     private final CommandBus commandBus = commandBus(true);
 
@@ -61,7 +62,7 @@ class AggregateCommandHandlingTest {
         assertThat(result).isEqualTo(TICKET_ID);
         assertThat(stream(TICKET_ID)).containsExactly(new TestTicketOpenedEvent(TICKET_ID, "Cannot sign in"));
         assertThat(eventStorage.events()).singleElement()
-            .satisfies(stored -> assertThat(stored.subjectId()).contains(TICKET_ID.toString()));
+            .satisfies(stored -> assertThat(stored.aggregateId()).contains(TICKET_ID.toString()));
     }
 
     @Test
@@ -144,12 +145,12 @@ class AggregateCommandHandlingTest {
     }
 
     @Test
-    void send_eventWithForeignSubject_failsAndStoresNothing() {
+    void send_eventWithForeignSubjectId_failsAndStoresNothing() {
         commandBus.send(new OpenTestTicketCommand(TICKET_ID, "Cannot sign in"));
 
         assertThatThrownBy(() -> commandBus.send(new MisdirectTestTicketCommand(TICKET_ID, OTHER_TICKET_ID)))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("@SubjectId must resolve to the aggregate ID")
+            .hasMessageContaining("a declared @SubjectId must resolve to the aggregate ID")
             .hasMessageContaining(OTHER_TICKET_ID.toString());
 
         assertThat(eventStorage.events()).hasSize(1);
@@ -200,7 +201,8 @@ class AggregateCommandHandlingTest {
 
     private List<Event> stream(UUID ticketId) {
         return eventStorage.loadAggregateStream("test-ticket", ticketId.toString()).stream()
-            .map(serializedEvent -> (Event) eventSerializer.deserialize(serializedEvent).payload())
+            .map(stored -> (Event) eventSerializer.deserialize(new SerializedEvent(stored.eventId(), stored.globalPosition(), stored.aggregateId(),
+                stored.eventType(), stored.payload(), stored.metadata(), stored.occurredAt())).payload())
             .toList();
     }
 

@@ -41,9 +41,9 @@ public class InMemoryTokenStore implements TokenStore {
     private static class InMemoryToken implements Token {
 
         private final Clock clock;
-        private Long lastProcessedSequenceNumber;
+        private Long lastProcessedPosition;
         private Instant lastGapDetectedAt;
-        private Long gapSequenceNumber;
+        private Long gapPosition;
 
         private InMemoryToken(Clock clock) {
             this.clock = clock;
@@ -52,15 +52,15 @@ public class InMemoryTokenStore implements TokenStore {
         private synchronized TokenState state(String processingGroup) {
             return new TokenState(
                 processingGroup,
-                Optional.ofNullable(lastProcessedSequenceNumber),
+                Optional.ofNullable(lastProcessedPosition),
                 Optional.ofNullable(lastGapDetectedAt),
-                Optional.ofNullable(gapSequenceNumber)
+                Optional.ofNullable(gapPosition)
             );
         }
 
         @Override
-        public synchronized Optional<Long> lastProcessedSequenceNumber() {
-            return Optional.ofNullable(lastProcessedSequenceNumber);
+        public synchronized Optional<Long> lastProcessedPosition() {
+            return Optional.ofNullable(lastProcessedPosition);
         }
 
         @Override
@@ -69,22 +69,22 @@ public class InMemoryTokenStore implements TokenStore {
         }
 
         @Override
-        public synchronized void markProcessed(long sequenceNumber) {
-            if (lastProcessedSequenceNumber != null && sequenceNumber < lastProcessedSequenceNumber) {
+        public synchronized void markProcessed(long globalPosition) {
+            if (lastProcessedPosition != null && globalPosition < lastProcessedPosition) {
                 return;
             }
 
-            lastProcessedSequenceNumber = sequenceNumber;
-            if (gapSequenceNumber != null && sequenceNumber >= gapSequenceNumber) {
+            lastProcessedPosition = globalPosition;
+            if (gapPosition != null && globalPosition >= gapPosition) {
                 lastGapDetectedAt = null;
-                gapSequenceNumber = null;
+                gapPosition = null;
             }
         }
 
         @Override
-        public synchronized void markGapDetected(long sequenceNumber) {
+        public synchronized void markGapDetected(long globalPosition) {
             lastGapDetectedAt = clock.instant();
-            gapSequenceNumber = sequenceNumber;
+            gapPosition = globalPosition;
         }
     }
 }

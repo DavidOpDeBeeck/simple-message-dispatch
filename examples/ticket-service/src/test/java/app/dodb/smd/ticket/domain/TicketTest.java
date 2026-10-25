@@ -9,9 +9,10 @@ import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
 import app.dodb.smd.eventstore.aggregate.AggregateNotFoundException;
 import app.dodb.smd.eventstore.storage.inmemory.InMemoryEventStorage;
-import app.dodb.smd.eventstore.storage.inmemory.InMemoryEventSubjectSequenceStore;
+import app.dodb.smd.eventstore.storage.inmemory.InMemoryEventSequenceStore;
 import app.dodb.smd.eventstore.storage.inmemory.InMemoryTokenStore;
 import app.dodb.smd.serialization.EventSerializer;
+import app.dodb.smd.serialization.SerializedEvent;
 import app.dodb.smd.serialization.jackson.JacksonEventSerializer;
 import app.dodb.smd.serialization.jackson.SMDJacksonModule;
 import app.dodb.smd.test.NoOpTransactionProvider;
@@ -44,7 +45,7 @@ class TicketTest {
         .eventStorage(eventStorage)
         .eventSerializer(eventSerializer)
         .tokenStore(new InMemoryTokenStore())
-        .eventSequenceStore(new InMemoryEventSubjectSequenceStore())
+        .eventSequenceStore(new InMemoryEventSequenceStore())
         .build());
     private final CommandBus commandBus = CommandBusSpec.withDefaults()
         .commandHandlers(eventStore.aggregateCommandHandlers(List.of(Ticket.class), EventBusSpec.withDefaults()
@@ -111,7 +112,8 @@ class TicketTest {
 
     private List<Event> stream(UUID ticketId) {
         return eventStorage.loadAggregateStream("ticket", ticketId.toString()).stream()
-            .map(serializedEvent -> (Event) eventSerializer.deserialize(serializedEvent).payload())
+            .map(stored -> (Event) eventSerializer.deserialize(new SerializedEvent(stored.eventId(), stored.globalPosition(), stored.aggregateId(),
+                stored.eventType(), stored.payload(), stored.metadata(), stored.occurredAt())).payload())
             .toList();
     }
 }

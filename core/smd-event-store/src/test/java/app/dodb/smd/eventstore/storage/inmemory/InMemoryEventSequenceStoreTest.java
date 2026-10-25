@@ -2,71 +2,71 @@ package app.dodb.smd.eventstore.storage.inmemory;
 
 import org.junit.jupiter.api.Test;
 
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ACTIVE;
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
+import static app.dodb.smd.eventstore.sequence.EventSequenceStatus.ABANDONED;
+import static app.dodb.smd.eventstore.sequence.EventSequenceStatus.ACTIVE;
+import static app.dodb.smd.eventstore.sequence.EventSequenceStatus.FAILED;
 import static org.assertj.core.api.Assertions.assertThat;
 
-class InMemoryEventSubjectSequenceStoreTest {
+class InMemoryEventSequenceStoreTest {
 
     @Test
     void eventSequenceState_whenSequenceDoesNotExist_returnsEmpty() {
-        var store = new InMemoryEventSubjectSequenceStore();
+        var store = new InMemoryEventSequenceStore();
 
         assertThat(store.globalEventSequenceState("processing-group")).isEmpty();
-        assertThat(store.eventSequenceState("processing-group", "subjectId")).isEmpty();
+        assertThat(store.eventSequenceState("processing-group", "aggregateId")).isEmpty();
     }
 
     @Test
     void claimGlobal_preservesStatePerProcessingGroup() {
-        var store = new InMemoryEventSubjectSequenceStore();
+        var store = new InMemoryEventSequenceStore();
         store.claimGlobal("first-group").orElseThrow().markProcessed(3L);
 
         assertThat(store.claimGlobal("first-group").orElseThrow()
-            .lastProcessedSequenceNumber()).contains(3L);
+            .lastProcessedPosition()).contains(3L);
         assertThat(store.claimGlobal("second-group").orElseThrow()
-            .lastProcessedSequenceNumber()).isEmpty();
+            .lastProcessedPosition()).isEmpty();
     }
 
     @Test
-    void claimGlobal_doesNotAliasEmptySubject() {
-        var store = new InMemoryEventSubjectSequenceStore();
+    void claimGlobal_doesNotAliasEmptyAggregateId() {
+        var store = new InMemoryEventSequenceStore();
         store.claimGlobal("processing-group").orElseThrow().markProcessed(3L);
-        store.claimSubject("processing-group", "").orElseThrow().markProcessed(4L);
+        store.claimAggregate("processing-group", "").orElseThrow().markProcessed(4L);
 
         assertThat(store.claimGlobal("processing-group").orElseThrow()
-            .lastProcessedSequenceNumber()).contains(3L);
-        assertThat(store.claimSubject("processing-group", "").orElseThrow()
-            .lastProcessedSequenceNumber()).contains(4L);
+            .lastProcessedPosition()).contains(3L);
+        assertThat(store.claimAggregate("processing-group", "").orElseThrow()
+            .lastProcessedPosition()).contains(4L);
         assertThat(store.globalEventSequenceState("processing-group")).hasValueSatisfying(state -> {
-            assertThat(state.subjectId()).isEmpty();
-            assertThat(state.lastProcessedSequenceNumber()).contains(3L);
+            assertThat(state.aggregateId()).isEmpty();
+            assertThat(state.lastProcessedPosition()).contains(3L);
         });
         assertThat(store.eventSequenceState("processing-group", "")).hasValueSatisfying(state -> {
-            assertThat(state.subjectId()).contains("");
-            assertThat(state.lastProcessedSequenceNumber()).contains(4L);
+            assertThat(state.aggregateId()).contains("");
+            assertThat(state.lastProcessedPosition()).contains(4L);
         });
     }
 
     @Test
-    void claimSubject_preservesStatePerProcessingGroupAndSubject() {
-        var store = new InMemoryEventSubjectSequenceStore();
-        var firstSequence = store.claimSubject("first-group", "first-subjectId").orElseThrow();
+    void claimAggregate_preservesStatePerProcessingGroupAndAggregate() {
+        var store = new InMemoryEventSequenceStore();
+        var firstSequence = store.claimAggregate("first-group", "first-aggregateId").orElseThrow();
         firstSequence.markProcessed(3L);
 
-        assertThat(store.claimSubject("first-group", "first-subjectId").orElseThrow()
-            .lastProcessedSequenceNumber()).contains(3L);
-        assertThat(store.claimSubject("first-group", "second-subjectId").orElseThrow()
-            .lastProcessedSequenceNumber()).isEmpty();
-        assertThat(store.claimSubject("second-group", "first-subjectId").orElseThrow()
-            .lastProcessedSequenceNumber()).isEmpty();
+        assertThat(store.claimAggregate("first-group", "first-aggregateId").orElseThrow()
+            .lastProcessedPosition()).contains(3L);
+        assertThat(store.claimAggregate("first-group", "second-aggregateId").orElseThrow()
+            .lastProcessedPosition()).isEmpty();
+        assertThat(store.claimAggregate("second-group", "first-aggregateId").orElseThrow()
+            .lastProcessedPosition()).isEmpty();
     }
 
     @Test
     void markProcessed_recoversFailedSequence() {
-        var store = new InMemoryEventSubjectSequenceStore();
+        var store = new InMemoryEventSequenceStore();
         var sequence = store
-            .claimSubject("processing-group", "subjectId")
+            .claimAggregate("processing-group", "aggregateId")
             .orElseThrow();
         assertThat(sequence.status()).isEqualTo(ACTIVE);
 
@@ -75,11 +75,11 @@ class InMemoryEventSubjectSequenceStoreTest {
         assertThat(sequence.status()).isEqualTo(FAILED);
         assertThat(sequence.errorCount()).isEqualTo(2);
         assertThat(sequence.lastErrorAt()).isPresent();
-        assertThat(store.eventSequenceState("processing-group", "subjectId")).hasValueSatisfying(state -> {
+        assertThat(store.eventSequenceState("processing-group", "aggregateId")).hasValueSatisfying(state -> {
             assertThat(state.processingGroup()).isEqualTo("processing-group");
-            assertThat(state.subjectId()).contains("subjectId");
+            assertThat(state.aggregateId()).contains("aggregateId");
             assertThat(state.status()).isEqualTo(FAILED);
-            assertThat(state.lastProcessedSequenceNumber()).isEmpty();
+            assertThat(state.lastProcessedPosition()).isEmpty();
             assertThat(state.errorCount()).isEqualTo(2);
             assertThat(state.lastErrorMessage()).hasValueSatisfying(message ->
                 assertThat(message).contains("IllegalStateException: failed")
@@ -90,12 +90,12 @@ class InMemoryEventSubjectSequenceStoreTest {
         sequence.markProcessed(1L);
 
         assertThat(sequence.status()).isEqualTo(ACTIVE);
-        assertThat(sequence.lastProcessedSequenceNumber()).contains(1L);
+        assertThat(sequence.lastProcessedPosition()).contains(1L);
         assertThat(sequence.errorCount()).isZero();
         assertThat(sequence.lastErrorAt()).isEmpty();
-        assertThat(store.eventSequenceState("processing-group", "subjectId")).hasValueSatisfying(state -> {
+        assertThat(store.eventSequenceState("processing-group", "aggregateId")).hasValueSatisfying(state -> {
             assertThat(state.status()).isEqualTo(ACTIVE);
-            assertThat(state.lastProcessedSequenceNumber()).contains(1L);
+            assertThat(state.lastProcessedPosition()).contains(1L);
             assertThat(state.errorCount()).isZero();
             assertThat(state.lastErrorMessage()).isEmpty();
             assertThat(state.lastErrorAt()).isEmpty();
@@ -104,25 +104,25 @@ class InMemoryEventSubjectSequenceStoreTest {
 
     @Test
     void markSkipped_advancesAbandonedSequence() {
-        var store = new InMemoryEventSubjectSequenceStore();
+        var store = new InMemoryEventSequenceStore();
         var sequence = store
-            .claimSubject("processing-group", "subjectId")
+            .claimAggregate("processing-group", "aggregateId")
             .orElseThrow();
 
         sequence.markAbandoned(2L, new IllegalStateException("abandoned"));
 
         assertThat(sequence.status()).isEqualTo(ABANDONED);
-        assertThat(sequence.lastProcessedSequenceNumber()).contains(2L);
+        assertThat(sequence.lastProcessedPosition()).contains(2L);
         assertThat(sequence.errorCount()).isZero();
         assertThat(sequence.lastErrorAt()).isPresent();
 
         sequence.markSkipped(3L);
 
         assertThat(sequence.status()).isEqualTo(ABANDONED);
-        assertThat(sequence.lastProcessedSequenceNumber()).contains(3L);
-        assertThat(store.eventSequenceState("processing-group", "subjectId")).hasValueSatisfying(state -> {
+        assertThat(sequence.lastProcessedPosition()).contains(3L);
+        assertThat(store.eventSequenceState("processing-group", "aggregateId")).hasValueSatisfying(state -> {
             assertThat(state.status()).isEqualTo(ABANDONED);
-            assertThat(state.lastProcessedSequenceNumber()).contains(3L);
+            assertThat(state.lastProcessedPosition()).contains(3L);
             assertThat(state.errorCount()).isZero();
             assertThat(state.lastErrorMessage()).hasValueSatisfying(message ->
                 assertThat(message).contains("IllegalStateException: abandoned")

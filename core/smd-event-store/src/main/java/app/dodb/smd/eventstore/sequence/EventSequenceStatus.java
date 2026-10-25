@@ -1,6 +1,6 @@
 package app.dodb.smd.eventstore.sequence;
 
-public enum EventSubjectSequenceStatus {
+public enum EventSequenceStatus {
     ACTIVE,
     FAILED,
     ABANDONED

@@ -49,9 +49,10 @@ final class PendingAggregateEvent {
 
         var pendingEvent = CURRENT.get();
         var aggregateId = pendingEvent.revision.aggregateId();
-        if (!eventMessage.subjectId().equals(Optional.of(aggregateId))) {
+        if (eventMessage.subjectId().filter(subjectId -> !subjectId.equals(aggregateId)).isPresent()) {
             throw new IllegalArgumentException("""
-                Invalid aggregate event: @SubjectId must resolve to the aggregate ID.
+                Invalid aggregate event: a declared @SubjectId must resolve to the aggregate ID.
+                Aggregate events need no @SubjectId; the event store records the aggregate ID.
 
                     Aggregate:
                     %s (%s)
@@ -62,7 +63,7 @@ final class PendingAggregateEvent {
                     Subject:
                     %s
                 """.formatted(pendingEvent.revision.aggregateType(), aggregateId, logClass(eventMessage.payload().getClass()),
-                eventMessage.subjectId().orElse("none")));
+                eventMessage.subjectId().orElseThrow()));
         }
 
         pendingEvent.claimed = true;

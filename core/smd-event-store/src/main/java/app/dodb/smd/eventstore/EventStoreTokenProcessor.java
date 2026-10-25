@@ -5,7 +5,7 @@ import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.EventSequenceProcessingResult.Failure;
 import app.dodb.smd.eventstore.EventSequenceProcessingResult.Processed;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
-import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
+import app.dodb.smd.eventstore.sequence.EventSequenceStore;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.eventstore.storage.Token;
 import app.dodb.smd.eventstore.storage.TokenStore;
@@ -24,7 +24,7 @@ class EventStoreTokenProcessor {
     private final TransactionProvider transactionProvider;
     private final TokenStore tokenStore;
     private final EventStorage eventStorage;
-    private final EventSubjectSequenceStore eventSubjectSequenceStore;
+    private final EventSequenceStore eventSequenceStore;
     private final ProcessingConfig processingConfig;
     private final EventSequenceProcessor eventSequenceProcessor;
 
@@ -33,10 +33,10 @@ class EventStoreTokenProcessor {
         this.tokenStore = requireNonNull(config.getTokenStore());
         this.eventStorage = requireNonNull(config.getEventStorage());
         this.processingConfig = requireNonNull(config.getProcessingConfig());
-        this.eventSubjectSequenceStore = requireNonNull(config.getEventSequenceStore());
+        this.eventSequenceStore = requireNonNull(config.getEventSequenceStore());
         this.eventSequenceProcessor = new EventSequenceProcessor(
-            eventSubjectSequenceStore,
-            config.getEventSerializer(),
+            eventSequenceStore,
+            new StoredEventSerializer(config.getEventSerializer()),
             processingConfig.getRetryBackoffStrategy()
         );
     }
@@ -55,8 +55,8 @@ class EventStoreTokenProcessor {
                         return;
                     }
 
-                    LOGGER.warn("Event processing failed mid-batch, retrying previous {} event(s): processingGroup={}, subjectId={}, sequenceNumber={}",
-                        failure.replayBatchSize(), processingGroup, failure.failure().subjectId(), failure.failure().sequenceNumber(), failure.failure().exception());
+                    LOGGER.warn("Event processing failed mid-batch, retrying previous {} event(s): processingGroup={}, aggregateId={}, globalPosition={}",
+                        failure.replayBatchSize(), processingGroup, failure.failure().aggregateId(), failure.failure().globalPosition(), failure.failure().exception());
                     batchSize = failure.replayBatchSize();
                 }
             }
@@ -78,31 +78,31 @@ class EventStoreTokenProcessor {
     }
 
     private void processClaimedBatch(EventSubscriber listener, Token token, int batchSize) {
-        long initialSequenceNumber = token.lastProcessedSequenceNumber().orElse(0L);
-        long committableSequenceNumber = initialSequenceNumber;
-        long lastInspectedSequenceNumber = initialSequenceNumber;
-        int positionInBatch = 0;
-        int lastProcessedPositionInBatch = 0;
+        long initialPosition = token.lastProcessedPosition().orElse(0L);
+        long committablePosition = initialPosition;
+        long lastInspectedPosition = initialPosition;
+        int indexInBatch = 0;
+        int lastProcessedIndexInBatch = 0;
 
-        try (var events = eventStorage.load(initialSequenceNumber, batchSize)) {
+        try (var events = eventStorage.load(initialPosition, batchSize)) {
             if (!events.hasNext()) {
-                LOGGER.debug("No events to process: processingGroup={}, lastProcessedSequence={}", listener.name(), initialSequenceNumber);
+                LOGGER.debug("No events to process: processingGroup={}, lastProcessedPosition={}", listener.name(), initialPosition);
                 return;
             }
 
             while (events.hasNext()) {
-                var serializedEvent = events.next();
-                var sequenceNumber = serializedEvent.sequenceNumber();
-                var expectedSequence = lastInspectedSequenceNumber + 1;
-                lastInspectedSequenceNumber = sequenceNumber;
-                positionInBatch++;
+                var storedEvent = events.next();
+                var globalPosition = storedEvent.globalPosition();
+                var expectedPosition = lastInspectedPosition + 1;
+                lastInspectedPosition = globalPosition;
+                indexInBatch++;
 
-                if (sequenceNumber > expectedSequence) {
+                if (globalPosition > expectedPosition) {
                     var gapDetectedAt = token.lastGapDetectedAt();
                     if (gapDetectedAt.isEmpty()) {
-                        token.markGapDetected(expectedSequence);
-                        LOGGER.warn("Gap detected: processingGroup={}, expectedSequence={}, actualSequence={}",
-                            listener.name(), expectedSequence, sequenceNumber);
+                        token.markGapDetected(expectedPosition);
+                        LOGGER.warn("Gap detected: processingGroup={}, expectedPosition={}, actualPosition={}",
+                            listener.name(), expectedPosition, globalPosition);
                         break;
                     }
 
@@ -110,28 +110,28 @@ class EventStoreTokenProcessor {
                         break;
                     }
 
-                    LOGGER.error("Gap timeout expired, skipping: processingGroup={}, fromSequence={}, toSequence={}",
-                        listener.name(), expectedSequence, sequenceNumber - 1);
-                    if (committableSequenceNumber + 1 == expectedSequence) {
-                        committableSequenceNumber = sequenceNumber - 1;
+                    LOGGER.error("Gap timeout expired, skipping: processingGroup={}, fromPosition={}, toPosition={}",
+                        listener.name(), expectedPosition, globalPosition - 1);
+                    if (committablePosition + 1 == expectedPosition) {
+                        committablePosition = globalPosition - 1;
                     }
                 }
 
-                var result = eventSequenceProcessor.process(listener, serializedEvent);
+                var result = eventSequenceProcessor.process(listener, storedEvent);
                 if (result instanceof Failure failure) {
-                    throw new BatchProcessingFailure(failure, lastProcessedPositionInBatch);
+                    throw new BatchProcessingFailure(failure, lastProcessedIndexInBatch);
                 }
                 if (result instanceof Processed) {
-                    lastProcessedPositionInBatch = positionInBatch;
+                    lastProcessedIndexInBatch = indexInBatch;
                 }
-                if (result.advancesToken() && committableSequenceNumber + 1 == sequenceNumber) {
-                    committableSequenceNumber = sequenceNumber;
+                if (result.advancesToken() && committablePosition + 1 == globalPosition) {
+                    committablePosition = globalPosition;
                 }
             }
         }
 
-        if (committableSequenceNumber > initialSequenceNumber) {
-            token.markProcessed(committableSequenceNumber);
+        if (committablePosition > initialPosition) {
+            token.markProcessed(committablePosition);
         }
     }
 
@@ -143,31 +143,31 @@ class EventStoreTokenProcessor {
                 return;
             }
 
-            var claimedSequence = failure.subjectId()
-                .map(subjectId -> eventSubjectSequenceStore.claimSubject(processingGroup, subjectId))
-                .orElseGet(() -> eventSubjectSequenceStore.claimGlobal(processingGroup));
+            var claimedSequence = failure.aggregateId()
+                .map(aggregateId -> eventSequenceStore.claimAggregate(processingGroup, aggregateId))
+                .orElseGet(() -> eventSequenceStore.claimGlobal(processingGroup));
             if (claimedSequence.isEmpty()) {
-                LOGGER.debug("Event subjectId already claimed, skipping failure record: processingGroup={}, subjectId={}, sequenceNumber={}",
-                    processingGroup, failure.subjectId().orElse(null), failure.sequenceNumber());
+                LOGGER.debug("Event sequence already claimed, skipping failure record: processingGroup={}, aggregateId={}, globalPosition={}",
+                    processingGroup, failure.aggregateId().orElse(null), failure.globalPosition());
                 return;
             }
 
             var token = claimedToken.orElseThrow();
             var sequence = claimedSequence.orElseThrow();
             if (sequence.errorCount() >= processingConfig.getMaxRetries()) {
-                LOGGER.error("Event abandoned (retries exhausted): processingGroup={}, subjectId={}, sequenceNumber={}, maxRetries={}",
-                    processingGroup, failure.subjectId().orElse(null), failure.sequenceNumber(), processingConfig.getMaxRetries(), failure.exception());
-                sequence.markAbandoned(failure.sequenceNumber(), failure.exception());
+                LOGGER.error("Event abandoned (retries exhausted): processingGroup={}, aggregateId={}, globalPosition={}, maxRetries={}",
+                    processingGroup, failure.aggregateId().orElse(null), failure.globalPosition(), processingConfig.getMaxRetries(), failure.exception());
+                sequence.markAbandoned(failure.globalPosition(), failure.exception());
 
-                if (token.lastProcessedSequenceNumber().orElse(0L) + 1 == failure.sequenceNumber()) {
-                    token.markProcessed(failure.sequenceNumber());
+                if (token.lastProcessedPosition().orElse(0L) + 1 == failure.globalPosition()) {
+                    token.markProcessed(failure.globalPosition());
                 }
                 return;
             }
 
             var nextErrorCount = sequence.errorCount() + 1;
-            LOGGER.warn("Event processing failed: processingGroup={}, subjectId={}, sequenceNumber={}, retry={}/{}",
-                processingGroup, failure.subjectId().orElse(null), failure.sequenceNumber(), nextErrorCount, processingConfig.getMaxRetries(), failure.exception());
+            LOGGER.warn("Event processing failed: processingGroup={}, aggregateId={}, globalPosition={}, retry={}/{}",
+                processingGroup, failure.aggregateId().orElse(null), failure.globalPosition(), nextErrorCount, processingConfig.getMaxRetries(), failure.exception());
             sequence.markFailed(failure.exception(), nextErrorCount);
         });
     }

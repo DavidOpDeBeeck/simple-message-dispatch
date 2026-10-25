@@ -6,14 +6,14 @@ import java.util.Optional;
 import static java.util.Objects.requireNonNull;
 
 public record TokenState(String processingGroup,
-                         Optional<Long> lastProcessedSequenceNumber,
+                         Optional<Long> lastProcessedPosition,
                          Optional<Instant> lastGapDetectedAt,
-                         Optional<Long> gapSequenceNumber) {
+                         Optional<Long> gapPosition) {
 
     public TokenState {
         requireNonNull(processingGroup);
-        requireNonNull(lastProcessedSequenceNumber);
+        requireNonNull(lastProcessedPosition);
         requireNonNull(lastGapDetectedAt);
-        requireNonNull(gapSequenceNumber);
+        requireNonNull(gapPosition);
     }
 }

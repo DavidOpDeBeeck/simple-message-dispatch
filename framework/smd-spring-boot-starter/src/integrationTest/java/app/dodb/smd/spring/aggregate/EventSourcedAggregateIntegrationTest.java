@@ -5,6 +5,7 @@ import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.eventstore.aggregate.ConcurrentAggregateChangeException;
 import app.dodb.smd.eventstore.storage.EventStorage;
 import app.dodb.smd.serialization.EventSerializer;
+import app.dodb.smd.serialization.SerializedEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,14 +63,14 @@ class EventSourcedAggregateIntegrationTest {
         assertThat(new JdbcTemplate(context.getBean(DataSource.class)).queryForList("""
                 SELECT aggregate_version
                 FROM smd_event_store
-                WHERE aggregate_type = 'bank-account' AND subject_id = ?
-                ORDER BY sequence_number
+                WHERE aggregate_type = 'bank-account' AND aggregate_id = ?
+                ORDER BY global_position
                 """, Long.class, ACCOUNT_ID.toString()))
             .containsExactly(1L, 2L, 3L);
     }
 
     @Test
-    void send_aggregateCommand_deliversEventsToDurableProcessingGroup() {
+    void send_aggregateCommand_deliversEventsWithAggregateIdAsSubject() {
         var commandGateway = context.getBean(CommandGateway.class);
         commandGateway.send(new OpenBankAccountCommand(ACCOUNT_ID));
 
@@ -109,7 +110,8 @@ class EventSourcedAggregateIntegrationTest {
     private List<Object> stream() {
         var eventSerializer = context.getBean(EventSerializer.class);
         return context.getBean(EventStorage.class).loadAggregateStream("bank-account", ACCOUNT_ID.toString()).stream()
-            .<Object>map(serializedEvent -> eventSerializer.deserialize(serializedEvent).payload())
+            .<Object>map(stored -> eventSerializer.deserialize(new SerializedEvent(stored.eventId(), stored.globalPosition(), stored.aggregateId(),
+                stored.eventType(), stored.payload(), stored.metadata(), stored.occurredAt())).payload())
             .toList();
     }
 

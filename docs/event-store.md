@@ -4,6 +4,26 @@
 
 Use it when events must survive restarts or be retried independently of the publishing request. Delivery is at least once, so handlers must keep side effects transactional or idempotent.
 
+## Store Model
+
+The store keeps events in domain-driven design terms. Every event has a global position, and an event that belongs to an aggregate also carries the aggregate's type, ID, and version.
+SMD maps these to the `EventMessage` it publishes and delivers, so handlers keep working with messages:
+
+| Column              | Meaning                                                       | In SMD messages                                   |
+|---------------------|---------------------------------------------------------------|---------------------------------------------------|
+| `global_position`   | Position across all events; processing groups follow it       | `smd.sequenceNumber` delivery metadata            |
+| `event_id`          | Unique event identity                                         | `EventMessage.messageId()`                        |
+| `aggregate_type`    | Stable `@Aggregate` name; empty for events outside aggregates | Not exposed                                       |
+| `aggregate_id`      | Aggregate identity, or the `@SubjectId` of other events       | `EventMessage.subjectId()` and `smd.subjectId`    |
+| `aggregate_version` | Position in the aggregate's stream, starting at 1             | Not exposed                                       |
+| `event_type`        | Resolved event type name                                      | The payload class                                 |
+| `payload`           | Serialized event                                              | `EventMessage.payload()`                          |
+| `metadata`          | Serialized metadata                                           | `EventMessage.metadata()`                         |
+| `occurred_at`       | Publication time                                              | `Metadata.timestamp()`                            |
+
+An aggregate's events need no `@SubjectId`: the store records the aggregate ID and delivers it as the subject. An event outside an aggregate records its `@SubjectId` as
+`aggregate_id`, with no type or version.
+
 ## Spring Boot Setup
 
 The Spring Boot starter already includes the event-store module. Your application still needs:
@@ -79,13 +99,12 @@ An outlet filter skips nonmatching events and advances past them. Changing the f
 
 ## Identify Event Subjects
 
-A subject identifies an ordered sequence within each processing group:
+A subject identifies an ordered sequence within each processing group. Aggregate events use the aggregate ID. Give other events a subject with `@SubjectId`:
 
 ```java
-public record TicketOpenedEvent(
-        @SubjectId UUID ticketId,
-        String title,
-        String description) implements Event {
+public record InvoiceSentEvent(
+        @SubjectId UUID invoiceId,
+        String recipient) implements Event {
 }
 ```
 
@@ -96,7 +115,7 @@ Important rules:
 - The exact string is the identity. Event types do not add an implicit namespace.
 - Use stable domain values. Do not use array, collection, debug, or object-identity strings.
 - Blank subjects and invalid or duplicate accessors fail publication.
-- Subject IDs must fit the PostgreSQL `VARCHAR(500)` column.
+- Subject IDs must fit the PostgreSQL `VARCHAR(500)` `aggregate_id` column.
 - All events without a subject share one global subjectless sequence per processing group.
 
 ## Make Durable Handlers Idempotent
@@ -199,7 +218,7 @@ public record AssignTicketCommand(@TargetAggregateId UUID ticketId, String assig
 | Annotation              | Target                      | Meaning                                                                          |
 |-------------------------|-----------------------------|----------------------------------------------------------------------------------|
 | `@Aggregate("ticket")`  | class                       | Event-sourced aggregate. The name is stored with every event and must be stable  |
-| `@AggregateId`          | field                       | Identity. Every applied event's `@SubjectId` must resolve to the same value      |
+| `@AggregateId`          | field                       | Identity. Stored as `aggregate_id` and delivered as each event's subject         |
 | `@CommandHandler`       | method                      | Handles a command on the aggregate                                               |
 | `@TargetAggregateId`    | command method or component | Selects the stream to load. A command without it creates a new aggregate         |
 | `@EventSourcingHandler` | method                      | Applies one event to the aggregate's state. Events without a handler are ignored |
@@ -213,15 +232,18 @@ For each command, in one transaction:
 1. A command with `@TargetAggregateId` loads the stream and replays it; an empty stream fails with `AggregateNotFoundException`. A command without it starts from a new instance.
 2. The command handler runs. If it throws, nothing is appended.
 3. Each applied event is published through the event publisher with the next aggregate version, after the loaded version. The event store's inlet stores it with
-   `aggregate_type` and `aggregate_version`; other sinks and processing groups receive it as usual.
+   `aggregate_type`, `aggregate_id`, and `aggregate_version`; other sinks and processing groups receive it as usual.
 
-A unique index on `(aggregate_type, subject_id, aggregate_version)` guards concurrent changes. When another transaction already stored the same version, storing fails with
+Applied events need no `@SubjectId`. Processing groups that read from the store receive the aggregate ID as the event's subject, so each aggregate's events are handled in
+version order. Sinks that receive the event directly see only a declared `@SubjectId`.
+
+A unique index on `(aggregate_type, aggregate_id, aggregate_version)` guards concurrent changes. When another transaction already stored the same version, storing fails with
 `ConcurrentAggregateChangeException` and the transaction rolls back. SMD does not retry; send the command again to handle it against the new state.
 
 Event storage is deferred until the transaction completes, so a second command for the same aggregate in the same transaction loads the stream without the first command's
 events and fails with `ConcurrentAggregateChangeException`.
 
-Publication fails if no event store inlet receives an aggregate event, and if an applied event's `@SubjectId` differs from the aggregate's `@AggregateId`.
+Publication fails if no event store inlet receives an aggregate event, and if an applied event declares a `@SubjectId` that differs from the aggregate's `@AggregateId`.
 
 With Spring Boot and `smd.event-store.enabled=true`, classes annotated with `@Aggregate` in the `@EnableSMD` packages register their command handlers next to the bean-based ones.
 They are not beans. Without Spring, register them on the command bus explicitly:
@@ -300,12 +322,12 @@ startup.
 
 Before each delivery attempt, SMD merges these reserved properties into the event metadata. `ProcessingMetadata` holds their names:
 
-| Property             | Constant          | Value                                             |
-|----------------------|-------------------|---------------------------------------------------|
-| `smd.processingId`   | `PROCESSING_ID`   | New UUID for this attempt                         |
-| `smd.sequenceNumber` | `SEQUENCE_NUMBER` | Global store position                             |
-| `smd.subjectId`      | `SUBJECT_ID`      | Persisted subject; omitted for subjectless events |
-| `smd.errorCount`     | `ERROR_COUNT`     | Failures already recorded for the subject         |
+| Property             | Constant          | Value                                                 |
+|----------------------|-------------------|-------------------------------------------------------|
+| `smd.processingId`   | `PROCESSING_ID`   | New UUID for this attempt                             |
+| `smd.sequenceNumber` | `SEQUENCE_NUMBER` | The event's `global_position`                         |
+| `smd.subjectId`      | `SUBJECT_ID`      | The event's `aggregate_id`; omitted when it has none  |
+| `smd.errorCount`     | `ERROR_COUNT`     | Failures already recorded for the subject             |
 
 Handlers can read them with `@MetadataValue(ProcessingMetadata.ERROR_COUNT)`. They describe one delivery, so the messages a handler sends do not inherit them (see
 [Choose Inherited Properties](core-api.md#choose-inherited-properties)). Attempt metadata replaces stored properties with the same names but does not modify the metadata stored in `smd_event_store`.
@@ -320,7 +342,7 @@ var global = eventSequenceStore.globalEventSequenceState("ticket-activity");
 var ticket = eventSequenceStore.eventSequenceState("ticket-activity", ticketId.toString());
 ```
 
-`TokenState` reports contiguous progress and any active gap. `EventSequenceState` reports status, progress, failure count, and the latest error for one subject. Missing state is returned as
+`TokenState` reports contiguous progress and any active gap. `EventSequenceState` reports status, progress, failure count, and the latest error for one aggregate ID. Missing state is returned as
 `Optional.empty()`. SMD does not publish metrics or an HTTP endpoint; adapt these snapshots to your monitoring system if needed.
 
 ## Framework-Agnostic Setup
@@ -351,7 +373,7 @@ var eventStoreConfig = EventStoreConfig.withDefaults()
     .transactionProvider(transactionProvider)
     .eventStorage(new PostgresEventStorage(connectionProvider))
     .tokenStore(new PostgresTokenStore(connectionProvider))
-    .eventSequenceStore(new PostgresEventSubjectSequenceStore(connectionProvider))
+    .eventSequenceStore(new PostgresEventSequenceStore(connectionProvider))
     .eventSerializer(new JacksonEventSerializer(mapper, eventTypeResolver))
     .build();
 
@@ -366,7 +388,7 @@ var eventBus = EventBusSpec.withDefaults()
 
 `EventStore` implements `EventMedium`: its inlet stores events through the transaction provider, and its outlet polls them. Use `.medium(eventStore)` to register both together.
 
-Close `EventStore` during application shutdown so its scheduler terminates cleanly. Implement `EventStorage`, `TokenStore`, and `EventSubjectSequenceStore` plus an equivalent schema to support
+Close `EventStore` during application shutdown so its scheduler terminates cleanly. Implement `EventStorage`, `TokenStore`, and `EventSequenceStore` plus an equivalent schema to support
 another database.
 
 ## Schema and Upgrades
@@ -380,19 +402,31 @@ Fresh installations need all three tables from the bundled schema:
 The schema uses PostgreSQL `UNIQUE NULLS NOT DISTINCT`, which requires PostgreSQL 15 or newer. It is not applied automatically. Copy it into a versioned Flyway migration or include it through
 Liquibase `sqlFile`.
 
-Event-sourced aggregates need the `aggregate_type` and `aggregate_version` columns and the `smd_event_store_aggregate_stream` index. Existing installations can add them with:
+Installations created with 0.0.12 or earlier use the previous column names and have no aggregate columns. Stop every instance, then upgrade with:
 
 ```sql
+ALTER TABLE smd_event_store RENAME COLUMN message_id TO event_id;
+ALTER TABLE smd_event_store RENAME COLUMN subject_id TO aggregate_id;
+ALTER TABLE smd_event_store RENAME COLUMN serialized_payload TO payload;
+ALTER TABLE smd_event_store RENAME COLUMN serialized_metadata TO metadata;
+ALTER TABLE smd_event_store RENAME COLUMN created_at TO occurred_at;
+ALTER TABLE smd_event_store RENAME COLUMN sequence_number TO global_position;
 ALTER TABLE smd_event_store
     ADD COLUMN aggregate_type    VARCHAR(255),
     ADD COLUMN aggregate_version BIGINT,
     ADD CONSTRAINT smd_event_store_aggregate_revision_check
         CHECK ((aggregate_type IS NULL AND aggregate_version IS NULL)
-            OR (aggregate_type IS NOT NULL AND aggregate_version IS NOT NULL AND subject_id IS NOT NULL));
+            OR (aggregate_type IS NOT NULL AND aggregate_version IS NOT NULL AND aggregate_id IS NOT NULL));
 
 CREATE UNIQUE INDEX smd_event_store_aggregate_stream
-    ON smd_event_store (aggregate_type, subject_id, aggregate_version)
+    ON smd_event_store (aggregate_type, aggregate_id, aggregate_version)
     WHERE aggregate_type IS NOT NULL;
+
+ALTER TABLE smd_token_store RENAME COLUMN last_processed_sequence_number TO last_processed_position;
+ALTER TABLE smd_token_store RENAME COLUMN gap_sequence_number TO gap_position;
+
+ALTER TABLE smd_event_sequence_state RENAME COLUMN subject_id TO aggregate_id;
+ALTER TABLE smd_event_sequence_state RENAME COLUMN last_processed_sequence_number TO last_processed_position;
 ```
 
-Events published outside aggregates leave both columns empty and behave as before.
+Existing events keep their subject as `aggregate_id` and have no aggregate type, so they are processed as before.

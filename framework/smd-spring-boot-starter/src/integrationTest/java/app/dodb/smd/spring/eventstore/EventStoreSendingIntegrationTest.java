@@ -4,7 +4,6 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.EventStore;
-import app.dodb.smd.serialization.EventSerializer;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,7 +24,6 @@ class EventStoreSendingIntegrationTest {
         // Given
         try (var fixture = eventStoreTestFixture().properties(SCHEDULING_DISABLED).start()) {
             var eventStore = fixture.bean(EventStore.class);
-            var eventSerializer = fixture.bean(EventSerializer.class);
             var message = EventMessage.from(new TestEventWithSubjectId("direct-send"),
                 new Metadata(null, Instant.parse("2026-04-22T10:15:30Z"), null));
 
@@ -34,7 +32,7 @@ class EventStoreSendingIntegrationTest {
 
             // Then
             assertThat(fixture.storedEvents()).singleElement().satisfies(stored ->
-                assertThat(eventSerializer.deserialize(stored)).isEqualTo(message));
+                assertThat(fixture.deserialize(stored)).isEqualTo(message));
         }
     }
 
@@ -57,7 +55,7 @@ class EventStoreSendingIntegrationTest {
 
             // Then
             assertThat(fixture.storedEvents()).singleElement().satisfies(stored ->
-                assertThat(fixture.bean(EventSerializer.class).deserialize(stored)).isEqualTo(message));
+                assertThat(fixture.deserialize(stored)).isEqualTo(message));
         }
     }
 
@@ -76,7 +74,7 @@ class EventStoreSendingIntegrationTest {
             assertThatThrownBy(() -> transactions.doInTransaction(() -> {
                 eventStore.send(message);
                 transactions.defer(() -> {
-                    assertThat(jdbc.queryForList("SELECT message_id FROM smd_event_store", UUID.class))
+                    assertThat(jdbc.queryForList("SELECT event_id FROM smd_event_store", UUID.class))
                         .containsExactly(message.messageId().value());
                     throw failure;
                 });

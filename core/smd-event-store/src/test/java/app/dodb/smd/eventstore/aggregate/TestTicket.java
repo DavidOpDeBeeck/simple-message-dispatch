@@ -42,7 +42,7 @@ public class TestTicket {
 
     @CommandHandler
     public UUID handle(MisdirectTestTicketCommand command, AggregateEvents<Event> events) {
-        events.apply(new TestTicketAssignedEvent(command.otherTicketId(), "someone"));
+        events.apply(new TestTicketMisdirectedEvent(command.otherTicketId()));
         return ticketId;
     }
 

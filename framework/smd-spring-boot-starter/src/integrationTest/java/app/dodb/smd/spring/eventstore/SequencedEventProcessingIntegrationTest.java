@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.fixed;
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
+import static app.dodb.smd.eventstore.sequence.EventSequenceStatus.ABANDONED;
+import static app.dodb.smd.eventstore.sequence.EventSequenceStatus.FAILED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SCHEDULING_DISABLED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SequencedEvent;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.eventStoreTestFixture;
@@ -80,7 +80,7 @@ class SequencedEventProcessingIntegrationTest {
                 // Then
                 assertThat(handled).containsExactly("3");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
             }
         }
     }
@@ -127,7 +127,7 @@ class SequencedEventProcessingIntegrationTest {
                 // Then
                 assertThat(invoked).containsExactly("subjectId-1:1", "subjectId-2:2");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
             }
         }
     }
@@ -176,7 +176,7 @@ class SequencedEventProcessingIntegrationTest {
                 assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
                     .map(EventSequenceState::errorCount)).contains(1);
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).isEmpty();
+                    .flatMap(TokenState::lastProcessedPosition)).isEmpty();
             }
         }
     }
@@ -209,7 +209,7 @@ class SequencedEventProcessingIntegrationTest {
                 // Then
                 assertThat(handled).containsExactly("subjectId-1:1", "subjectId-2:2", "subjectId-1:3");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
             }
         }
     }
@@ -235,7 +235,7 @@ class SequencedEventProcessingIntegrationTest {
                 assertThat(fixture.eventSequenceState(TYPED_SEQUENCE_PROCESSING_GROUP, "subjectId-1")
                     .map(EventSequenceState::status)).contains(ABANDONED);
                 assertThat(fixture.tokenState(TYPED_SEQUENCE_PROCESSING_GROUP)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
             });
         }
     }
