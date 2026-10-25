@@ -1,6 +1,6 @@
 # Ticket Service
 
-This Spring Boot application demonstrates SMD with one support-ticket aggregate and a complete lifecycle:
+This Spring Boot application demonstrates SMD with one event-sourced support-ticket aggregate and a complete lifecycle:
 
 ```text
 OpenTicket -> AssignTicket -> ResolveTicket
@@ -11,17 +11,21 @@ the PostgreSQL event store in one runnable example.
 
 ## Message flow
 
-HTTP requests enter through `TicketController`, which sends commands and queries through the narrow SMD gateways. A command handler changes the `Ticket` aggregate, persists it with optimistic locking,
-and publishes the aggregate's events.
+HTTP requests enter through `TicketController`, which sends commands and queries through the narrow SMD gateways. `Ticket` is an `@Aggregate`: it has no table of its own. For each command, SMD
+loads the ticket's event stream from the event store, replays it through the `@EventSourcingHandler` methods, and calls the aggregate's `@CommandHandler`. The events the handler applies are appended
+to the stream with the next aggregate version and published to the processing groups.
 
 ```text
-HTTP -> CommandGateway -> TicketCommandHandler -> ticket table
+HTTP -> CommandGateway -> Ticket (replayed from its stream)
                                       |
-                                      `-> EventPublisher
+                                      `-> applied events -> smd_event_store (aggregate_type = ticket, aggregate_version = n)
                                             |-> ticket-view
                                             |-> notifications
                                             `-> ticket-activity
 ```
+
+`OpenTicketCommand` has no `@TargetAggregateId`, so it starts a new stream. `AssignTicketCommand` and `ResolveTicketCommand` target an existing ticket: an unknown ticket fails with
+`AggregateNotFoundException` (404), and a concurrent change of the same version fails with `ConcurrentAggregateChangeException` (409).
 
 The controller adds the required `X-Customer-Id` header to message metadata. Nested events inherit that property and receive a parent message ID. `MessageLoggingInterceptor` logs the message type,
 message ID, parent ID, customer ID, and duration, while the durable activity projection stores the customer ID with each event.
@@ -36,7 +40,7 @@ message ID, parent ID, customer ID, and duration, while the durable activity pro
 | `notifications`   | Async-await            | Logs notifications on virtual threads and waits for every matching handler                            |
 | `ticket-activity` | PostgreSQL event store | Persists events in the command transaction, then builds the ordered activity timeline through polling |
 
-The aggregate row, synchronous ticket view, and event-store entry are committed together with the command. An invalid state transition rolls them back. Activity processing uses the event message ID as
+The appended events and the synchronous ticket view are committed together with the command. An invalid state transition rolls them back. Activity processing uses the event message ID as
 an idempotency key, and the explicit event-type mapping keeps stored names stable across Java class changes.
 
 The ticket view is therefore available immediately after a successful command. Activity is eventual and can briefly lag behind the command response; the local configuration polls the event store every
@@ -46,9 +50,9 @@ The ticket view is therefore available immediately after a successful command. A
 
 | Package          | Responsibility                                                     |
 |------------------|--------------------------------------------------------------------|
-| `domain`         | Ticket state and valid lifecycle transitions                       |
+| `domain`         | The event-sourced `Ticket` aggregate and its lifecycle transitions |
 | `drivingport`    | Commands, queries, events, and API transfer objects                |
-| `usecase`        | Command and query handlers                                         |
+| `usecase`        | Query handlers                                                     |
 | `drivenport`     | Repository contracts used by the handlers                          |
 | `drivenadapter`  | JDBC repositories, projections, and processing-group configuration |
 | `drivingadapter` | REST endpoints                                                     |
@@ -60,8 +64,7 @@ This keeps the domain and use cases independent of the REST and JDBC adapters wh
 
 You need Java 25 and Docker with the Compose plugin.
 
-The example builds against the SMD version in [`gradle/libs.versions.toml`](gradle/libs.versions.toml). To use local SMD changes, or a version not yet released, publish it
-from the repository root before running the example:
+The example uses event-sourced aggregates, which are not released yet. Publish SMD from the repository root before running or testing the example:
 
 ```bash
 ./gradlew publishToMavenLocal
@@ -136,6 +139,6 @@ The verification tasks can also be run separately:
 
 | Task              | Coverage                                                                                               |
 |-------------------|--------------------------------------------------------------------------------------------------------|
-| `test`            | Command and query handler flows with `@EnableSMDStubs`, `SMDTestExtension`, and in-memory repositories |
+| `test`            | Ticket aggregate against an in-memory event store; query handlers with `@EnableSMDStubs`               |
 | `integrationTest` | JDBC adapters and all three processing groups against PostgreSQL 18 with Testcontainers                |
 | `acceptanceTest`  | Complete REST lifecycle, immediate ticket view, and metadata-backed activity                           |
