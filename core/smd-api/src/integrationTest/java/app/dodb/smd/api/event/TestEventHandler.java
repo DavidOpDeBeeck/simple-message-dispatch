@@ -21,6 +21,18 @@ public class TestEventHandler {
 
     @EventHandler
     @ProcessingGroup("1")
+    public void onInFirstGroup(SharedTestEvent event) {
+        handledEvents.add(event);
+    }
+
+    @EventHandler
+    @ProcessingGroup("2")
+    public void onInSecondGroup(SharedTestEvent event) {
+        handledEvents.add(event);
+    }
+
+    @EventHandler
+    @ProcessingGroup("1")
     public void on(FailingTestEvent event) {
         throw new IllegalStateException("handler failed");
     }

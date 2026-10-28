@@ -2,6 +2,7 @@ package app.dodb.smd.api.event.bus;
 
 import app.dodb.smd.api.event.ProcessingGroupInterceptor;
 import app.dodb.smd.api.event.ProcessingGroupLocator;
+import app.dodb.smd.api.event.ProcessingGroupRegistry.EventHandlerRegistry;
 import app.dodb.smd.api.event.delivery.ConcurrentEventDispatcher;
 import app.dodb.smd.api.event.delivery.EventMedium;
 import app.dodb.smd.api.event.delivery.EventRoute;
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -189,6 +191,7 @@ public class EventBusSpec {
             }
 
             var subscriptions = new ArrayList<EventSourceSubscription>();
+            var registriesBySink = new LinkedHashMap<EventSink, List<EventHandlerRegistry>>();
             for (var processingGroup : allProcessingGroups) {
                 var spec = processingGroupSpecByName.getOrDefault(processingGroup, defaultProcessingGroupSpec);
 
@@ -205,14 +208,19 @@ public class EventBusSpec {
                         or disable it explicitly using .disabled().""".formatted(processingGroup, processingGroup));
                 }
 
+                var registry = processingGroupRegistry.findBy(processingGroup);
                 if (spec.eventSink != null) {
-                    eventBusSpec.sinks(spec.eventSink);
+                    registriesBySink.computeIfAbsent(spec.eventSink, _ -> new ArrayList<>()).add(registry);
                 }
 
-                var registry = processingGroupRegistry.findBy(processingGroup);
                 var subscriber = new ProcessingGroupSubscriber(registry, spec.eventSource, eventBusSpec.processingGroupInterceptors);
-
                 subscriptions.add(new EventSourceSubscription(spec.eventSource, subscriber));
+            }
+
+            for (var entry : registriesBySink.entrySet()) {
+                var sink = entry.getKey();
+                var registries = entry.getValue();
+                eventBusSpec.sinks(sink.selecting(eventMessage -> registries.stream().anyMatch(registry -> registry.handles(eventMessage))));
             }
             return subscriptions;
         }

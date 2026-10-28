@@ -162,7 +162,7 @@ var eventBus = EventBusSpec.withDefaults()
 - `async().await()` uses virtual threads and waits for completion; handlers within a group remain sequential.
 - `async().fireAndForget()` returns after submission; handler exceptions are logged and cannot be reported to the publisher.
 - `source(source)` subscribes the group to incoming events without registering a publication destination.
-- `medium(medium)` subscribes the group to the medium's outlet and registers its inlet as a publication destination.
+- `medium(medium)` subscribes the group to the medium's outlet and registers its inlet as a publication destination for the events the groups using that medium handle, once per event.
 - `disabled()` intentionally skips the group.
 
 When you provide custom group configuration, every discovered group must be named explicitly, covered by `anyProcessingGroup()`, or disabled. Unknown group names, missing configuration, and

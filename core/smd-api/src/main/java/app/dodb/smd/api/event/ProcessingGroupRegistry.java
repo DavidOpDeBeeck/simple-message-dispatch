@@ -100,6 +100,11 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
                 .toList();
         }
 
+        public <E extends Event> boolean handles(EventMessage<E> eventMessage) {
+            var payload = eventMessage.payload();
+            return eventHandlers.stream().anyMatch(eventHandler -> eventHandler.eventType().isAssignableFrom(payload.getClass()));
+        }
+
         public EventHandlerRegistry combine(EventHandlerRegistry registry) {
             var combined = CollectionUtils.combine(eventHandlers, registry.eventHandlers);
             return new EventHandlerRegistry(processingGroup, combined);

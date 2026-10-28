@@ -20,6 +20,8 @@
   name and invalid ones fail when the serializer is created. Spring Boot passes every `EventUpcaster` bean to the default serializer.
 - **Breaking:** `ConnectionProvider` moved from `app.dodb.smd.eventstore.storage` to `app.dodb.smd.api.framework`, `RetryBackoffStrategy` from `app.dodb.smd.eventstore` to
   `app.dodb.smd.api.event.delivery`, and `SpringConnectionProvider` from `app.dodb.smd.spring.eventstore` to `app.dodb.smd.spring`. Only imports change.
+- **Breaking:** `medium(medium)` on a processing group sends the medium only the events its groups handle instead of every published event, so a route reading the same
+  medium receives only those events too. A medium shared by several groups, such as the one `anyProcessingGroup()` configures, receives each such event once.
 - `EventSelector.eventType` accepts several event types, and `EventSelector.eventPackage(Package)` selects events in a package and its subpackages.
 - Added `EventRoute`, which moves events from a source into a sink. Declare routes with `route(name, source, sink)` or `routes(...)` on `EventBusSpec`, or as `EventRoute` beans in
   Spring Boot. The bus subscribes them after its processing groups and sends through the sink interceptors; `EventSinkContext.route()` names the route, and

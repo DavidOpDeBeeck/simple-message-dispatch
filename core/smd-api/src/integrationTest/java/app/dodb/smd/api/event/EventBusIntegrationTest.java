@@ -1,6 +1,10 @@
 package app.dodb.smd.api.event;
 
 import app.dodb.smd.api.event.bus.EventBusSpec;
+import app.dodb.smd.api.event.delivery.EventDelivery;
+import app.dodb.smd.api.event.delivery.EventMedium;
+import app.dodb.smd.api.event.delivery.EventSink;
+import app.dodb.smd.api.event.delivery.EventSource;
 import app.dodb.smd.api.event.delivery.SynchronousEventDispatcher;
 import app.dodb.smd.api.framework.ConstructorBasedObjectCreator;
 import org.junit.jupiter.api.BeforeEach;
@@ -174,6 +178,76 @@ class EventBusIntegrationTest {
 
         // Then
         assertThat(TestEventHandler.handledEvents).containsExactly(event);
+    }
+
+    @Test
+    void publish_withMediumPerProcessingGroup_sendsEachMediumOnlyTheEventsItsGroupHandles() {
+        // Given
+        var firstMedium = new RecordingMedium();
+        var secondMedium = new RecordingMedium();
+        var eventBus = EventBusSpec.withDefaults()
+            .processingGroups(new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()),
+                groups -> groups
+                    .processingGroup("1").medium(firstMedium)
+                    .processingGroup("2").medium(secondMedium))
+            .create();
+        var event = new TestEvent();
+        var anotherEvent = new AnotherTestEvent();
+
+        // When
+        eventBus.publish(event);
+        eventBus.publish(anotherEvent);
+
+        // Then
+        assertThat(firstMedium.received()).containsExactly(event);
+        assertThat(secondMedium.received()).containsExactly(anotherEvent);
+        assertThat(TestEventHandler.handledEvents).containsExactly(event, anotherEvent);
+    }
+
+    @Test
+    void publish_eventHandledByGroupsSharingAMedium_handlesItOncePerGroup() {
+        // Given
+        var sharedMedium = new RecordingMedium();
+        var eventBus = EventBusSpec.withDefaults()
+            .processingGroups(new PackageBasedProcessingGroupLocator(List.of("app.dodb.smd.api.event"), new ConstructorBasedObjectCreator()),
+                groups -> groups.anyProcessingGroup().medium(sharedMedium))
+            .create();
+        var event = new SharedTestEvent();
+
+        // When
+        eventBus.publish(event);
+
+        // Then
+        assertThat(sharedMedium.received()).containsExactly(event);
+        assertThat(TestEventHandler.handledEvents).containsExactly(event, event);
+    }
+
+    private record RecordingMedium(SynchronousEventDispatcher dispatcher, List<Event> received) implements EventMedium {
+
+        private RecordingMedium() {
+            this(new SynchronousEventDispatcher(), new ArrayList<>());
+        }
+
+        @Override
+        public EventSink inlet() {
+            return new EventSink() {
+                @Override
+                public <E extends Event> void send(EventMessage<E> eventMessage) {
+                    received.add(eventMessage.payload());
+                    dispatcher.inlet().send(eventMessage);
+                }
+
+                @Override
+                public EventDelivery delivery() {
+                    return dispatcher.inlet().delivery();
+                }
+            };
+        }
+
+        @Override
+        public EventSource outlet() {
+            return dispatcher.outlet();
+        }
     }
 
     private record RecordingProcessingGroupInterceptor(String name, List<String> interceptions) implements ProcessingGroupInterceptor {
