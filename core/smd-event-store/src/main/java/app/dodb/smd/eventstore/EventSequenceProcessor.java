@@ -81,13 +81,12 @@ class EventSequenceProcessor {
 
         try {
             var eventMessage = eventSerializer.deserialize(serializedEvent);
-            var processingProperties = MetadataProperties.of(
-                PROCESSING_ID, UUID.randomUUID().toString(),
-                SEQUENCE_NUMBER, String.valueOf(sequenceNumber),
-                ERROR_COUNT, String.valueOf(sequence.errorCount())
-            );
-            var properties = subjectIdOpt.map(subjectId -> processingProperties.with(SUBJECT_ID, subjectId))
-                .orElse(processingProperties);
+            var properties = MetadataProperties.builder()
+                .with(PROCESSING_ID, UUID.randomUUID().toString())
+                .with(SEQUENCE_NUMBER, String.valueOf(sequenceNumber))
+                .with(ERROR_COUNT, String.valueOf(sequence.errorCount()))
+                .with(SUBJECT_ID, subjectIdOpt)
+                .build();
             var eventMessageWithProcessingMetadata = eventMessage.andMetadata(withProperties(properties));
 
             MetadataFactory.runInScope(eventMessageWithProcessingMetadata, () -> listener.on(eventMessageWithProcessingMetadata));

@@ -18,20 +18,12 @@ public record MetadataProperties(Map<String, String> asMap) {
         return EMPTY;
     }
 
-    public static MetadataProperties of(Map<String, String> properties) {
-        return new MetadataProperties(Map.copyOf(properties));
+    public static Builder builder() {
+        return new Builder();
     }
 
-    public static MetadataProperties of(String name, String value, String... moreNamesAndValues) {
-        if (moreNamesAndValues.length % 2 != 0) {
-            throw new IllegalArgumentException("MetadataProperties.of requires names and values in pairs; got " + (moreNamesAndValues.length + 2) + " arguments");
-        }
-        var properties = new HashMap<String, String>();
-        properties.put(name, value);
-        for (int index = 0; index < moreNamesAndValues.length; index += 2) {
-            properties.put(moreNamesAndValues[index], moreNamesAndValues[index + 1]);
-        }
-        return of(properties);
+    public static MetadataProperties of(Map<String, String> properties) {
+        return new MetadataProperties(Map.copyOf(properties));
     }
 
     public MetadataProperties {
@@ -59,7 +51,7 @@ public record MetadataProperties(Map<String, String> asMap) {
     }
 
     public MetadataProperties with(String name, String value) {
-        return with(of(name, value));
+        return with(of(Map.of(name, value)));
     }
 
     public MetadataProperties with(MetadataProperties other) {
@@ -85,5 +77,27 @@ public record MetadataProperties(Map<String, String> asMap) {
         return new MetadataProperties(asMap.entrySet().stream()
             .filter(property -> inheritance.inherits(property.getKey()))
             .collect(toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue)));
+    }
+
+    public static class Builder {
+
+        private final Map<String, String> properties = new HashMap<>();
+
+        private Builder() {
+        }
+
+        public Builder with(String name, String value) {
+            properties.put(name, value);
+            return this;
+        }
+
+        public Builder with(String name, Optional<String> value) {
+            value.ifPresent(present -> properties.put(name, present));
+            return this;
+        }
+
+        public MetadataProperties build() {
+            return of(properties);
+        }
     }
 }

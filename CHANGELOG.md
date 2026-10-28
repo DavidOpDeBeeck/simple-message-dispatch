@@ -3,8 +3,8 @@
 ## [Unreleased]
 
 - **Breaking:** `Metadata.properties()` returns `MetadataProperties` instead of `Map<String, String>`. It offers `find`, `get`, `contains`, `names`, `with`, `without`,
-  `inheritedBy`, and `asMap()`; `Metadata` adds `property(name)` and `withProperty(name, value)`. The `Map` constructor and `Metadata.withProperties(Map)` remain, and the JSON form of
-  metadata is unchanged.
+  `inheritedBy`, and `asMap()`; `MetadataProperties.builder()` builds properties and skips a `with` whose `Optional` value is empty. `Metadata` adds `property(name)` and
+  `withProperty(name, value)`. The `Map` constructor and `Metadata.withProperties(Map)` remain, and the JSON form of metadata is unchanged.
 - Added `MetadataInheritance`, which decides which properties a message sent by a handler inherits from the message it received. The default,
   `MetadataInheritance.excludingSmdProperties()`, inherits everything except properties starting with `smd.`; `excludingPrefix(...)`, `excludingProperties(...)`, and `and(...)` build
   other policies. Set it with `metadataInheritance(...)` on the bus specs, or with a `MetadataInheritance` bean in Spring Boot.

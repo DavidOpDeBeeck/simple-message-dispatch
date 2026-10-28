@@ -20,7 +20,7 @@ public record Metadata(Principal principal, Instant timestamp, MessageId parentM
     }
 
     public static Metadata withProperty(String name, String value) {
-        return withProperties(MetadataProperties.of(name, value));
+        return withProperties(Map.of(name, value));
     }
 
     public Metadata {

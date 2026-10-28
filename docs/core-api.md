@@ -81,16 +81,17 @@ inherit that metadata.
 ```java
 Optional<String> tenant = metadata.property("tenant");
 
-var properties = MetadataProperties.of("tenant", "acme", "region", "eu")
+var properties = MetadataProperties.builder()
+        .with("tenant", tenant)
         .with("Idempotency-Key", key)
-        .without("region");
+        .build();
 
 eventPublisher.publish(event, Metadata.withProperties(properties));
 eventPublisher.publish(event, Metadata.withProperty("Idempotency-Key", key));
 ```
 
-`with(...)` and `without(...)` return new properties, and `with(other)` lets the other side win on a clash. `asMap()` gives the plain map when an API needs one. In storage and on
-the wire, properties stay a plain JSON object.
+The builder skips a `with` whose `Optional` value is empty, such as a missing `tenant`. On built properties, `with(...)` and `without(...)` return new properties, and `with(other)`
+lets the other side win on a clash. `asMap()` gives the plain map when an API needs one. In storage and on the wire, properties stay a plain JSON object.
 
 ### Choose Inherited Properties
 
