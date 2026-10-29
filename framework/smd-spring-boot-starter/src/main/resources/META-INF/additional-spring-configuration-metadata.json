@@ -88,11 +88,140 @@
       "type": "java.time.Duration",
       "description": "Upper bound on retry delay for LINEAR and EXPONENTIAL strategies.",
       "defaultValue": "5m"
+    },
+    {
+      "name": "smd.durable-delivery.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether to create a DurableDelivery bean, which creates durable event dispatchers. Requires a ConnectionProvider or DataSource.",
+      "defaultValue": false
+    },
+    {
+      "name": "smd.durable-delivery.scheduling.thread-pool-size",
+      "type": "java.lang.Integer",
+      "description": "Number of threads that deliver to the subscribers of durable event dispatchers. Defaults to the number of available processors."
+    },
+    {
+      "name": "smd.durable-delivery.scheduling.idle-backoff.strategy",
+      "type": "app.dodb.smd.spring.durable.SMDDurableDeliveryProperties$Strategy",
+      "description": "Backoff strategy for the delay between polls that find no work, counted from the last poll that found work.",
+      "defaultValue": "EXPONENTIAL"
+    },
+    {
+      "name": "smd.durable-delivery.scheduling.idle-backoff.fixed-delay",
+      "type": "java.time.Duration",
+      "description": "Delay between idle polls when using the FIXED strategy.",
+      "defaultValue": "1s"
+    },
+    {
+      "name": "smd.durable-delivery.scheduling.idle-backoff.base-delay",
+      "type": "java.time.Duration",
+      "description": "Delay after the first idle poll for LINEAR and EXPONENTIAL strategies.",
+      "defaultValue": "200ms"
+    },
+    {
+      "name": "smd.durable-delivery.scheduling.idle-backoff.multiplier",
+      "type": "java.lang.Double",
+      "description": "Multiplier applied per idle poll for the EXPONENTIAL strategy.",
+      "defaultValue": 2.0
+    },
+    {
+      "name": "smd.durable-delivery.scheduling.idle-backoff.increment",
+      "type": "java.time.Duration",
+      "description": "Delay increment per idle poll for the LINEAR strategy.",
+      "defaultValue": "1s"
+    },
+    {
+      "name": "smd.durable-delivery.scheduling.idle-backoff.max-delay",
+      "type": "java.time.Duration",
+      "description": "Upper bound on the idle delay for LINEAR and EXPONENTIAL strategies.",
+      "defaultValue": "5s"
+    },
+    {
+      "name": "smd.durable-delivery.processing.batch-size",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of events one poll delivers to a subscriber, in one transaction.",
+      "defaultValue": 10
+    },
+    {
+      "name": "smd.durable-delivery.processing.lane-count",
+      "type": "java.lang.Integer",
+      "description": "Number of lanes per subscriber. Events of a subject share a lane; a lane delivers in order, one worker at a time. Must match the count the dispatcher was registered with.",
+      "defaultValue": 16
+    },
+    {
+      "name": "smd.durable-delivery.processing.retry-backoff.strategy",
+      "type": "app.dodb.smd.spring.durable.SMDDurableDeliveryProperties$Strategy",
+      "description": "Backoff strategy for retrying an event a subscriber failed to handle.",
+      "defaultValue": "EXPONENTIAL"
+    },
+    {
+      "name": "smd.durable-delivery.processing.retry-backoff.fixed-delay",
+      "type": "java.time.Duration",
+      "description": "Delay between retries when using the FIXED strategy.",
+      "defaultValue": "1s"
+    },
+    {
+      "name": "smd.durable-delivery.processing.retry-backoff.base-delay",
+      "type": "java.time.Duration",
+      "description": "Base delay for LINEAR and EXPONENTIAL strategies.",
+      "defaultValue": "1s"
+    },
+    {
+      "name": "smd.durable-delivery.processing.retry-backoff.multiplier",
+      "type": "java.lang.Double",
+      "description": "Multiplier applied per retry for the EXPONENTIAL strategy.",
+      "defaultValue": 2.0
+    },
+    {
+      "name": "smd.durable-delivery.processing.retry-backoff.increment",
+      "type": "java.time.Duration",
+      "description": "Delay increment per retry for the LINEAR strategy.",
+      "defaultValue": "5s"
+    },
+    {
+      "name": "smd.durable-delivery.processing.retry-backoff.max-delay",
+      "type": "java.time.Duration",
+      "description": "Upper bound on retry delay for LINEAR and EXPONENTIAL strategies.",
+      "defaultValue": "5m"
     }
   ],
   "hints": [
     {
       "name": "smd.event-store.processing.retry-backoff.strategy",
+      "values": [
+        {
+          "value": "FIXED",
+          "description": "Constant delay between retries."
+        },
+        {
+          "value": "LINEAR",
+          "description": "Delay increases by a fixed increment per retry."
+        },
+        {
+          "value": "EXPONENTIAL",
+          "description": "Delay increases by a multiplier per retry."
+        }
+      ]
+    },
+    {
+      "name": "smd.durable-delivery.scheduling.idle-backoff.strategy",
+      "values": [
+        {
+          "value": "FIXED",
+          "description": "Constant delay between retries."
+        },
+        {
+          "value": "LINEAR",
+          "description": "Delay increases by a fixed increment per retry."
+        },
+        {
+          "value": "EXPONENTIAL",
+          "description": "Delay increases by a multiplier per retry."
+        }
+      ]
+    },
+    {
+      "name": "smd.durable-delivery.processing.retry-backoff.strategy",
       "values": [
         {
           "value": "FIXED",

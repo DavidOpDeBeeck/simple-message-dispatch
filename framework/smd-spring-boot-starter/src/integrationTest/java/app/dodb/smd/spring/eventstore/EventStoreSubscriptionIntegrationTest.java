@@ -2,6 +2,7 @@ package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.event.delivery.ProcessingMetadata;
 import app.dodb.smd.eventstore.storage.TokenState;
+import app.dodb.smd.spring.ManualPollingScheduler;
 import app.dodb.smd.spring.eventstore.EventStoreTestFixture.SequencedEvent;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
 import app.dodb.smd.test.EventSubscriberStub;

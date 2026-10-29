@@ -8,3 +8,5 @@ smd:
     scheduling:
       initial-delay: 0s
       polling-delay: 1s
+  durable-delivery:
+    enabled: true

@@ -11,16 +11,8 @@ spring:
 smd:
   event-store:
     enabled: true
-    scheduling:
-      initial-delay: 100ms
-      polling-delay: 100ms
-      thread-pool-size: 2
-    processing:
-      batch-size: 100
-      max-retries: 3
-      retry-backoff:
-        strategy: fixed
-        fixed-delay: 100ms
+  durable-delivery:
+    enabled: true
 
 logging:
   level:

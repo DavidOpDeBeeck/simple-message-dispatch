@@ -58,14 +58,14 @@ ProcessingGroupsConfigurer processingGroupsConfigurer() {
 }
 ```
 
-| Configuration             | Execution              | Return and failure behavior                      | Transaction and durability                                         |
-|---------------------------|------------------------|--------------------------------------------------|--------------------------------------------------------------------|
-| `sync()`                  | Publishing thread      | Waits; handler failure reaches the publisher     | Participates in the publisher's thread-bound transaction           |
-| `async().await()`         | Virtual worker threads | Waits; handler failures reach the publisher      | Does not inherit the publisher's thread-bound transaction          |
-| `async().fireAndForget()` | Virtual worker threads | Returns immediately; handler failures are logged | Does not inherit the publisher's transaction and is not durable    |
-| `medium(medium)`          | Defined by the medium  | Defined by the medium                            | Defined by the medium                                              |
-| `source(source)`          | Defined by the source  | Delivers incoming events only                    | Does not register a publication destination                        |
-| `disabled()`              | No execution           | Returns without invoking the group               | No state change                                                    |
+| Configuration             | Execution              | Return and failure behavior                      | Transaction and durability                                      |
+|---------------------------|------------------------|--------------------------------------------------|-----------------------------------------------------------------|
+| `sync()`                  | Publishing thread      | Waits; handler failure reaches the publisher     | Participates in the publisher's thread-bound transaction        |
+| `async().await()`         | Virtual worker threads | Waits; handler failures reach the publisher      | Does not inherit the publisher's thread-bound transaction       |
+| `async().fireAndForget()` | Virtual worker threads | Returns immediately; handler failures are logged | Does not inherit the publisher's transaction and is not durable |
+| `medium(medium)`          | Defined by the medium  | Defined by the medium                            | Defined by the medium                                           |
+| `source(source)`          | Defined by the source  | Delivers incoming events only                    | Does not register a publication destination                     |
+| `disabled()`              | No execution           | Returns without invoking the group               | No state change                                                 |
 
 Once custom routing is present, every discovered group must be configured, covered by `anyProcessingGroup()`, or disabled. Multiple configurer beans are applied in Spring order; do not configure the
 same named group twice.
@@ -92,12 +92,12 @@ autoconfigured bus, not a user-provided `CommandGateway`, `EventPublisher`, or `
 
 ## Route Between Media
 
-Declare an `EventRoute` bean to move events from a source into a sink, such as from the event store to a broker:
+Declare an `EventRoute` bean to move events from a source into a sink, such as from a durable event dispatcher to a broker:
 
 ```java
 @Bean
-EventRoute ticketRelay(EventStore eventStore, EventMedium ticketEvents) {
-    return new EventRoute("tickets.relay", eventStore.outlet(), ticketEvents.inlet());
+EventRoute ticketEventsToBroker(DurableEventDispatcher outgoingTicketEvents, EventMedium ticketTopic) {
+    return new EventRoute("ticket-service.ticket-events-to-broker", outgoingTicketEvents.outlet(), ticketTopic.inlet());
 }
 ```
 
@@ -191,6 +191,7 @@ complete parameter list.
 ## Next Steps
 
 - [Event Store](event-store.md) for durable PostgreSQL-backed event processing
+- [Durable Delivery](durable-delivery.md) for delivering events durably, within one application or between applications through a broker
 - [Testing](testing.md) for Spring test-scope stubs
 - [Core API](core-api.md) for manual construction and event delivery
 - [OpenTelemetry](opentelemetry.md) for the recorded spans

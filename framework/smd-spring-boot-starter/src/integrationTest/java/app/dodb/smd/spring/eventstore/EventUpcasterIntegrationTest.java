@@ -9,6 +9,7 @@ import app.dodb.smd.serialization.EventTypeResolver;
 import app.dodb.smd.serialization.SerializedEvent;
 import app.dodb.smd.serialization.StaticEventTypeResolver;
 import app.dodb.smd.serialization.jackson.EventUpcaster;
+import app.dodb.smd.spring.ManualPollingScheduler;
 import app.dodb.smd.test.EventSubscriberStub;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;

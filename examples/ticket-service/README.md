@@ -6,8 +6,8 @@ This Spring Boot application demonstrates SMD with one support-ticket aggregate 
 OpenTicket -> AssignTicket -> ResolveTicket
 ```
 
-It uses Java 25, Spring Boot 4, PostgreSQL 18, Flyway, and JDBC. The application shows commands, queries, events, message metadata and lineage, three event-delivery modes, persisted projections, and
-the PostgreSQL event store in one runnable example.
+It uses Java 25, Spring Boot 4, PostgreSQL 18, Flyway, and JDBC. The application shows commands, queries, events, message metadata and lineage, four event-delivery modes, persisted projections, the
+PostgreSQL event store, and durable delivery in one runnable example.
 
 ## Message flow
 
@@ -20,7 +20,8 @@ HTTP -> CommandGateway -> TicketCommandHandler -> ticket table
                                       `-> EventPublisher
                                             |-> ticket-view
                                             |-> notifications
-                                            `-> ticket-activity
+                                            |-> ticket-activity
+                                            `-> dispatcher => customer-webhooks
 ```
 
 The controller adds the required `X-Customer-Id` header to message metadata. Nested events inherit that property and receive a parent message ID. `MessageLoggingInterceptor` logs the message type,
@@ -30,17 +31,23 @@ message ID, parent ID, customer ID, and duration, while the durable activity pro
 
 [`DrivenAdapterConfiguration`](src/main/java/app/dodb/smd/ticket/drivenadapter/DrivenAdapterConfiguration.java) assigns a different delivery policy to each processing group:
 
-| Processing group  | Delivery               | Observable behavior                                                                                   |
-|-------------------|------------------------|-------------------------------------------------------------------------------------------------------|
-| `ticket-view`     | Synchronous            | Updates the queryable ticket view on the publishing thread before the command returns                 |
-| `notifications`   | Async-await            | Logs notifications on virtual threads and waits for every matching handler                            |
-| `ticket-activity` | PostgreSQL event store | Persists events in the command transaction, then builds the ordered activity timeline through polling |
+| Processing group    | Delivery               | Observable behavior                                                                                   |
+|---------------------|------------------------|-------------------------------------------------------------------------------------------------------|
+| `ticket-view`       | Synchronous            | Updates the queryable ticket view on the publishing thread before the command returns                 |
+| `notifications`     | Async-await            | Logs notifications on virtual threads and waits for every matching handler                            |
+| `ticket-activity`   | PostgreSQL event store | Persists events in the command transaction, then builds the ordered activity timeline through polling |
+| `customer-webhooks` | Durable dispatcher     | Stores events in the command transaction, then sends each customer webhook until it succeeds          |
 
-The aggregate row, synchronous ticket view, and event-store entry are committed together with the command. An invalid state transition rolls them back. Activity processing uses the event message ID as
-an idempotency key, and the explicit event-type mapping keeps stored names stable across Java class changes.
+The aggregate row, synchronous ticket view, event-store entry, and dispatcher entry are committed together with the command. An invalid state transition rolls them back.
+Activity processing uses the event message ID as an idempotency key, and the explicit event-type mapping keeps stored names stable across Java class changes.
 
 The ticket view is therefore available immediately after a successful command. Activity is eventual and can briefly lag behind the command response; the local configuration polls the event store every
 100 ms.
+
+Customer webhooks use [durable delivery](../../docs/durable-delivery.md): `.medium(durableDelivery.dispatcher("ticket-service.customer-webhooks"))` gives the group its own
+dispatcher. A customer must learn about every committed ticket change, in order, even when its endpoint is down or the application stops right after the command. The dispatcher
+retries a failed webhook with backoff and holds back that ticket's later events until it succeeds. Delivery is at least once, so each webhook carries the event message ID as its
+delivery ID, which lets the customer drop duplicates. `LoggingCustomerWebhookSender` stands in for the HTTP call to the customer's endpoint.
 
 ## Project layout
 
@@ -137,5 +144,5 @@ The verification tasks can also be run separately:
 | Task              | Coverage                                                                                               |
 |-------------------|--------------------------------------------------------------------------------------------------------|
 | `test`            | Command and query handler flows with `@EnableSMDStubs`, `SMDTestExtension`, and in-memory repositories |
-| `integrationTest` | JDBC adapters and all three processing groups against PostgreSQL 18 with Testcontainers                |
+| `integrationTest` | JDBC adapters and all four processing groups against PostgreSQL 18 with Testcontainers                 |
 | `acceptanceTest`  | Complete REST lifecycle, immediate ticket view, and metadata-backed activity                           |

@@ -24,6 +24,7 @@ Command, query, and event code intentionally stays symmetrical. Share code only 
 | `core/smd-event-store`                   | PostgreSQL storage, polling, ordering, retries, and tokens         |
 | `core/smd-test`                          | Framework-independent test support                                 |
 | `core/smd-opentelemetry`                 | OpenTelemetry instrumentation                                      |
+| `core/smd-durable-delivery`              | PostgreSQL durable event dispatcher                                |
 | `framework/smd-spring-boot-starter`      | Spring Boot wiring and autoconfiguration                           |
 | `framework/smd-spring-boot-starter-test` | Spring test support                                                |
 

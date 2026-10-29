@@ -19,13 +19,14 @@ If you are new to SMD, follow this path:
 
 ## Reference Guides
 
-| Goal                                            | Guide                                 |
-|-------------------------------------------------|---------------------------------------|
-| Add SMD to a Spring Boot application            | [Getting Started](getting-started.md) |
-| Understand messages or wire SMD without Spring  | [Core API](core-api.md)               |
-| Customize Spring Boot wiring and event delivery | [Spring Boot](spring-boot.md)         |
-| Store and process events durably                | [Event Store](event-store.md)         |
-| Test handlers and message flows                 | [Testing](testing.md)                 |
-| Trace commands, queries, and events             | [OpenTelemetry](opentelemetry.md)     |
+| Goal                                              | Guide                                   |
+|---------------------------------------------------|-----------------------------------------|
+| Add SMD to a Spring Boot application              | [Getting Started](getting-started.md)   |
+| Understand messages or wire SMD without Spring    | [Core API](core-api.md)                 |
+| Customize Spring Boot wiring and event delivery   | [Spring Boot](spring-boot.md)           |
+| Store and process events durably                  | [Event Store](event-store.md)           |
+| Deliver events durably, also between applications | [Durable Delivery](durable-delivery.md) |
+| Test handlers and message flows                   | [Testing](testing.md)                   |
+| Trace commands, queries, and events               | [OpenTelemetry](opentelemetry.md)       |
 
 The project is experimental and may introduce breaking changes while it remains in the `0.0.x` line. Check the [changelog](../CHANGELOG.md) when upgrading.

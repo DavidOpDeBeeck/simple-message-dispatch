@@ -234,7 +234,7 @@ class EventBusIntegrationTest {
                 @Override
                 public <E extends Event> void send(EventMessage<E> eventMessage) {
                     received.add(eventMessage.payload());
-                    dispatcher.inlet().send(eventMessage);
+                    dispatcher.send(eventMessage);
                 }
 
                 @Override

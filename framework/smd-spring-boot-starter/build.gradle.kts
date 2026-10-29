@@ -2,6 +2,7 @@ dependencies {
     api(project(":smd-api"))
     api(project(":smd-serialization"))
     api(project(":smd-event-store"))
+    api(project(":smd-durable-delivery"))
     api(project(":smd-opentelemetry"))
 
     api(platform(libs.spring.boot.dependencies))

@@ -91,11 +91,10 @@ a span per handler method within a processing group.
 | `thread.name`                   | The thread the invocation ran on                                                  |
 | `error.type`                    | The failure's class name, set with the span status `ERROR`                        |
 
-`messaging.smd.delivery` is the `EventDelivery` name: `sync`, `async-await`, `async-fire-and-forget`, `event-store`, or the medium a custom sink or source names. The
+`messaging.smd.delivery` is the `EventDelivery` name: `sync`, `async-await`, `async-fire-and-forget`, `event-store`, `durable`, or the medium a custom sink or source names. The
 attributes follow the OpenTelemetry messaging semantic conventions; only the message kind, the delivery, and the route are SMD's own, in the `messaging.smd` namespace. A route's
-`send` runs on its source's thread, such as an outbox's polling thread, and joins the trace its message carries, so every hop between applications appears in the publication's
-trace. The attribute keys
-are constants of `MessageSpans`.
+`send` runs on its source's thread, such as a durable event dispatcher's polling thread, and joins the trace its message carries, so every hop between applications appears in the
+publication's trace. The attribute keys are constants of `MessageSpans`.
 
 ## Parents and Links
 
