@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    name: smd
+    url: jdbc:tc:postgresql:18-alpine:///smd?TC_INITSCRIPT=db/smd/durable-delivery-schema.sql
+    username: test_user
+    password: test_password
+
+smd:
+  durable-delivery:
+    enabled: true
+    scheduling:
+      idle-backoff:
+        max-delay: 100ms
+    processing:
+      retry-backoff:
+        strategy: FIXED
+        fixed-delay: 50ms

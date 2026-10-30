@@ -8,7 +8,7 @@
 - Added `MetadataInheritance`, which decides which properties a message sent by a handler inherits from the message it received. The default,
   `MetadataInheritance.excludingSmdProperties()`, inherits everything except properties starting with `smd.`; `excludingPrefix(...)`, `excludingProperties(...)`, and `and(...)` build
   other policies. Set it with `metadataInheritance(...)` on the bus specs, or with a `MetadataInheritance` bean in Spring Boot.
-- **Breaking:** the delivery metadata of event-store handlers moved under `smd.`: `processingId`, `sequenceNumber`, `subjectId`, and `errorCount` are now
+- **Breaking:** the delivery metadata of event-store and durable-delivery handlers moved under `smd.`: `processingId`, `sequenceNumber`, `subjectId`, and `errorCount` are now
   `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and `smd.errorCount`, with constants in `app.dodb.smd.api.event.delivery.ProcessingMetadata`. Messages a handler sends
   no longer inherit them; before, a subjectless event sent while handling another event could carry that event's `subjectId`.
 - `MetadataFactory` accepts a `MetadataInheritance` as a third constructor argument; the two-argument constructor uses `excludingSmdProperties()`.
@@ -20,6 +20,10 @@
   name and invalid ones fail when the serializer is created. Spring Boot passes every `EventUpcaster` bean to the default serializer.
 - **Breaking:** `ConnectionProvider` moved from `app.dodb.smd.eventstore.storage` to `app.dodb.smd.api.framework`, `RetryBackoffStrategy` from `app.dodb.smd.eventstore` to
   `app.dodb.smd.api.event.delivery`, and `SpringConnectionProvider` from `app.dodb.smd.spring.eventstore` to `app.dodb.smd.spring`. Only imports change.
+- Added the `smd-durable-delivery` module. `DurableDelivery.dispatcher(name)` returns a `DurableEventDispatcher`, a medium that stores events in the publisher's transaction
+  and delivers them to each subscriber at least once and in order per subject, within one application or through routes to and from a broker. See
+  [Durable Delivery](docs/durable-delivery.md).
+- The Spring Boot starter creates a `DurableDelivery` bean when `smd.durable-delivery.enabled=true`, with the same default `JacksonEventSerializer` as the event store.
 - **Breaking:** `medium(medium)` on a processing group sends the medium only the events its groups handle instead of every published event, so a route reading the same
   medium receives only those events too. A medium shared by several groups, such as the one `anyProcessingGroup()` configures, receives each such event once.
 - `EventSelector.eventType` accepts several event types, and `EventSelector.eventPackage(Package)` selects events in a package and its subpackages.

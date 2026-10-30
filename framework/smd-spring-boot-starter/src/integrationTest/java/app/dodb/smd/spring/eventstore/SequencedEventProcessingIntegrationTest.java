@@ -13,6 +13,7 @@ import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
 import app.dodb.smd.eventstore.sequence.EventSequenceState;
 import app.dodb.smd.eventstore.storage.TokenState;
 import app.dodb.smd.spring.EnableSMD;
+import app.dodb.smd.spring.ManualPollingScheduler;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
 import app.dodb.smd.test.EventSubscriberStub;
 import org.junit.jupiter.api.Test;

@@ -1,6 +1,7 @@
 package app.dodb.smd.ticket.drivenadapter;
 
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
+import app.dodb.smd.durable.DurableDelivery;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.serialization.EventTypeResolver;
 import app.dodb.smd.serialization.StaticEventTypeResolver;
@@ -22,11 +23,12 @@ public class DrivenAdapterConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(name = "ticketProcessingGroups")
-    public ProcessingGroupsConfigurer ticketProcessingGroups(EventStore eventStore) {
+    public ProcessingGroupsConfigurer ticketProcessingGroups(DurableDelivery durableDelivery, EventStore eventStore) {
         return spec -> spec
             .processingGroup("ticket-view").sync()
             .processingGroup("notifications").async().await()
-            .processingGroup("ticket-activity").source(eventStore.outlet());
+            .processingGroup("ticket-activity").source(eventStore.outlet())
+            .processingGroup("customer-webhooks").medium(durableDelivery.dispatcher("ticket-service.customer-webhooks"));
     }
 
     @Bean

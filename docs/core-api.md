@@ -96,7 +96,7 @@ lets the other side win on a clash. `asMap()` gives the plain map when an API ne
 ### Choose Inherited Properties
 
 A `MetadataInheritance` decides which properties the sent message inherits. The default, `MetadataInheritance.excludingSmdProperties()`, inherits every property except those starting with
-`smd.`: SMD keeps per-delivery values such as the event store's processing details under that prefix, and they describe the received message only.
+`smd.`: SMD keeps per-delivery values such as processing details under that prefix, and they describe the received message only.
 
 Exclude your own per-message properties by prefix or by name, and keep SMD's rule by combining with `and(...)`:
 
@@ -215,8 +215,8 @@ A sink defines what completion of `send()` means. A source owns delivery threads
 `MetadataFactory.runInScope(message, ...)` so nested messages inherit the received message's metadata.
 
 `delivery()` returns an `EventDelivery` naming the medium a sink writes to or a source reads from: `sync`, `async-await`, and `async-fire-and-forget` for the built-in media,
-`event-store` for the event store, and the delivery of the sink or source it selects from for a selecting one. Name a custom sink or source after the medium it uses, such
-as its broker:
+`event-store` for the event store, `durable` for a durable event dispatcher, and the delivery of the sink or source it selects from for a selecting one. Name a custom sink or
+source after the medium it uses, such as its broker:
 
 ```java
 @Override
@@ -229,7 +229,7 @@ Tracing records this name as `messaging.smd.delivery`.
 
 ### Route Between Media
 
-A route moves events from a source into a sink without a handler: from an outbox to a broker, from a broker into an inbox, or from one topic to another. Declare routes on the
+A route moves events from a source into a sink without a handler: from a durable event dispatcher to a broker, from a broker into a dispatcher, or from one topic to another. Declare routes on the
 bus, next to its sinks and processing groups:
 
 ```java
