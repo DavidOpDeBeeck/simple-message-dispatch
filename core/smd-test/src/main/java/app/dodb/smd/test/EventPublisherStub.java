@@ -7,6 +7,7 @@ import app.dodb.smd.api.metadata.Metadata;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 public class EventPublisherStub implements EventPublisher {
 
@@ -19,6 +20,11 @@ public class EventPublisherStub implements EventPublisher {
 
     @Override
     public <E extends Event> void publish(E event, Metadata metadata) {
+        events.add(event);
+    }
+
+    @Override
+    public <E extends Event> void publish(E event, UnaryOperator<Metadata> metadataUpdate) {
         events.add(event);
     }
 

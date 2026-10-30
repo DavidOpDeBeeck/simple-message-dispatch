@@ -16,7 +16,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 
-import java.util.Map;
 import java.util.UUID;
 
 import static app.dodb.smd.ticket.drivenadapter.customerwebhooks.CustomerWebhooksIntegrationTest.TestConfig;
@@ -98,6 +97,6 @@ class CustomerWebhooksIntegrationTest {
     }
 
     private static Metadata metadata() {
-        return new Metadata(null, TIMESTAMP, null, Map.of("customerId", CUSTOMER_ID));
+        return Metadata.at(TIMESTAMP).withProperty("customerId", CUSTOMER_ID);
     }
 }

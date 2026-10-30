@@ -35,7 +35,7 @@ public record MessageArgumentBinder<P, M extends Message<P, M>>(List<ArgumentExt
                 var metadataValue = parameter.getAnnotation(MetadataValue.class);
                 if (metadataValue != null) {
                     String propertyName = metadataValue.value();
-                    return (ArgumentExtractor<P, M>) message -> message.metadata().properties().get(propertyName);
+                    return (ArgumentExtractor<P, M>) message -> message.metadata().property(propertyName).orElse(null);
                 }
                 return (ArgumentExtractor<P, M>) _ -> null;
             })

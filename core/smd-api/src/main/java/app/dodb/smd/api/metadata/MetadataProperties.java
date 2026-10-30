@@ -8,7 +8,6 @@ import java.util.Optional;
 import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toUnmodifiableMap;
 
 public record MetadataProperties(Map<String, String> asMap) {
 
@@ -71,12 +70,6 @@ public record MetadataProperties(Map<String, String> asMap) {
         var remaining = new HashMap<>(asMap);
         names.forEach(remaining::remove);
         return of(remaining);
-    }
-
-    public MetadataProperties inheritedBy(MetadataInheritance inheritance) {
-        return new MetadataProperties(asMap.entrySet().stream()
-            .filter(property -> inheritance.inherits(property.getKey()))
-            .collect(toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue)));
     }
 
     public static class Builder {

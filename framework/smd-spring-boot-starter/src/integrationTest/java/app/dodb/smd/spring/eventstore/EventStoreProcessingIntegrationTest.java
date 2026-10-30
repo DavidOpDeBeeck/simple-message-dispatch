@@ -85,7 +85,7 @@ class EventStoreProcessingIntegrationTest {
             );
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
-                var metadata = eventMessage.metadata().properties();
+                var metadata = eventMessage.metadata().transientProperties();
                 processingIds.add(metadata.get(PROCESSING_ID));
                 processedSequences.add(metadata.get(SEQUENCE_NUMBER));
             });
@@ -113,7 +113,7 @@ class EventStoreProcessingIntegrationTest {
             var processingGroup = "restart-processing-group";
             var processedSequences = new CopyOnWriteArrayList<String>();
             var listener = new EventSubscriberStub(processingGroup, eventMessage ->
-                processedSequences.add(eventMessage.metadata().properties().get(SEQUENCE_NUMBER))
+                processedSequences.add(eventMessage.metadata().transientProperties().get(SEQUENCE_NUMBER))
             );
 
             fixture.storeEvents(new SequencedEvent<>(1L, new TestEventWithSubjectId(TEST_SUBJECT_ID)));
@@ -164,7 +164,7 @@ class EventStoreProcessingIntegrationTest {
                 .build();
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
-                var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
+                var sequenceNumber = eventMessage.metadata().transientProperties().get(SEQUENCE_NUMBER);
                 if ("1".equals(sequenceNumber)) {
                     assertThat(jdbc.update("INSERT INTO event_handler_side_effects (description) VALUES (?)",
                         "event 1 committed")).isOne();

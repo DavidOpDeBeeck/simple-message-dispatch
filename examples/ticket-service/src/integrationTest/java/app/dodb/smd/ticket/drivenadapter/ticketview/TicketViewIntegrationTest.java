@@ -14,7 +14,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.UUID;
 
 import static app.dodb.smd.ticket.domain.TicketStatus.ASSIGNED;
@@ -90,6 +89,6 @@ class TicketViewIntegrationTest {
     }
 
     private static Metadata metadata(Instant timestamp) {
-        return new Metadata(null, timestamp, null, Map.of("customerId", CUSTOMER_ID));
+        return Metadata.at(timestamp).withProperty("customerId", CUSTOMER_ID);
     }
 }

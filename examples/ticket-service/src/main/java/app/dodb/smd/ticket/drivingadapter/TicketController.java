@@ -3,7 +3,6 @@ package app.dodb.smd.ticket.drivingadapter;
 import app.dodb.smd.api.command.CommandGateway;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.query.QueryGateway;
-import app.dodb.smd.api.query.QueryMessage;
 import app.dodb.smd.ticket.drivingport.command.AssignTicketCommand;
 import app.dodb.smd.ticket.drivingport.command.OpenTicketCommand;
 import app.dodb.smd.ticket.drivingport.command.ResolveTicketCommand;
@@ -23,10 +22,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 import static org.springframework.http.ResponseEntity.created;
 import static org.springframework.http.ResponseEntity.notFound;
@@ -48,8 +46,8 @@ public class TicketController {
     @PostMapping("/tickets")
     public ResponseEntity<TicketDTO> open(@RequestHeader(CUSTOMER_HEADER) String customerId,
                                           @Valid @RequestBody OpenTicketRequest request) {
-        var ticketId = commandGateway.send(new OpenTicketCommand(request.title(), request.description()), metadata(customerId));
-        return queryGateway.send(new GetTicketQuery(ticketId), metadata(customerId))
+        var ticketId = commandGateway.send(new OpenTicketCommand(request.title(), request.description()), withCustomer(customerId));
+        return queryGateway.send(new GetTicketQuery(ticketId), withCustomer(customerId))
             .map(ticket -> created(URI.create("/tickets/" + ticket.ticketId())).body(ticket))
             .orElseGet(() -> notFound().build());
     }
@@ -58,8 +56,8 @@ public class TicketController {
     public ResponseEntity<TicketDTO> assign(@PathVariable UUID ticketId,
                                             @RequestHeader(CUSTOMER_HEADER) String customerId,
                                             @Valid @RequestBody AssignTicketRequest request) {
-        commandGateway.send(new AssignTicketCommand(ticketId, request.assignee()), metadata(customerId));
-        return queryGateway.send(new GetTicketQuery(ticketId), metadata(customerId))
+        commandGateway.send(new AssignTicketCommand(ticketId, request.assignee()), withCustomer(customerId));
+        return queryGateway.send(new GetTicketQuery(ticketId), withCustomer(customerId))
             .map(ResponseEntity::ok)
             .orElseGet(() -> notFound().build());
     }
@@ -68,8 +66,8 @@ public class TicketController {
     public ResponseEntity<TicketDTO> resolve(@PathVariable UUID ticketId,
                                              @RequestHeader(CUSTOMER_HEADER) String customerId,
                                              @Valid @RequestBody ResolveTicketRequest request) {
-        commandGateway.send(new ResolveTicketCommand(ticketId, request.resolution()), metadata(customerId));
-        return queryGateway.send(new GetTicketQuery(ticketId), metadata(customerId))
+        commandGateway.send(new ResolveTicketCommand(ticketId, request.resolution()), withCustomer(customerId));
+        return queryGateway.send(new GetTicketQuery(ticketId), withCustomer(customerId))
             .map(ResponseEntity::ok)
             .orElseGet(() -> notFound().build());
     }
@@ -77,7 +75,7 @@ public class TicketController {
     @GetMapping("/tickets/{ticketId}")
     public ResponseEntity<TicketDTO> get(@PathVariable UUID ticketId,
                                          @RequestHeader(CUSTOMER_HEADER) String customerId) {
-        return queryGateway.send(new GetTicketQuery(ticketId), metadata(customerId))
+        return queryGateway.send(new GetTicketQuery(ticketId), withCustomer(customerId))
             .map(ResponseEntity::ok)
             .orElseGet(() -> notFound().build());
     }
@@ -85,11 +83,11 @@ public class TicketController {
     @GetMapping("/tickets/{ticketId}/activity")
     public ResponseEntity<List<TicketActivityDTO>> activity(@PathVariable UUID ticketId,
                                                             @RequestHeader(CUSTOMER_HEADER) String customerId) {
-        return ResponseEntity.ok(queryGateway.send(QueryMessage.from(new GetTicketActivityQuery(ticketId), metadata(customerId))));
+        return ResponseEntity.ok(queryGateway.send(new GetTicketActivityQuery(ticketId), withCustomer(customerId)));
     }
 
-    private static Metadata metadata(String customerId) {
-        return new Metadata(null, Instant.now(), null, Map.of("customerId", customerId));
+    private static UnaryOperator<Metadata> withCustomer(String customerId) {
+        return metadata -> metadata.withProperty("customerId", customerId);
     }
 
     public record OpenTicketRequest(@NotBlank String title, @NotBlank String description) {

@@ -28,7 +28,7 @@ class EventStoreSubscriptionIntegrationTest {
             var processingGroup = "duplicate-subscription";
             var received = new CopyOnWriteArrayList<String>();
             var subscriber = new EventSubscriberStub(processingGroup, message ->
-                received.add(message.metadata().properties().get(ProcessingMetadata.SEQUENCE_NUMBER)));
+                received.add(message.metadata().transientProperties().get(ProcessingMetadata.SEQUENCE_NUMBER)));
 
             try (var first = eventStore.subscribe(subscriber);
                  var second = eventStore.subscribe(subscriber)) {
@@ -78,7 +78,7 @@ class EventStoreSubscriptionIntegrationTest {
                     Thread.currentThread().interrupt();
                     throw new IllegalStateException("Handler interrupted while subscription was closing", e);
                 }
-                received.add(message.metadata().properties().get(ProcessingMetadata.SEQUENCE_NUMBER));
+                received.add(message.metadata().transientProperties().get(ProcessingMetadata.SEQUENCE_NUMBER));
             });
 
             try (var subscription = eventStore.subscribe(subscriber)) {

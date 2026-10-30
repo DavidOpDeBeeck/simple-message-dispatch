@@ -25,9 +25,4 @@ public record EventMessage<E extends Event>(MessageId messageId, Optional<String
     public EventMessage<E> withMetadata(Metadata newMetadata) {
         return new EventMessage<>(messageId, subjectId, payload, newMetadata);
     }
-
-    @Override
-    public EventMessage<E> andMetadata(Metadata newMetadata) {
-        return new EventMessage<>(messageId, subjectId, payload, metadata.and(newMetadata));
-    }
 }

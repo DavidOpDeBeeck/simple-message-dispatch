@@ -8,6 +8,7 @@ import app.dodb.smd.api.metadata.time.TimeProvider;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 import static java.util.Objects.requireNonNull;
 
@@ -18,16 +19,10 @@ public class MetadataFactory {
 
     private final PrincipalProvider principalProvider;
     private final TimeProvider timeProvider;
-    private final MetadataInheritance inheritance;
 
     public MetadataFactory(PrincipalProvider principalProvider, TimeProvider timeProvider) {
-        this(principalProvider, timeProvider, MetadataInheritance.excludingSmdProperties());
-    }
-
-    public MetadataFactory(PrincipalProvider principalProvider, TimeProvider timeProvider, MetadataInheritance inheritance) {
         this.principalProvider = requireNonNull(principalProvider);
         this.timeProvider = requireNonNull(timeProvider);
-        this.inheritance = requireNonNull(inheritance);
     }
 
     public MetadataScope createScope() {
@@ -36,6 +31,10 @@ public class MetadataFactory {
 
     public MetadataScope createScope(Metadata metadata) {
         return new MetadataScope(() -> metadata);
+    }
+
+    public MetadataScope createScope(UnaryOperator<Metadata> metadataUpdate) {
+        return new MetadataScope(() -> metadataUpdate.apply(determineMetadata()));
     }
 
     public static void runInScope(Message<?, ?> message, Runnable runnable) {
@@ -54,8 +53,8 @@ public class MetadataFactory {
         var parentMessageId = PARENT_MESSAGE_ID.isBound() ? PARENT_MESSAGE_ID.get() : null;
         var parentMetadata = PARENT_METADATA.isBound() ? PARENT_METADATA.get() : null;
         return parentMetadata == null
-            ? new Metadata(principalProvider.get(), timeProvider.now(), parentMessageId)
-            : new Metadata(parentMetadata.principal(), timeProvider.now(), parentMessageId, parentMetadata.properties().inheritedBy(inheritance));
+            ? new Metadata(principalProvider.get(), timeProvider.now(), parentMessageId, MetadataProperties.empty(), MetadataProperties.empty())
+            : new Metadata(parentMetadata.principal(), timeProvider.now(), parentMessageId, parentMetadata.properties(), MetadataProperties.empty());
     }
 
     public record MetadataScope(Supplier<Metadata> metadataSupplier) {

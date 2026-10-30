@@ -251,7 +251,7 @@ startup.
 
 ## Delivery Metadata
 
-Before each delivery attempt, SMD merges these reserved properties into the event metadata. `ProcessingMetadata` holds their names:
+Before each delivery attempt, SMD adds these reserved properties to the event metadata as transient properties. `ProcessingMetadata` holds their names:
 
 | Property             | Constant          | Value                                             |
 |----------------------|-------------------|---------------------------------------------------|
@@ -260,8 +260,9 @@ Before each delivery attempt, SMD merges these reserved properties into the even
 | `smd.subjectId`      | `SUBJECT_ID`      | Persisted subject; omitted for subjectless events |
 | `smd.errorCount`     | `ERROR_COUNT`     | Failures already recorded for the subject         |
 
-Handlers can read them with `@MetadataValue(ProcessingMetadata.ERROR_COUNT)`. They describe one delivery, so the messages a handler sends do not inherit them (see
-[Choose Inherited Properties](core-api.md#choose-inherited-properties)). Attempt metadata replaces stored properties with the same names but does not modify the metadata stored in `smd_event_store`.
+Handlers can read them with `@MetadataValue(ProcessingMetadata.ERROR_COUNT)` or `metadata.property(...)`. They describe one delivery, so the messages a handler sends do not
+inherit them, and a route that forwards the event to another medium does not carry them along (see [Inherited Properties](core-api.md#inherited-properties)). When a
+stored property has the same name, `property(...)` returns the transient value; the metadata stored in `smd_event_store` is never modified.
 
 ## Inspect Processing State
 

@@ -17,7 +17,6 @@ import static app.dodb.smd.api.event.delivery.ProcessingMetadata.ERROR_COUNT;
 import static app.dodb.smd.api.event.delivery.ProcessingMetadata.PROCESSING_ID;
 import static app.dodb.smd.api.event.delivery.ProcessingMetadata.SEQUENCE_NUMBER;
 import static app.dodb.smd.api.event.delivery.ProcessingMetadata.SUBJECT_ID;
-import static app.dodb.smd.api.metadata.Metadata.withProperties;
 import static app.dodb.smd.eventstore.EventSequenceProcessingResult.Abandoned;
 import static app.dodb.smd.eventstore.EventSequenceProcessingResult.AlreadyProcessed;
 import static app.dodb.smd.eventstore.EventSequenceProcessingResult.BackoffActive;
@@ -87,7 +86,7 @@ class EventSequenceProcessor {
                 .with(ERROR_COUNT, String.valueOf(sequence.errorCount()))
                 .with(SUBJECT_ID, subjectIdOpt)
                 .build();
-            var eventMessageWithProcessingMetadata = eventMessage.andMetadata(withProperties(properties));
+            var eventMessageWithProcessingMetadata = eventMessage.withMetadata(metadata -> metadata.withTransientProperties(properties));
 
             MetadataFactory.runInScope(eventMessageWithProcessingMetadata, () -> listener.on(eventMessageWithProcessingMetadata));
         } catch (Exception e) {

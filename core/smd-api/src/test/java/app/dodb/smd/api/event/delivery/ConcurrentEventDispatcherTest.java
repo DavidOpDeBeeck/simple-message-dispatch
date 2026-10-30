@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -131,7 +130,7 @@ class ConcurrentEventDispatcherTest {
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(new QueryingListener(queryBus))) {
-            var eventMetadata = new Metadata(PRINCIPAL, TIMESTAMP, null, Map.of("key", "value"));
+            var eventMetadata = Metadata.at(TIMESTAMP).withPrincipal(PRINCIPAL).withProperty("key", "value");
             var eventMessage = EventMessage.from(new EventForTest("Hello world"), eventMetadata);
 
             dispatcher.send(eventMessage);

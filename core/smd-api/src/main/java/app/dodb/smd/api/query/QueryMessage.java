@@ -22,9 +22,4 @@ public record QueryMessage<R, C extends Query<R>>(MessageId messageId, C payload
     public QueryMessage<R, C> withMetadata(Metadata newMetadata) {
         return new QueryMessage<>(messageId, payload, newMetadata);
     }
-
-    @Override
-    public QueryMessage<R, C> andMetadata(Metadata newMetadata) {
-        return new QueryMessage<>(messageId, payload, metadata.and(newMetadata));
-    }
 }

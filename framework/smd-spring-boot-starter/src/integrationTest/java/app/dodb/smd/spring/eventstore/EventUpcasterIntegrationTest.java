@@ -76,7 +76,7 @@ class EventUpcasterIntegrationTest {
     private static SerializedEvent storeLegacyEvent(EventStoreTestFixture fixture, String eventType, String payload) {
         var current = fixture.bean(EventSerializer.class).serialize(EventMessage.from(
             new TicketOpenedEvent("ticket-1", "HIGH"),
-            new Metadata(null, Instant.now(), null)
+            Metadata.at(Instant.now())
         ));
 
         try (var connection = fixture.bean(DataSource.class).getConnection();

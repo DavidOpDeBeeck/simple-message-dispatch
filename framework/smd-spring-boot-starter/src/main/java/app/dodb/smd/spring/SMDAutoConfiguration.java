@@ -18,7 +18,6 @@ import app.dodb.smd.api.event.delivery.EventRoute;
 import app.dodb.smd.api.event.delivery.EventSinkInterceptor;
 import app.dodb.smd.api.framework.ObjectCreator;
 import app.dodb.smd.api.framework.TransactionProvider;
-import app.dodb.smd.api.metadata.MetadataInheritance;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 import app.dodb.smd.api.metadata.time.SystemTimeProvider;
@@ -63,12 +62,6 @@ public class SMDAutoConfiguration {
     @ConditionalOnMissingBean
     public TimeProvider timeProvider() {
         return new SystemTimeProvider();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public MetadataInheritance metadataInheritance() {
-        return MetadataInheritance.excludingSmdProperties();
     }
 
     @Bean
@@ -123,14 +116,12 @@ public class SMDAutoConfiguration {
     @ConditionalOnMissingBean
     public CommandGateway commandGateway(TimeProvider timeProvider,
                                          PrincipalProvider principalProvider,
-                                         MetadataInheritance metadataInheritance,
                                          CommandHandlerLocator locator,
                                          List<CommandBusInterceptor> interceptors,
                                          List<CommandBusSpecCustomizer> customizers) {
         var spec = CommandBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
-            .metadataInheritance(metadataInheritance)
             .commandHandlers(locator)
             .interceptors(interceptors);
         customizers.forEach(customizer -> customizer.customize(spec));
@@ -141,7 +132,6 @@ public class SMDAutoConfiguration {
     @ConditionalOnMissingBean
     public EventPublisher eventPublisher(TimeProvider timeProvider,
                                          PrincipalProvider principalProvider,
-                                         MetadataInheritance metadataInheritance,
                                          ProcessingGroupLocator locator,
                                          List<ProcessingGroupsConfigurer> processingGroupsConfigurers,
                                          List<EventBusInterceptor> interceptors,
@@ -152,7 +142,6 @@ public class SMDAutoConfiguration {
         var spec = EventBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
-            .metadataInheritance(metadataInheritance)
             .processingGroups(locator, multi(processingGroupsConfigurers))
             .interceptors(interceptors)
             .sinkInterceptors(sinkInterceptors)
@@ -166,14 +155,12 @@ public class SMDAutoConfiguration {
     @ConditionalOnMissingBean
     public QueryGateway queryGateway(TimeProvider timeProvider,
                                      PrincipalProvider principalProvider,
-                                     MetadataInheritance metadataInheritance,
                                      QueryHandlerLocator locator,
                                      List<QueryBusInterceptor> interceptors,
                                      List<QueryBusSpecCustomizer> customizers) {
         var spec = QueryBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
-            .metadataInheritance(metadataInheritance)
             .queryHandlers(locator)
             .interceptors(interceptors);
         customizers.forEach(customizer -> customizer.customize(spec));

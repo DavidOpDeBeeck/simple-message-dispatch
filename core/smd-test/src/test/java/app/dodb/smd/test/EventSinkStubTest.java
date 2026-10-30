@@ -5,13 +5,13 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.metadata.Metadata;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class EventSinkStubTest {
 
-    private static final Metadata METADATA = Metadata.withProperties(Map.of());
+    private static final Metadata METADATA = Metadata.at(Instant.now());
 
     @Test
     void send_withEventMessages_thenCapturesMessagesInOrder() {

@@ -9,8 +9,6 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static app.dodb.smd.api.metadata.MetadataInheritance.excludingProperties;
-import static app.dodb.smd.api.metadata.MetadataInheritance.excludingSmdProperties;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.PRINCIPAL;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.TIMESTAMP;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,27 +16,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MetadataFactoryTest {
 
     private static final EventMessage<ParentEvent> PARENT = EventMessage.from(new ParentEvent(),
-        new Metadata(PRINCIPAL, TIMESTAMP, null, Map.of("tenant", "acme", "Idempotency-Key", "key-1", "smd.position", "3")));
+        Metadata.at(TIMESTAMP).withPrincipal(PRINCIPAL).withProperty("tenant", "acme").withTransientProperty("smd.processingId", "processing-1"));
 
     @Test
-    void createScope_insideParentScope_inheritsAllButSmdProperties() {
-        var factory = new MetadataFactory(new SimplePrincipalProvider(), new SystemTimeProvider(), excludingSmdProperties());
+    void createScope_insideParentScope_inheritsPrincipalAndProperties() {
+        var factory = new MetadataFactory(new SimplePrincipalProvider(), new SystemTimeProvider());
 
         var child = childMetadata(factory);
 
-        assertThat(child.properties().asMap()).containsOnly(Map.entry("tenant", "acme"), Map.entry("Idempotency-Key", "key-1"));
+        assertThat(child.properties().asMap()).containsOnly(Map.entry("tenant", "acme"));
         assertThat(child.principal()).isEqualTo(PRINCIPAL);
         assertThat(child.parentMessageId()).isEqualTo(PARENT.messageId());
     }
 
     @Test
-    void createScope_customInheritance_dropsListedProperties() {
-        var factory = new MetadataFactory(new SimplePrincipalProvider(), new SystemTimeProvider(),
-            excludingSmdProperties().and(excludingProperties("Idempotency-Key")));
+    void createScope_parentWithTransientProperties_childHasNone() {
+        var factory = new MetadataFactory(new SimplePrincipalProvider(), new SystemTimeProvider());
 
         var child = childMetadata(factory);
 
-        assertThat(child.properties().asMap()).containsOnly(Map.entry("tenant", "acme"));
+        assertThat(child.transientProperties().isEmpty()).isTrue();
     }
 
     private static Metadata childMetadata(MetadataFactory factory) {

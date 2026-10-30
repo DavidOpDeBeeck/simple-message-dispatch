@@ -147,7 +147,7 @@ A dispatcher is identified by its name in the database, and every instance that 
 
 A subscriber is identified by its processing group or route name and stays registered across restarts. From its first subscription on, every stored event is queued for it.
 
-Delivery metadata holds `smd.processingId`, `smd.errorCount`, and `smd.subjectId`, as in the event store. Messages a handler sends do not inherit them.
+Delivery metadata holds the transient properties `smd.processingId`, `smd.errorCount`, and `smd.subjectId`, as in the event store. Messages a handler sends do not inherit them, and routes do not forward them.
 
 ## Without Spring
 

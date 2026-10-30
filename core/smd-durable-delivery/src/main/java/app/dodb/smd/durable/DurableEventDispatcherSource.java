@@ -20,7 +20,6 @@ import java.util.UUID;
 import static app.dodb.smd.api.event.delivery.ProcessingMetadata.ERROR_COUNT;
 import static app.dodb.smd.api.event.delivery.ProcessingMetadata.PROCESSING_ID;
 import static app.dodb.smd.api.event.delivery.ProcessingMetadata.SUBJECT_ID;
-import static app.dodb.smd.api.metadata.Metadata.withProperties;
 import static java.util.Objects.requireNonNull;
 
 class DurableEventDispatcherSource implements EventSource {
@@ -107,7 +106,7 @@ class DurableEventDispatcherSource implements EventSource {
                     .with(ERROR_COUNT, String.valueOf(delivery.attempts()))
                     .with(SUBJECT_ID, event.subjectId())
                     .build();
-                var eventMessageWithProcessingMetadata = eventMessage.andMetadata(withProperties(properties));
+                var eventMessageWithProcessingMetadata = eventMessage.withMetadata(metadata -> metadata.withTransientProperties(properties));
 
                 MetadataFactory.runInScope(eventMessageWithProcessingMetadata, () -> subscriber.on(eventMessageWithProcessingMetadata));
             } catch (Throwable e) {

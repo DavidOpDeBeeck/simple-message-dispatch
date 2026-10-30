@@ -27,7 +27,7 @@ class EventStoreSendingIntegrationTest {
             var eventStore = fixture.bean(EventStore.class);
             var eventSerializer = fixture.bean(EventSerializer.class);
             var message = EventMessage.from(new TestEventWithSubjectId("direct-send"),
-                new Metadata(null, Instant.parse("2026-04-22T10:15:30Z"), null));
+                Metadata.at(Instant.parse("2026-04-22T10:15:30Z")));
 
             // When
             eventStore.send(message);
@@ -46,7 +46,7 @@ class EventStoreSendingIntegrationTest {
             var transactions = fixture.bean(TransactionProvider.class);
             var jdbc = new JdbcTemplate(fixture.bean(DataSource.class));
             var message = EventMessage.from(new TestEventWithSubjectId("deferred-send"),
-                new Metadata(null, Instant.parse("2026-04-22T10:15:30Z"), null));
+                Metadata.at(Instant.parse("2026-04-22T10:15:30Z")));
 
             // When
             transactions.doInTransaction(() -> {
@@ -70,7 +70,7 @@ class EventStoreSendingIntegrationTest {
             var jdbc = new JdbcTemplate(fixture.bean(DataSource.class));
             var failure = new IllegalStateException("Deferred work failed after storing the event");
             var message = EventMessage.from(new TestEventWithSubjectId("rolled-back-send"),
-                new Metadata(null, Instant.parse("2026-04-22T10:15:30Z"), null));
+                Metadata.at(Instant.parse("2026-04-22T10:15:30Z")));
 
             // When / Then
             assertThatThrownBy(() -> transactions.doInTransaction(() -> {

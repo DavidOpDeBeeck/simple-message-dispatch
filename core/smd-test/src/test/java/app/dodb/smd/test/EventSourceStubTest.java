@@ -5,14 +5,14 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.metadata.Metadata;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class EventSourceStubTest {
 
-    private static final Metadata METADATA = Metadata.withProperties(Map.of());
+    private static final Metadata METADATA = Metadata.at(Instant.now());
 
     @Test
     void send_withSubscribers_thenCapturesAndDeliversMessageInSubscriptionOrder() {

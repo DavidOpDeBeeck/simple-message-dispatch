@@ -12,6 +12,7 @@ import app.dodb.smd.api.metadata.MetadataFactory;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import static java.util.Objects.requireNonNull;
 
@@ -45,6 +46,15 @@ public class EventBus implements EventPublisher {
     public <E extends Event> void publish(E event, Metadata eventMetadata) {
         var chain = EventBusInterceptorChain.<E>create(this::dispatch, interceptors);
         metadataFactory.createScope(eventMetadata).run(
+            metadata -> EventMessage.from(event, metadata),
+            chain::proceed
+        );
+    }
+
+    @Override
+    public <E extends Event> void publish(E event, UnaryOperator<Metadata> metadataUpdate) {
+        var chain = EventBusInterceptorChain.<E>create(this::dispatch, interceptors);
+        metadataFactory.createScope(metadataUpdate).run(
             metadata -> EventMessage.from(event, metadata),
             chain::proceed
         );

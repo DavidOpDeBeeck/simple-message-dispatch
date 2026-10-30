@@ -23,8 +23,8 @@ import io.opentelemetry.sdk.trace.data.StatusData;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static app.dodb.smd.opentelemetry.MessageSpans.DELIVERY;
@@ -54,7 +54,7 @@ class ProcessingGroupTracingTest {
 
     @Test
     void publish_syncGroup_recordsAConsumerProcessSpanWithinTheSyncSend() {
-        var message = EventMessage.from(new OrderPlaced(), Metadata.withProperties(Map.of()));
+        var message = EventMessage.from(new OrderPlaced(), Metadata.at(Instant.now()));
 
         eventBus.publish(message);
 
@@ -107,7 +107,7 @@ class ProcessingGroupTracingTest {
 
     @Test
     void publish_eventCarryingBaggageWithinAnApplicationSpan_passesTheBaggageToTheCommandItsHandlerSends() {
-        var message = EventMessage.from(new OrderShipped(), Metadata.withProperties(Map.of("baggage", "tenant=acme")));
+        var message = EventMessage.from(new OrderShipped(), Metadata.at(Instant.now()).withProperty("baggage", "tenant=acme"));
         var request = spans.startApplicationSpan("http-request");
 
         try (var _ = request.makeCurrent()) {
@@ -122,7 +122,7 @@ class ProcessingGroupTracingTest {
 
     @Test
     void publish_eventBaggageConflictingWithTheCurrentBaggage_keepsBothWithTheEventsEntriesWinning() {
-        var message = EventMessage.from(new OrderShipped(), Metadata.withProperties(Map.of("baggage", "tenant=acme")));
+        var message = EventMessage.from(new OrderShipped(), Metadata.at(Instant.now()).withProperty("baggage", "tenant=acme"));
         var request = spans.startApplicationSpan("http-request");
         var currentBaggage = Baggage.builder().put("tenant", "other").put("region", "eu").build();
 

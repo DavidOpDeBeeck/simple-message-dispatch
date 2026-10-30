@@ -3,7 +3,6 @@ package app.dodb.smd.api.command.bus;
 import app.dodb.smd.api.command.CommandHandlerDispatcher;
 import app.dodb.smd.api.command.CommandHandlerLocator;
 import app.dodb.smd.api.metadata.MetadataFactory;
-import app.dodb.smd.api.metadata.MetadataInheritance;
 import app.dodb.smd.api.metadata.time.SystemTimeProvider;
 import app.dodb.smd.api.metadata.time.TimeProvider;
 import app.dodb.smd.api.metadata.principal.PrincipalProvider;
@@ -31,7 +30,6 @@ public class CommandBusSpec {
 
     private TimeProvider timeProvider;
     private PrincipalProvider principalProvider;
-    private MetadataInheritance metadataInheritance = MetadataInheritance.excludingSmdProperties();
     private CommandHandlerDispatcher dispatcher;
     private final List<CommandBusInterceptor> interceptors = new ArrayList<>();
 
@@ -42,11 +40,6 @@ public class CommandBusSpec {
 
     public CommandBusSpec principal(PrincipalProvider principalProvider) {
         this.principalProvider = requireNonNull(principalProvider);
-        return this;
-    }
-
-    public CommandBusSpec metadataInheritance(MetadataInheritance metadataInheritance) {
-        this.metadataInheritance = metadataInheritance;
         return this;
     }
 
@@ -65,6 +58,6 @@ public class CommandBusSpec {
     }
 
     public CommandBus create() {
-        return new CommandBus(new MetadataFactory(principalProvider, timeProvider, metadataInheritance), interceptors, dispatcher);
+        return new CommandBus(new MetadataFactory(principalProvider, timeProvider), interceptors, dispatcher);
     }
 }

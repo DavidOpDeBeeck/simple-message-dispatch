@@ -3,15 +3,12 @@
 ## [Unreleased]
 
 - **Breaking:** `Metadata.properties()` returns `MetadataProperties` instead of `Map<String, String>`. It offers `find`, `get`, `contains`, `names`, `with`, `without`,
-  `inheritedBy`, and `asMap()`; `MetadataProperties.builder()` builds properties and skips a `with` whose `Optional` value is empty. `Metadata` adds `property(name)` and
-  `withProperty(name, value)`. The `Map` constructor and `Metadata.withProperties(Map)` remain, and the JSON form of metadata is unchanged.
-- Added `MetadataInheritance`, which decides which properties a message sent by a handler inherits from the message it received. The default,
-  `MetadataInheritance.excludingSmdProperties()`, inherits everything except properties starting with `smd.`; `excludingPrefix(...)`, `excludingProperties(...)`, and `and(...)` build
-  other policies. Set it with `metadataInheritance(...)` on the bus specs, or with a `MetadataInheritance` bean in Spring Boot.
-- **Breaking:** the delivery metadata of event-store and durable-delivery handlers moved under `smd.`: `processingId`, `sequenceNumber`, `subjectId`, and `errorCount` are now
-  `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and `smd.errorCount`, with constants in `app.dodb.smd.api.event.delivery.ProcessingMetadata`. Messages a handler sends
-  no longer inherit them; before, a subjectless event sent while handling another event could carry that event's `subjectId`.
-- `MetadataFactory` accepts a `MetadataInheritance` as a third constructor argument; the two-argument constructor uses `excludingSmdProperties()`.
+  and `asMap()`; `MetadataProperties.builder()` builds properties and skips a `with` whose `Optional` value is empty. The JSON form of metadata is unchanged.
+- **Breaking:** `Metadata` adds `transientProperties()`, which are never serialized or inherited; `property(name)` reads them first. Create metadata with
+  `Metadata.at(timestamp)` and change it with the `with...` methods; the other constructors, the static factories, `Metadata.and(...)`, and `Message.andMetadata(...)` are removed.
+- The gateways accept `metadata -> ...` to change the metadata the bus generates, such as `publish(event, metadata -> metadata.withProperty("customerId", id))`.
+- **Breaking:** event-store and durable-delivery delivery metadata is now the transient properties `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and
+  `smd.errorCount` (constants in `ProcessingMetadata`). Messages a handler sends no longer inherit them; read them with `property(...)` or `@MetadataValue`.
 - **Breaking:** event serialization moved from `smd-event-store` to the new `smd-serialization` module. `EventSerializer`, `EventTypeResolver`, `ClassNameEventTypeResolver`,
   `StaticEventTypeResolver`, and `SerializedEvent` (from `app.dodb.smd.eventstore.storage`) are in `app.dodb.smd.serialization`;
   `JacksonEventSerializer` and `SMDJacksonModule` are in `app.dodb.smd.serialization.jackson`. `smd-event-store` exposes the module, so only imports change.

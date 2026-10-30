@@ -8,6 +8,7 @@ import app.dodb.smd.api.query.QueryHandlerDispatcher;
 import app.dodb.smd.api.query.QueryMessage;
 
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import static java.util.Objects.requireNonNull;
 
@@ -38,6 +39,15 @@ public class QueryBus implements QueryGateway {
     public <R, Q extends Query<R>> R send(Q query, Metadata queryMetadata) {
         var chain = QueryBusInterceptorChain.<R, Q>create(this::dispatch, interceptors);
         return metadataFactory.createScope(queryMetadata).run(
+            metadata -> QueryMessage.from(query, metadata),
+            chain::proceed
+        );
+    }
+
+    @Override
+    public <R, Q extends Query<R>> R send(Q query, UnaryOperator<Metadata> metadataUpdate) {
+        var chain = QueryBusInterceptorChain.<R, Q>create(this::dispatch, interceptors);
+        return metadataFactory.createScope(metadataUpdate).run(
             metadata -> QueryMessage.from(query, metadata),
             chain::proceed
         );
