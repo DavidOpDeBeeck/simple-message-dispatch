@@ -39,7 +39,7 @@ class MetadataIntegrationTest {
         try (var context = createContext(configClass)) {
             var commandBus = context.getBean(CommandBus.class);
             var recorder = context.getBean(MetadataRecorder.class);
-            var metadata = Metadata.builder().principal(SimplePrincipal.create()).timestamp(INITIAL_TIMESTAMP).property("key", "value").build();
+            var metadata = Metadata.at(INITIAL_TIMESTAMP).withPrincipal(SimplePrincipal.create()).withProperty("key", "value");
             var command = CommandMessage.from(new CreateAccountCommand("ACCOUNT_NAME"), metadata);
 
             // When
@@ -70,7 +70,7 @@ class MetadataIntegrationTest {
         try (var context = createContext(configClass)) {
             var queryBus = context.getBean(QueryBus.class);
             var recorder = context.getBean(MetadataRecorder.class);
-            var metadata = Metadata.builder().principal(SimplePrincipal.create()).timestamp(INITIAL_TIMESTAMP).property("key", "value").build();
+            var metadata = Metadata.at(INITIAL_TIMESTAMP).withPrincipal(SimplePrincipal.create()).withProperty("key", "value");
             var query = QueryMessage.from(new GetAccountBalanceQuery(), metadata);
 
             // When
@@ -92,7 +92,7 @@ class MetadataIntegrationTest {
         try (var context = createContext(configClass)) {
             var eventPublisher = context.getBean(EventPublisher.class);
             var recorder = context.getBean(MetadataRecorder.class);
-            var metadata = Metadata.builder().principal(SimplePrincipal.create()).timestamp(INITIAL_TIMESTAMP).property("key", "value").build();
+            var metadata = Metadata.at(INITIAL_TIMESTAMP).withPrincipal(SimplePrincipal.create()).withProperty("key", "value");
             var event = EventMessage.from(new AccountCreatedEvent("ACCOUNT_NAME"), metadata);
 
             // When

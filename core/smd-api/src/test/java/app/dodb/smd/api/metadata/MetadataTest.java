@@ -8,18 +8,8 @@ import static app.dodb.smd.api.metadata.MetadataTestConstants.METADATA;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.PRINCIPAL;
 import static app.dodb.smd.api.metadata.MetadataTestConstants.TIMESTAMP;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 class MetadataTest {
-
-    @Test
-    void build_withoutTimestamp_failsNamingTheTimestamp() {
-        var builder = Metadata.builder().principal(PRINCIPAL);
-
-        assertThatIllegalStateException()
-            .isThrownBy(builder::build)
-            .withMessageContaining("timestamp");
-    }
 
     @Test
     void property_nameInPropertiesAndTransientProperties_returnsTransientValue() {

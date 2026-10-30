@@ -12,7 +12,6 @@ import io.opentelemetry.sdk.trace.data.StatusData;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -38,7 +37,7 @@ class EventPublicationTracingTest {
 
     @Test
     void publish_event_recordsAProducerPublishSpan() {
-        var message = EventMessage.from(new OrderPlaced(), Metadata.builder().timestamp(Instant.now()).build());
+        var message = EventMessage.from(new OrderPlaced(), Metadata.now());
 
         eventBus().publish(message);
 

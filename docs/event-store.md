@@ -261,7 +261,7 @@ Before each delivery attempt, SMD adds these reserved properties to the event me
 | `smd.errorCount`     | `ERROR_COUNT`     | Failures already recorded for the subject         |
 
 Handlers can read them with `@MetadataValue(ProcessingMetadata.ERROR_COUNT)` or `metadata.property(...)`. They describe one delivery, so the messages a handler sends do not
-inherit them, and a route that forwards the event to another medium does not carry them along (see [Choose Inherited Properties](core-api.md#choose-inherited-properties)). When a
+inherit them, and a route that forwards the event to another medium does not carry them along (see [Inherited Properties](core-api.md#inherited-properties)). When a
 stored property has the same name, `property(...)` returns the transient value; the metadata stored in `smd_event_store` is never modified.
 
 ## Inspect Processing State

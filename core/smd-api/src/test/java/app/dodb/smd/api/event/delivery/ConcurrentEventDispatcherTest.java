@@ -130,7 +130,7 @@ class ConcurrentEventDispatcherTest {
 
         var dispatcher = ConcurrentEventDispatcher.usingVirtualThreads();
         try (var _ = dispatcher.subscribe(new QueryingListener(queryBus))) {
-            var eventMetadata = Metadata.builder().principal(PRINCIPAL).timestamp(TIMESTAMP).property("key", "value").build();
+            var eventMetadata = Metadata.at(TIMESTAMP).withPrincipal(PRINCIPAL).withProperty("key", "value");
             var eventMessage = EventMessage.from(new EventForTest("Hello world"), eventMetadata);
 
             dispatcher.send(eventMessage);

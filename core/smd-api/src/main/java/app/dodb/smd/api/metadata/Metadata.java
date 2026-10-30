@@ -16,8 +16,12 @@ public record Metadata(Principal principal,
                        MetadataProperties properties,
                        MetadataProperties transientProperties) {
 
-    public static Builder builder() {
-        return new Builder();
+    public static Metadata at(Instant timestamp) {
+        return new Metadata(null, timestamp, null, MetadataProperties.empty(), MetadataProperties.empty());
+    }
+
+    public static Metadata now() {
+        return at(Instant.now());
     }
 
     public Metadata {
@@ -64,59 +68,5 @@ public record Metadata(Principal principal,
 
     public Metadata withTransientProperties(MetadataProperties other) {
         return new Metadata(principal, timestamp, parentMessageId, properties, transientProperties.with(other));
-    }
-
-    public static class Builder {
-
-        private Principal principal;
-        private Instant timestamp;
-        private MessageId parentMessageId;
-        private MetadataProperties properties = MetadataProperties.empty();
-        private MetadataProperties transientProperties = MetadataProperties.empty();
-
-        private Builder() {
-        }
-
-        public Builder principal(Principal principal) {
-            this.principal = principal;
-            return this;
-        }
-
-        public Builder timestamp(Instant timestamp) {
-            this.timestamp = timestamp;
-            return this;
-        }
-
-        public Builder parentMessageId(MessageId parentMessageId) {
-            this.parentMessageId = parentMessageId;
-            return this;
-        }
-
-        public Builder property(String name, String value) {
-            properties = properties.with(name, value);
-            return this;
-        }
-
-        public Builder properties(MetadataProperties properties) {
-            this.properties = this.properties.with(properties);
-            return this;
-        }
-
-        public Builder transientProperty(String name, String value) {
-            transientProperties = transientProperties.with(name, value);
-            return this;
-        }
-
-        public Builder transientProperties(MetadataProperties properties) {
-            transientProperties = transientProperties.with(properties);
-            return this;
-        }
-
-        public Metadata build() {
-            if (timestamp == null) {
-                throw new IllegalStateException("Invalid metadata: a timestamp is required; set it with Metadata.builder().timestamp(...)");
-            }
-            return new Metadata(principal, timestamp, parentMessageId, properties, transientProperties);
-        }
     }
 }

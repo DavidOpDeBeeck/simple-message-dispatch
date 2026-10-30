@@ -15,7 +15,6 @@ import app.dodb.smd.api.query.bus.QueryBusSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.time.Instant;
 
 import static app.dodb.smd.opentelemetry.MessageSpans.DESTINATION_NAME;
 import static app.dodb.smd.opentelemetry.MessageSpans.MESSAGE_ID;
@@ -43,7 +42,7 @@ class QueryTracingTest {
 
     @Test
     void send_query_returnsTheResultAndRecordsAProducerSendSpan() {
-        var message = QueryMessage.from(new FindOrder(), Metadata.builder().timestamp(Instant.now()).build());
+        var message = QueryMessage.from(new FindOrder(), Metadata.now());
 
         var result = queryBus.send(message);
 

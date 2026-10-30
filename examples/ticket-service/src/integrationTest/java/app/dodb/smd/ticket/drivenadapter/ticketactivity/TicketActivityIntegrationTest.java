@@ -124,6 +124,6 @@ class TicketActivityIntegrationTest {
     }
 
     private static Metadata metadata() {
-        return Metadata.builder().timestamp(TIMESTAMP).property("customerId", CUSTOMER_ID).build();
+        return Metadata.at(TIMESTAMP).withProperty("customerId", CUSTOMER_ID);
     }
 }

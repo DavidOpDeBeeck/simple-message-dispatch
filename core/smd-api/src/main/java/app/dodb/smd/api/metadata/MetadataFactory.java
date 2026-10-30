@@ -18,16 +18,10 @@ public class MetadataFactory {
 
     private final PrincipalProvider principalProvider;
     private final TimeProvider timeProvider;
-    private final MetadataInheritance inheritance;
 
     public MetadataFactory(PrincipalProvider principalProvider, TimeProvider timeProvider) {
-        this(principalProvider, timeProvider, MetadataInheritance.excludingSmdProperties());
-    }
-
-    public MetadataFactory(PrincipalProvider principalProvider, TimeProvider timeProvider, MetadataInheritance inheritance) {
         this.principalProvider = requireNonNull(principalProvider);
         this.timeProvider = requireNonNull(timeProvider);
-        this.inheritance = requireNonNull(inheritance).and(MetadataInheritance.excludingSmdProperties());
     }
 
     public MetadataScope createScope() {
@@ -55,7 +49,7 @@ public class MetadataFactory {
         var parentMetadata = PARENT_METADATA.isBound() ? PARENT_METADATA.get() : null;
         return parentMetadata == null
             ? new Metadata(principalProvider.get(), timeProvider.now(), parentMessageId, MetadataProperties.empty(), MetadataProperties.empty())
-            : new Metadata(parentMetadata.principal(), timeProvider.now(), parentMessageId, parentMetadata.properties().inheritedBy(inheritance), MetadataProperties.empty());
+            : new Metadata(parentMetadata.principal(), timeProvider.now(), parentMessageId, parentMetadata.properties(), MetadataProperties.empty());
     }
 
     public record MetadataScope(Supplier<Metadata> metadataSupplier) {

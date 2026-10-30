@@ -220,7 +220,7 @@ final class DurableDeliveryTestFixture implements AutoCloseable {
     }
 
     static Metadata metadata() {
-        return Metadata.builder().timestamp(Instant.parse("2026-10-22T10:15:30Z")).property("tenant", "acme").build();
+        return Metadata.at(Instant.parse("2026-10-22T10:15:30Z")).withProperty("tenant", "acme");
     }
 
     static void awaitRelease(CountDownLatch release) {

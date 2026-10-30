@@ -89,6 +89,6 @@ class TicketViewIntegrationTest {
     }
 
     private static Metadata metadata(Instant timestamp) {
-        return Metadata.builder().timestamp(timestamp).property("customerId", CUSTOMER_ID).build();
+        return Metadata.at(timestamp).withProperty("customerId", CUSTOMER_ID);
     }
 }

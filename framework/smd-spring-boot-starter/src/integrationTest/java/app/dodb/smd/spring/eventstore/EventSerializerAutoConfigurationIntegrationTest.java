@@ -92,7 +92,7 @@ class EventSerializerAutoConfigurationIntegrationTest {
             var principal = SimplePrincipal.create();
             var eventMessage = EventMessage.from(
                 new SerializerTestEvent("value"),
-                Metadata.builder().principal(principal).timestamp(TIMESTAMP).build()
+                Metadata.at(TIMESTAMP).withPrincipal(principal)
             );
 
             // When
@@ -139,7 +139,7 @@ class EventSerializerAutoConfigurationIntegrationTest {
     }
 
     private EventMessage<SerializerTestEvent> eventMessage() {
-        return EventMessage.from(new SerializerTestEvent("value"), Metadata.builder().timestamp(TIMESTAMP).build());
+        return EventMessage.from(new SerializerTestEvent("value"), Metadata.at(TIMESTAMP));
     }
 
     record SerializerTestEvent(@SubjectId String value) implements Event {

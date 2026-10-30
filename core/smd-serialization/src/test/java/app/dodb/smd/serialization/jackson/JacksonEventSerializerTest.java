@@ -171,7 +171,7 @@ class JacksonEventSerializerTest {
     }
 
     private Metadata metadata() {
-        return Metadata.builder().principal(PRINCIPAL).timestamp(TIMESTAMP).parentMessageId(PARENT_MESSAGE_ID).property("correlationId", "correlation-123").build();
+        return Metadata.at(TIMESTAMP).withPrincipal(PRINCIPAL).withParentMessageId(PARENT_MESSAGE_ID).withProperty("correlationId", "correlation-123");
     }
 
     private static byte[] json(String value) {

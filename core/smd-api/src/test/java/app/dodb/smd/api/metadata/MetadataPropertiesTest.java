@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static app.dodb.smd.api.metadata.MetadataInheritance.excludingSmdProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class MetadataPropertiesTest {
@@ -68,14 +67,5 @@ class MetadataPropertiesTest {
         var remaining = properties.without(List.of("traceparent", "tracestate"));
 
         assertThat(remaining.asMap()).containsOnly(Map.entry("tenant", "acme"));
-    }
-
-    @Test
-    void inheritedBy_inheritance_keepsInheritedProperties() {
-        var properties = MetadataProperties.of(Map.of("tenant", "acme", "smd.processingId", "processing-1"));
-
-        var inherited = properties.inheritedBy(excludingSmdProperties());
-
-        assertThat(inherited.names()).containsOnly("tenant");
     }
 }

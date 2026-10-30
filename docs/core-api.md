@@ -100,14 +100,12 @@ var changed = metadata
 var updatedMessage = eventMessage.withMetadata(current -> current.withProperty("tenant", "acme"));
 ```
 
-Build complete metadata with `Metadata.builder()`. A timestamp is required; the principal and parent are optional:
+Create metadata with `Metadata.at(timestamp)`, or `Metadata.now()` for the system clock, and add the principal, parent, and properties with the same `with...` methods:
 
 ```java
-var metadata = Metadata.builder()
-        .principal(principal)
-        .timestamp(Instant.now())
-        .property("customerId", customerId)
-        .build();
+var metadata = Metadata.now()
+        .withPrincipal(principal)
+        .withProperty("customerId", customerId);
 
 eventPublisher.publish(event, metadata);
 ```
@@ -116,28 +114,14 @@ eventPublisher.publish(event, metadata);
 `without(...)` return new properties, and `with(other)` lets the other side win on a clash. `asMap()` gives the plain map when an API needs one. In storage and on the wire,
 properties stay a plain JSON object, and transient properties are left out.
 
-### Choose Inherited Properties
+### Inherited Properties
 
-A `MetadataInheritance` decides which properties the sent message inherits. A sent message never inherits transient properties, nor properties starting with `smd.`, whatever
-the inheritance: both describe the received message only. The default, `MetadataInheritance.excludingSmdProperties()`, inherits every other property.
-
-Exclude your own per-message properties by prefix or by name, and combine rules with `and(...)`:
-
-```java
-var inheritance = MetadataInheritance.excludingPrefix("request.")
-        .and(MetadataInheritance.excludingProperties("Idempotency-Key"));
-
-var eventBus = EventBusSpec.withDefaults()
-        .metadataInheritance(inheritance)
-        .processingGroups(locator)
-        .create();
-```
-
-`MetadataInheritance` is a functional interface, so any `property -> boolean` predicate works. Set the same inheritance on the command, query, and event bus specs; each bus applies its own
-to the messages it creates.
+A message a handler sends inherits every property of the message the handler received, and none of its transient properties. Keep a value that describes only the received
+message, such as a delivery detail, in a transient property.
 
 The gateways also accept a `Metadata`, or a `CommandMessage`, `QueryMessage`, or `EventMessage`, when you need to supply metadata explicitly. Supplied metadata replaces provider-generated
-metadata, so build it with every principal, timestamp, parent, and property value that the receiving handler needs.
+metadata, so build it with every principal, timestamp, parent, and property value that the receiving handler needs. `Metadata.now()` reads the system clock, not the bus's
+`TimeProvider`.
 
 ## Construct the Buses
 
@@ -160,8 +144,7 @@ var eventBus = EventBusSpec.withDefaults()
         .create();
 ```
 
-`withDefaults()` supplies system time and a simple principal. Use `withoutDefaults()` only when you provide both a `TimeProvider` and `PrincipalProvider`. Both start with
-`MetadataInheritance.excludingSmdProperties()` until `metadataInheritance(...)` replaces it.
+`withDefaults()` supplies system time and a simple principal. Use `withoutDefaults()` only when you provide both a `TimeProvider` and `PrincipalProvider`.
 
 `ConstructorBasedObjectCreator` cannot inject dependencies. Implement `ObjectCreator` and delegate to your dependency-injection container or application factory when handlers need repositories,
 gateways, or services.

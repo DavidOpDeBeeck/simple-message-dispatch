@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class EventUpcasterTest {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().addModule(new SMDJacksonModule()).build();
-    private static final Metadata METADATA = Metadata.builder().timestamp(Instant.parse("2026-04-22T10:15:30Z")).property("correlationId", "correlation-123").build();
+    private static final Metadata METADATA = Metadata.at(Instant.parse("2026-04-22T10:15:30Z")).withProperty("correlationId", "correlation-123");
     private static final StaticEventTypeResolver RESOLVER = new StaticEventTypeResolver(Map.of(
         "ticket.opened.v3", TicketOpenedEvent.class,
         "ticket.assigned.v2", TicketAssignedEvent.class
