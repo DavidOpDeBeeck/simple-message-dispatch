@@ -12,8 +12,8 @@ import io.opentelemetry.sdk.trace.data.StatusData;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.time.Instant;
 import java.time.Duration;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -45,7 +45,7 @@ class CommandTracingTest {
 
     @Test
     void send_command_returnsTheResultAndRecordsAProducerSendSpan() {
-        var message = CommandMessage.from(new PlaceOrder("acme"), Metadata.withProperties(Map.of()));
+        var message = CommandMessage.from(new PlaceOrder("acme"), Metadata.builder().timestamp(Instant.now()).build());
 
         var result = commandBus.send(message);
 
@@ -68,7 +68,7 @@ class CommandTracingTest {
 
     @Test
     void send_command_recordsNoPayloadMetadataOrResult() {
-        commandBus.send(new PlaceOrder("sensitive-payload"), Metadata.withProperties(Map.of("secret", "private-metadata")));
+        commandBus.send(new PlaceOrder("sensitive-payload"), Metadata.builder().timestamp(Instant.now()).property("secret", "private-metadata").build());
 
         assertThat(spans.span("send", PlaceOrder.class).getAttributes().asMap().values())
             .extracting(Object::toString)
@@ -89,7 +89,7 @@ class CommandTracingTest {
 
     @Test
     void send_command_handlerReceivesMetadataCarryingTheSendSpan() {
-        var metadata = Metadata.withProperties(Map.of("tracestate", "stale=1", "tenant", "acme"));
+        var metadata = Metadata.builder().timestamp(Instant.now()).property("tracestate", "stale=1").property("tenant", "acme").build();
 
         var received = commandBus.send(new ReadMetadata(), metadata);
 

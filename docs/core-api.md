@@ -70,39 +70,61 @@ Every message carries:
 - a `Principal`
 - an `Instant` timestamp
 - the parent message's `MessageId`, when dispatch is nested
-- immutable `MetadataProperties`: string values by name
+- `properties`: string values by name that travel with the message, into storage and onto the wire
+- `transientProperties`: string values by name that live only in memory while the message is handled; serialization drops them and sent messages never inherit them
 
 When a handler sends another message, SMD preserves the principal and the inherited properties, sets the current message as the parent, and generates a fresh timestamp. This context also crosses SMD's built-in
 asynchronous dispatchers. The current message is the one the handler received: when a bus or processing group interceptor proceeds with changed metadata, the messages its handlers send
 inherit that metadata.
 
-`MetadataProperties` reads and builds properties without copying maps by hand:
+SMD itself uses transient properties for per-delivery details, such as `smd.processingId`. Use them for values that describe this handling only and must not be
+stored or forwarded.
+
+### Read and Change Metadata
+
+`property(name)` reads a value, preferring a transient property over a property with the same name. `@MetadataValue` parameters read the same way:
 
 ```java
 Optional<String> tenant = metadata.property("tenant");
-
-var properties = MetadataProperties.builder()
-        .with("tenant", tenant)
-        .with("Idempotency-Key", key)
-        .build();
-
-eventPublisher.publish(event, Metadata.withProperties(properties));
-eventPublisher.publish(event, Metadata.withProperty("Idempotency-Key", key));
 ```
 
-The builder skips a `with` whose `Optional` value is empty, such as a missing `tenant`. On built properties, `with(...)` and `without(...)` return new properties, and `with(other)`
-lets the other side win on a clash. `asMap()` gives the plain map when an API needs one. In storage and on the wire, properties stay a plain JSON object.
+`Metadata` is immutable; each `with...` method returns new metadata. `withProperties(...)` and `withTransientProperties(...)` add to the existing properties, and the added side
+wins on a clash:
+
+```java
+var changed = metadata
+        .withProperty("tenant", "acme")
+        .withoutProperties("Idempotency-Key")
+        .withTransientProperty("cache-hit", "true");
+
+var updatedMessage = eventMessage.withMetadata(current -> current.withProperty("tenant", "acme"));
+```
+
+Build complete metadata with `Metadata.builder()`. A timestamp is required; the principal and parent are optional:
+
+```java
+var metadata = Metadata.builder()
+        .principal(principal)
+        .timestamp(Instant.now())
+        .property("customerId", customerId)
+        .build();
+
+eventPublisher.publish(event, metadata);
+```
+
+`MetadataProperties.builder()` builds a property set and skips a `with` whose `Optional` value is empty, such as a missing `tenant`. On built properties, `with(...)` and
+`without(...)` return new properties, and `with(other)` lets the other side win on a clash. `asMap()` gives the plain map when an API needs one. In storage and on the wire,
+properties stay a plain JSON object, and transient properties are left out.
 
 ### Choose Inherited Properties
 
-A `MetadataInheritance` decides which properties the sent message inherits. The default, `MetadataInheritance.excludingSmdProperties()`, inherits every property except those starting with
-`smd.`: SMD keeps per-delivery values such as processing details under that prefix, and they describe the received message only.
+A `MetadataInheritance` decides which properties the sent message inherits. A sent message never inherits transient properties, nor properties starting with `smd.`, whatever
+the inheritance: both describe the received message only. The default, `MetadataInheritance.excludingSmdProperties()`, inherits every other property.
 
-Exclude your own per-message properties by prefix or by name, and keep SMD's rule by combining with `and(...)`:
+Exclude your own per-message properties by prefix or by name, and combine rules with `and(...)`:
 
 ```java
-var inheritance = MetadataInheritance.excludingSmdProperties()
-        .and(MetadataInheritance.excludingPrefix("request."))
+var inheritance = MetadataInheritance.excludingPrefix("request.")
         .and(MetadataInheritance.excludingProperties("Idempotency-Key"));
 
 var eventBus = EventBusSpec.withDefaults()
@@ -112,10 +134,10 @@ var eventBus = EventBusSpec.withDefaults()
 ```
 
 `MetadataInheritance` is a functional interface, so any `property -> boolean` predicate works. Set the same inheritance on the command, query, and event bus specs; each bus applies its own
-to the messages it creates. A policy that inherits `smd.` properties lets one delivery's details reach the next message, so start from `excludingSmdProperties()`.
+to the messages it creates.
 
-The gateways also accept `CommandMessage`, `QueryMessage`, and `EventMessage` when you need to supply metadata explicitly. Supplied metadata replaces provider-generated metadata, so include every
-principal, timestamp, parent, and property value that the receiving handler needs.
+The gateways also accept a `Metadata`, or a `CommandMessage`, `QueryMessage`, or `EventMessage`, when you need to supply metadata explicitly. Supplied metadata replaces provider-generated
+metadata, so build it with every principal, timestamp, parent, and property value that the receiving handler needs.
 
 ## Construct the Buses
 

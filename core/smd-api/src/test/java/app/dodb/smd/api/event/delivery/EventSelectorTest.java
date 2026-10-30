@@ -2,10 +2,7 @@ package app.dodb.smd.api.event.delivery;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
-import app.dodb.smd.api.metadata.Metadata;
 import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static app.dodb.smd.api.event.delivery.EventSelector.eventPackage;
 import static app.dodb.smd.api.event.delivery.EventSelector.eventType;
@@ -210,7 +207,7 @@ class EventSelectorTest {
     }
 
     private static <E extends Event> EventMessage<E> message(E event, String propertyName, String propertyValue) {
-        return EventMessage.from(event, METADATA.and(Metadata.withProperties(Map.of(propertyName, propertyValue))));
+        return EventMessage.from(event, METADATA.withProperty(propertyName, propertyValue));
     }
 
     private interface AuditEvent extends Event {

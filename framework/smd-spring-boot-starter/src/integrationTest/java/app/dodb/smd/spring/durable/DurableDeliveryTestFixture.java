@@ -25,7 +25,6 @@ import javax.sql.DataSource;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -221,7 +220,7 @@ final class DurableDeliveryTestFixture implements AutoCloseable {
     }
 
     static Metadata metadata() {
-        return new Metadata(null, Instant.parse("2026-10-22T10:15:30Z"), null, Map.of("tenant", "acme"));
+        return Metadata.builder().timestamp(Instant.parse("2026-10-22T10:15:30Z")).property("tenant", "acme").build();
     }
 
     static void awaitRelease(CountDownLatch release) {

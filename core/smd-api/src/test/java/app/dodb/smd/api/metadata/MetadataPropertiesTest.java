@@ -78,14 +78,4 @@ class MetadataPropertiesTest {
 
         assertThat(inherited.names()).containsOnly("tenant");
     }
-
-    @Test
-    void metadataAnd_propertiesOfTheOtherMetadata_win() {
-        var metadata = new Metadata(null, null, null, Map.of("tenant", "acme", "region", "eu"));
-
-        var combined = metadata.and(Metadata.withProperty("tenant", "globex"));
-
-        assertThat(combined.property("tenant")).contains("globex");
-        assertThat(combined.property("region")).contains("eu");
-    }
 }

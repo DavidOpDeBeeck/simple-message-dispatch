@@ -57,7 +57,7 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
-                var sequenceNumber = eventMessage.metadata().properties().get(SEQUENCE_NUMBER);
+                var sequenceNumber = eventMessage.metadata().transientProperties().get(SEQUENCE_NUMBER);
                 if ("1".equals(sequenceNumber)) {
                     throw new IllegalStateException("global sequence is stuck");
                 }
@@ -102,7 +102,7 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
-                var metadata = eventMessage.metadata().properties();
+                var metadata = eventMessage.metadata().transientProperties();
                 invoked.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
                 if ("subjectId-1".equals(metadata.get(SUBJECT))) {
                     throw new IllegalStateException("subjectId 1 is stuck");
@@ -149,7 +149,7 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
-                var metadata = eventMessage.metadata().properties();
+                var metadata = eventMessage.metadata().transientProperties();
                 if ("subjectId-1".equals(metadata.get(SUBJECT))) {
                     throw new IllegalStateException("subjectId 1 is in backoff");
                 }
@@ -198,7 +198,7 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
-                var metadata = eventMessage.metadata().properties();
+                var metadata = eventMessage.metadata().transientProperties();
                 handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
             });
 
@@ -265,8 +265,8 @@ class SequencedEventProcessingIntegrationTest {
 
         @EventHandler
         public void on(TestEventWithSubjectId event, Metadata metadata) {
-            var subject = metadata.properties().get(SUBJECT);
-            invokedSequenceNumbers.add(metadata.properties().get(SEQUENCE_NUMBER));
+            var subject = metadata.transientProperties().get(SUBJECT);
+            invokedSequenceNumbers.add(metadata.transientProperties().get(SEQUENCE_NUMBER));
             if ("subjectId-1".equals(subject)) {
                 throw new IllegalStateException("subjectId 1 is stuck");
             }

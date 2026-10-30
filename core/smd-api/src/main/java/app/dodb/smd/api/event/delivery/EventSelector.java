@@ -29,7 +29,7 @@ public interface EventSelector {
 
     static EventSelector metadataProperty(String propertyName) {
         var selectedPropertyName = requireNonNull(propertyName);
-        return eventMessage -> eventMessage.metadata().properties().contains(selectedPropertyName);
+        return eventMessage -> eventMessage.metadata().property(selectedPropertyName).isPresent();
     }
 
     static EventSelector metadataProperty(String propertyName, String propertyValue) {

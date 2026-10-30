@@ -141,6 +141,19 @@ class JacksonEventSerializerTest {
     }
 
     @Test
+    void serialize_transientProperties_areNotWritten() {
+        var serializer = new JacksonEventSerializer(JsonMapper.builder()
+            .addModule(new SMDJacksonModule())
+            .build(), new ClassNameEventTypeResolver(), List.of());
+        var eventMessage = EventMessage.from(new TestEvent("value"), metadata().withTransientProperty("smd.processingId", "processing-1"));
+
+        var deserialized = serializer.deserialize(serializer.serialize(eventMessage));
+
+        assertThat(deserialized.metadata().transientProperties().isEmpty()).isTrue();
+        assertThat(deserialized.metadata().properties()).isEqualTo(eventMessage.metadata().properties());
+    }
+
+    @Test
     void deserialize_restoresThePersistedSubjectWithoutRecomputingIt() {
         var serializer = new JacksonEventSerializer(JsonMapper.builder()
             .addModule(new SMDJacksonModule())
@@ -158,7 +171,7 @@ class JacksonEventSerializerTest {
     }
 
     private Metadata metadata() {
-        return new Metadata(PRINCIPAL, TIMESTAMP, PARENT_MESSAGE_ID, Map.of("correlationId", "correlation-123"));
+        return Metadata.builder().principal(PRINCIPAL).timestamp(TIMESTAMP).parentMessageId(PARENT_MESSAGE_ID).property("correlationId", "correlation-123").build();
     }
 
     private static byte[] json(String value) {

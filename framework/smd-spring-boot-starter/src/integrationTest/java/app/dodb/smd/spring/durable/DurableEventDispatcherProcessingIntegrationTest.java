@@ -127,8 +127,8 @@ class DurableEventDispatcherProcessingIntegrationTest {
             assertThat(delivered).singleElement().satisfies(message -> {
                 assertThat(message.messageId()).isEqualTo(placed.messageId());
                 assertThat(message.payload()).isEqualTo(placed.payload());
-                assertThat(message.metadata().properties().asMap())
-                    .containsEntry("tenant", "acme")
+                assertThat(message.metadata().properties().asMap()).containsEntry("tenant", "acme");
+                assertThat(message.metadata().transientProperties().asMap())
                     .containsEntry(SUBJECT_ID, "order-1")
                     .containsEntry(ERROR_COUNT, "0")
                     .containsKey(PROCESSING_ID);

@@ -22,9 +22,4 @@ public record CommandMessage<R, C extends Command<R>>(MessageId messageId, C pay
     public CommandMessage<R, C> withMetadata(Metadata newMetadata) {
         return new CommandMessage<>(messageId, payload, newMetadata);
     }
-
-    @Override
-    public CommandMessage<R, C> andMetadata(Metadata newMetadata) {
-        return new CommandMessage<>(messageId, payload, metadata.and(newMetadata));
-    }
 }

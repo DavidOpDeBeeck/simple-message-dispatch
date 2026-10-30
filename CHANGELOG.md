@@ -3,14 +3,20 @@
 ## [Unreleased]
 
 - **Breaking:** `Metadata.properties()` returns `MetadataProperties` instead of `Map<String, String>`. It offers `find`, `get`, `contains`, `names`, `with`, `without`,
-  `inheritedBy`, and `asMap()`; `MetadataProperties.builder()` builds properties and skips a `with` whose `Optional` value is empty. `Metadata` adds `property(name)` and
-  `withProperty(name, value)`. The `Map` constructor and `Metadata.withProperties(Map)` remain, and the JSON form of metadata is unchanged.
+  `inheritedBy`, and `asMap()`; `MetadataProperties.builder()` builds properties and skips a `with` whose `Optional` value is empty. The JSON form of metadata is unchanged.
+- **Breaking:** `Metadata` adds `transientProperties()`: values that live only in memory while a message is handled, are never serialized, and are never inherited. Build metadata
+  with `Metadata.builder()`, which requires a timestamp; the record's other constructors, the static `Metadata.withProperties(...)` and `withProperty(...)`, `Metadata.and(...)`,
+  and `Message.andMetadata(...)` are removed. `property(name)` reads a transient property before a property of the same name, and `@MetadataValue` and `EventSelector.metadataProperty`
+  read the same way. `withProperty`, `withProperties`, `withoutProperties`, `withTransientProperty`, `withTransientProperties`, `withPrincipal`, `withTimestamp`, and
+  `withParentMessageId` return changed metadata, and `Message.withMetadata(current -> ...)` changes a message's metadata. A timestamp is now required.
 - Added `MetadataInheritance`, which decides which properties a message sent by a handler inherits from the message it received. The default,
   `MetadataInheritance.excludingSmdProperties()`, inherits everything except properties starting with `smd.`; `excludingPrefix(...)`, `excludingProperties(...)`, and `and(...)` build
-  other policies. Set it with `metadataInheritance(...)` on the bus specs, or with a `MetadataInheritance` bean in Spring Boot.
+  other policies. Set it with `metadataInheritance(...)` on the bus specs, or with a `MetadataInheritance` bean in Spring Boot. Whatever the policy, a message never inherits
+  `smd.` properties.
 - **Breaking:** the delivery metadata of event-store and durable-delivery handlers moved under `smd.`: `processingId`, `sequenceNumber`, `subjectId`, and `errorCount` are now
-  `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and `smd.errorCount`, with constants in `app.dodb.smd.api.event.delivery.ProcessingMetadata`. Messages a handler sends
-  no longer inherit them; before, a subjectless event sent while handling another event could carry that event's `subjectId`.
+  `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and `smd.errorCount`, with constants in `app.dodb.smd.api.event.delivery.ProcessingMetadata`. They are transient
+  properties: messages a handler sends no longer inherit them, and routes no longer forward them; before, a subjectless event sent while handling another event could carry that
+  event's `subjectId`. Read them with `metadata.property(...)` or `@MetadataValue`, not `metadata.properties()`.
 - `MetadataFactory` accepts a `MetadataInheritance` as a third constructor argument; the two-argument constructor uses `excludingSmdProperties()`.
 - **Breaking:** event serialization moved from `smd-event-store` to the new `smd-serialization` module. `EventSerializer`, `EventTypeResolver`, `ClassNameEventTypeResolver`,
   `StaticEventTypeResolver`, and `SerializedEvent` (from `app.dodb.smd.eventstore.storage`) are in `app.dodb.smd.serialization`;

@@ -25,7 +25,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.springframework.http.ResponseEntity.created;
@@ -89,7 +88,7 @@ public class TicketController {
     }
 
     private static Metadata metadata(String customerId) {
-        return new Metadata(null, Instant.now(), null, Map.of("customerId", customerId));
+        return Metadata.builder().timestamp(Instant.now()).property("customerId", customerId).build();
     }
 
     public record OpenTicketRequest(@NotBlank String title, @NotBlank String description) {

@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
-import java.util.Map;
 import java.util.UUID;
 
 import static app.dodb.smd.ticket.drivenadapter.ticketactivity.TicketActivityIntegrationTest.TestConfig;
@@ -125,6 +124,6 @@ class TicketActivityIntegrationTest {
     }
 
     private static Metadata metadata() {
-        return new Metadata(null, TIMESTAMP, null, Map.of("customerId", CUSTOMER_ID));
+        return Metadata.builder().timestamp(TIMESTAMP).property("customerId", CUSTOMER_ID).build();
     }
 }

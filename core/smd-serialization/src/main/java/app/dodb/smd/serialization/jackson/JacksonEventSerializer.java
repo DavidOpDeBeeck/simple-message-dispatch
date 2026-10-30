@@ -4,6 +4,7 @@ import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
+import app.dodb.smd.api.metadata.MetadataProperties;
 import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.serialization.EventSerializer;
 import app.dodb.smd.serialization.EventTypeResolver;
@@ -80,7 +81,7 @@ public class JacksonEventSerializer implements EventSerializer {
         }
 
         Metadata toMetadata() {
-            return new Metadata(principal, timestamp, parentMessageId, properties);
+            return new Metadata(principal, timestamp, parentMessageId, MetadataProperties.of(properties), MetadataProperties.empty());
         }
     }
 

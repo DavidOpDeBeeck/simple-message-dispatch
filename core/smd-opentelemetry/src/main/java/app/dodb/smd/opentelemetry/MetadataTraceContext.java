@@ -38,7 +38,6 @@ class MetadataTraceContext {
     Metadata inject(Context context, Metadata metadata) {
         var traceContext = new HashMap<String, String>();
         propagator.inject(context, traceContext, Map::put);
-        var properties = metadata.properties().without(propagator.fields()).with(MetadataProperties.of(traceContext));
-        return new Metadata(metadata.principal(), metadata.timestamp(), metadata.parentMessageId(), properties);
+        return metadata.withoutProperties(propagator.fields()).withProperties(MetadataProperties.of(traceContext));
     }
 }

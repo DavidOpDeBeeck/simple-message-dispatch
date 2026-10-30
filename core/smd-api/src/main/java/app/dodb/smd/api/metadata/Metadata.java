@@ -4,47 +4,119 @@ import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.principal.Principal;
 
 import java.time.Instant;
-import java.util.Map;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
 
-public record Metadata(Principal principal, Instant timestamp, MessageId parentMessageId, MetadataProperties properties) {
+public record Metadata(Principal principal,
+                       Instant timestamp,
+                       MessageId parentMessageId,
+                       MetadataProperties properties,
+                       MetadataProperties transientProperties) {
 
-    public static Metadata withProperties(Map<String, String> properties) {
-        return withProperties(MetadataProperties.of(properties));
-    }
-
-    public static Metadata withProperties(MetadataProperties properties) {
-        return new Metadata(null, null, null, properties);
-    }
-
-    public static Metadata withProperty(String name, String value) {
-        return withProperties(Map.of(name, value));
+    public static Builder builder() {
+        return new Builder();
     }
 
     public Metadata {
+        requireNonNull(timestamp);
         requireNonNull(properties);
-    }
-
-    public Metadata(Principal principal, Instant timestamp, MessageId parentMessageId, Map<String, String> properties) {
-        this(principal, timestamp, parentMessageId, MetadataProperties.of(properties));
-    }
-
-    public Metadata(Principal principal, Instant timestamp, MessageId parentMessageId) {
-        this(principal, timestamp, parentMessageId, MetadataProperties.empty());
+        requireNonNull(transientProperties);
     }
 
     public Optional<String> property(String name) {
-        return properties.find(name);
+        return transientProperties.find(name).or(() -> properties.find(name));
     }
 
-    public Metadata and(Metadata metadata) {
-        return new Metadata(
-            metadata.principal() != null ? metadata.principal() : this.principal,
-            metadata.timestamp() != null ? metadata.timestamp() : this.timestamp,
-            metadata.parentMessageId() != null ? metadata.parentMessageId() : this.parentMessageId,
-            properties.with(metadata.properties())
-        );
+    public Metadata withPrincipal(Principal principal) {
+        return new Metadata(principal, timestamp, parentMessageId, properties, transientProperties);
+    }
+
+    public Metadata withTimestamp(Instant timestamp) {
+        return new Metadata(principal, timestamp, parentMessageId, properties, transientProperties);
+    }
+
+    public Metadata withParentMessageId(MessageId parentMessageId) {
+        return new Metadata(principal, timestamp, parentMessageId, properties, transientProperties);
+    }
+
+    public Metadata withProperty(String name, String value) {
+        return new Metadata(principal, timestamp, parentMessageId, properties.with(name, value), transientProperties);
+    }
+
+    public Metadata withProperties(MetadataProperties other) {
+        return new Metadata(principal, timestamp, parentMessageId, properties.with(other), transientProperties);
+    }
+
+    public Metadata withoutProperties(String... names) {
+        return withoutProperties(List.of(names));
+    }
+
+    public Metadata withoutProperties(Collection<String> names) {
+        return new Metadata(principal, timestamp, parentMessageId, properties.without(names), transientProperties);
+    }
+
+    public Metadata withTransientProperty(String name, String value) {
+        return new Metadata(principal, timestamp, parentMessageId, properties, transientProperties.with(name, value));
+    }
+
+    public Metadata withTransientProperties(MetadataProperties other) {
+        return new Metadata(principal, timestamp, parentMessageId, properties, transientProperties.with(other));
+    }
+
+    public static class Builder {
+
+        private Principal principal;
+        private Instant timestamp;
+        private MessageId parentMessageId;
+        private MetadataProperties properties = MetadataProperties.empty();
+        private MetadataProperties transientProperties = MetadataProperties.empty();
+
+        private Builder() {
+        }
+
+        public Builder principal(Principal principal) {
+            this.principal = principal;
+            return this;
+        }
+
+        public Builder timestamp(Instant timestamp) {
+            this.timestamp = timestamp;
+            return this;
+        }
+
+        public Builder parentMessageId(MessageId parentMessageId) {
+            this.parentMessageId = parentMessageId;
+            return this;
+        }
+
+        public Builder property(String name, String value) {
+            properties = properties.with(name, value);
+            return this;
+        }
+
+        public Builder properties(MetadataProperties properties) {
+            this.properties = this.properties.with(properties);
+            return this;
+        }
+
+        public Builder transientProperty(String name, String value) {
+            transientProperties = transientProperties.with(name, value);
+            return this;
+        }
+
+        public Builder transientProperties(MetadataProperties properties) {
+            transientProperties = transientProperties.with(properties);
+            return this;
+        }
+
+        public Metadata build() {
+            if (timestamp == null) {
+                throw new IllegalStateException("Invalid metadata: a timestamp is required; set it with Metadata.builder().timestamp(...)");
+            }
+            return new Metadata(principal, timestamp, parentMessageId, properties, transientProperties);
+        }
     }
 }
