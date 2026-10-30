@@ -5,11 +5,13 @@
 - **Breaking:** `Metadata.properties()` returns `MetadataProperties` instead of `Map<String, String>`. It offers `find`, `get`, `contains`, `names`, `with`, `without`,
   and `asMap()`; `MetadataProperties.builder()` builds properties and skips a `with` whose `Optional` value is empty. The JSON form of metadata is unchanged.
 - **Breaking:** `Metadata` adds `transientProperties()`: values that live only in memory while a message is handled, are never serialized, and are never inherited. Create metadata
-  with `Metadata.at(timestamp)` or `Metadata.now()`; the record's other constructors, the static `Metadata.withProperties(...)` and `withProperty(...)`, `Metadata.and(...)`,
+  with `Metadata.at(timestamp)`; the record's other constructors, the static `Metadata.withProperties(...)` and `withProperty(...)`, `Metadata.and(...)`,
   and `Message.andMetadata(...)` are removed. `property(name)` reads a transient property before a property of the same name, and `@MetadataValue` and `EventSelector.metadataProperty`
   read the same way. `withProperty`, `withProperties`, `withoutProperties`, `withTransientProperty`, `withTransientProperties`, `withPrincipal`, `withTimestamp`, and
   `withParentMessageId` return changed metadata, and `Message.withMetadata(current -> ...)` changes a message's metadata. A timestamp is now required.
   A message a handler sends inherits every property of the message the handler received, and none of its transient properties.
+- `CommandGateway`, `QueryGateway`, and `EventPublisher` accept a `UnaryOperator<Metadata>` that changes the metadata the bus generates, keeping its timestamp, principal, parent, and
+  inherited properties: `publish(event, metadata -> metadata.withProperty("customerId", id))`. Passing a complete `Metadata` still replaces the generated metadata.
 - **Breaking:** the delivery metadata of event-store and durable-delivery handlers moved under `smd.`: `processingId`, `sequenceNumber`, `subjectId`, and `errorCount` are now
   `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and `smd.errorCount`, with constants in `app.dodb.smd.api.event.delivery.ProcessingMetadata`. They are transient
   properties: messages a handler sends no longer inherit them, and routes no longer forward them; before, a subjectless event sent while handling another event could carry that

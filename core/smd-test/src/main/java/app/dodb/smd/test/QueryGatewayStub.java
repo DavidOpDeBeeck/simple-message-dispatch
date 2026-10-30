@@ -7,6 +7,7 @@ import app.dodb.smd.api.query.QueryMessage;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 public class QueryGatewayStub implements QueryGateway {
 
@@ -21,6 +22,12 @@ public class QueryGatewayStub implements QueryGateway {
     @Override
     @SuppressWarnings("unchecked")
     public <R, Q extends Query<R>> R send(Q query, Metadata metadata) {
+        return (R) responseByQuery.get(query);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R, Q extends Query<R>> R send(Q query, UnaryOperator<Metadata> metadataUpdate) {
         return (R) responseByQuery.get(query);
     }
 

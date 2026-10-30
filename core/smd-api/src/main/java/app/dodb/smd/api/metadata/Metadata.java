@@ -20,10 +20,6 @@ public record Metadata(Principal principal,
         return new Metadata(null, timestamp, null, MetadataProperties.empty(), MetadataProperties.empty());
     }
 
-    public static Metadata now() {
-        return at(Instant.now());
-    }
-
     public Metadata {
         requireNonNull(timestamp);
         requireNonNull(properties);

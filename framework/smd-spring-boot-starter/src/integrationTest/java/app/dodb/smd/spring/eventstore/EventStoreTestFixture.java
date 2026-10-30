@@ -119,7 +119,7 @@ final class EventStoreTestFixture implements AutoCloseable {
     record SequencedEvent<E extends Event>(long sequenceNumber, EventMessage<E> eventMessage) {
 
         SequencedEvent(long sequenceNumber, E event) {
-            this(sequenceNumber, EventMessage.from(event, Metadata.now()));
+            this(sequenceNumber, EventMessage.from(event, Metadata.at(Instant.now())));
         }
     }
 

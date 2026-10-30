@@ -8,6 +8,7 @@ import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.MetadataFactory;
 
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import static java.util.Objects.requireNonNull;
 
@@ -38,6 +39,15 @@ public class CommandBus implements CommandGateway {
     public <R, C extends Command<R>> R send(C command, Metadata commandMetadata) {
         var chain = CommandBusInterceptorChain.<R, C>create(this::dispatch, interceptors);
         return metadataFactory.createScope(commandMetadata).run(
+            metadata -> CommandMessage.from(command, metadata),
+            chain::proceed
+        );
+    }
+
+    @Override
+    public <R, C extends Command<R>> R send(C command, UnaryOperator<Metadata> metadataUpdate) {
+        var chain = CommandBusInterceptorChain.<R, C>create(this::dispatch, interceptors);
+        return metadataFactory.createScope(metadataUpdate).run(
             metadata -> CommandMessage.from(command, metadata),
             chain::proceed
         );

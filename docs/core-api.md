@@ -88,8 +88,13 @@ stored or forwarded.
 Optional<String> tenant = metadata.property("tenant");
 ```
 
-`Metadata` is immutable; each `with...` method returns new metadata. `withProperties(...)` and `withTransientProperties(...)` add to the existing properties, and the added side
-wins on a clash:
+`Metadata` is immutable; each `with...` method returns new metadata:
+
+- `withPrincipal(...)`, `withTimestamp(...)`, and `withParentMessageId(...)` replace that value.
+- `withProperty(name, value)` sets one property and overwrites a property with the same name.
+- `withProperties(...)` merges: it adds the given properties, overwrites those with the same name, and keeps the others.
+- `withoutProperties(...)` removes the named properties.
+- `withTransientProperty(...)` and `withTransientProperties(...)` do the same for transient properties.
 
 ```java
 var changed = metadata
@@ -98,16 +103,6 @@ var changed = metadata
         .withTransientProperty("cache-hit", "true");
 
 var updatedMessage = eventMessage.withMetadata(current -> current.withProperty("tenant", "acme"));
-```
-
-Create metadata with `Metadata.at(timestamp)`, or `Metadata.now()` for the system clock, and add the principal, parent, and properties with the same `with...` methods:
-
-```java
-var metadata = Metadata.now()
-        .withPrincipal(principal)
-        .withProperty("customerId", customerId);
-
-eventPublisher.publish(event, metadata);
 ```
 
 `MetadataProperties.builder()` builds a property set and skips a `with` whose `Optional` value is empty, such as a missing `tenant`. On built properties, `with(...)` and
@@ -119,9 +114,27 @@ properties stay a plain JSON object, and transient properties are left out.
 A message a handler sends inherits every property of the message the handler received, and none of its transient properties. Keep a value that describes only the received
 message, such as a delivery detail, in a transient property.
 
-The gateways also accept a `Metadata`, or a `CommandMessage`, `QueryMessage`, or `EventMessage`, when you need to supply metadata explicitly. Supplied metadata replaces provider-generated
-metadata, so build it with every principal, timestamp, parent, and property value that the receiving handler needs. `Metadata.now()` reads the system clock, not the bus's
-`TimeProvider`.
+### Add Metadata When Sending
+
+To add metadata to a message you send, pass a function to the gateway. The bus first generates the metadata as it does without one: the timestamp from its `TimeProvider`,
+and the principal, parent, and inherited properties of the message being handled. The function then changes that metadata:
+
+```java
+eventPublisher.publish(event, metadata -> metadata.withProperty("customerId", customerId));
+commandGateway.send(command, metadata -> metadata.withTransientProperty("cache-hit", "true"));
+```
+
+To replace the generated metadata, for example when importing a message from another system, pass a complete `Metadata`, or a `CommandMessage`, `QueryMessage`, or
+`EventMessage`. Create it with `Metadata.at(timestamp)` and the same `with...` methods. Supplied metadata has no parent and inherits
+nothing, so include every principal, parent, and property value that the receiving handler needs:
+
+```java
+var metadata = Metadata.at(importedAt)
+        .withPrincipal(principal)
+        .withProperty("source", "legacy-orders");
+
+eventPublisher.publish(event, metadata);
+```
 
 ## Construct the Buses
 

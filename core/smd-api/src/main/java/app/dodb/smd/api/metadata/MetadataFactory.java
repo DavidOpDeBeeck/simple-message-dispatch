@@ -8,6 +8,7 @@ import app.dodb.smd.api.metadata.time.TimeProvider;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 import static java.util.Objects.requireNonNull;
 
@@ -30,6 +31,10 @@ public class MetadataFactory {
 
     public MetadataScope createScope(Metadata metadata) {
         return new MetadataScope(() -> metadata);
+    }
+
+    public MetadataScope createScope(UnaryOperator<Metadata> metadataUpdate) {
+        return new MetadataScope(() -> metadataUpdate.apply(determineMetadata()));
     }
 
     public static void runInScope(Message<?, ?> message, Runnable runnable) {

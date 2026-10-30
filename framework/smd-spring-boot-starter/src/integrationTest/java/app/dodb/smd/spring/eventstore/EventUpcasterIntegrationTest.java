@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Configuration;
 import javax.sql.DataSource;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -75,7 +76,7 @@ class EventUpcasterIntegrationTest {
     private static SerializedEvent storeLegacyEvent(EventStoreTestFixture fixture, String eventType, String payload) {
         var current = fixture.bean(EventSerializer.class).serialize(EventMessage.from(
             new TicketOpenedEvent("ticket-1", "HIGH"),
-            Metadata.now()
+            Metadata.at(Instant.now())
         ));
 
         try (var connection = fixture.bean(DataSource.class).getConnection();

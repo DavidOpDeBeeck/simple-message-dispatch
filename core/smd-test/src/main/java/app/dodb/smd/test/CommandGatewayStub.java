@@ -7,6 +7,7 @@ import app.dodb.smd.api.metadata.Metadata;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 public class CommandGatewayStub implements CommandGateway {
 
@@ -21,6 +22,12 @@ public class CommandGatewayStub implements CommandGateway {
     @Override
     @SuppressWarnings("unchecked")
     public <R, C extends Command<R>> R send(C command, Metadata metadata) {
+        return (R) responseByCommand.get(command);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <R, C extends Command<R>> R send(C command, UnaryOperator<Metadata> metadataUpdate) {
         return (R) responseByCommand.get(command);
     }
 

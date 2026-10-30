@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -44,7 +45,7 @@ class CommandTracingTest {
 
     @Test
     void send_command_returnsTheResultAndRecordsAProducerSendSpan() {
-        var message = CommandMessage.from(new PlaceOrder("acme"), Metadata.now());
+        var message = CommandMessage.from(new PlaceOrder("acme"), Metadata.at(Instant.now()));
 
         var result = commandBus.send(message);
 
@@ -67,7 +68,7 @@ class CommandTracingTest {
 
     @Test
     void send_command_recordsNoPayloadMetadataOrResult() {
-        commandBus.send(new PlaceOrder("sensitive-payload"), Metadata.now().withProperty("secret", "private-metadata"));
+        commandBus.send(new PlaceOrder("sensitive-payload"), metadata -> metadata.withProperty("secret", "private-metadata"));
 
         assertThat(spans.span("send", PlaceOrder.class).getAttributes().asMap().values())
             .extracting(Object::toString)
@@ -88,7 +89,7 @@ class CommandTracingTest {
 
     @Test
     void send_command_handlerReceivesMetadataCarryingTheSendSpan() {
-        var metadata = Metadata.now().withProperty("tracestate", "stale=1").withProperty("tenant", "acme");
+        var metadata = Metadata.at(Instant.now()).withProperty("tracestate", "stale=1").withProperty("tenant", "acme");
 
         var received = commandBus.send(new ReadMetadata(), metadata);
 
