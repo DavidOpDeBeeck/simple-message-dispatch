@@ -1,6 +1,6 @@
 package app.dodb.smd.spring;
 
-import app.dodb.smd.spring.durable.SMDDurableDeliveryAutoConfiguration;
+import app.dodb.smd.spring.durabledelivery.SMDDurableDeliveryAutoConfiguration;
 import app.dodb.smd.spring.eventstore.SMDEventStoreAutoConfiguration;
 import app.dodb.smd.spring.opentelemetry.SMDOpenTelemetryAutoConfiguration;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;

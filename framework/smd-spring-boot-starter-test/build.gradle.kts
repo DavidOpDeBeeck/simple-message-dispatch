@@ -1,6 +1,7 @@
 dependencies {
     api(project(":smd-api"))
     api(project(":smd-test"))
+    api(project(":smd-event-store-test"))
     api(project(":smd-spring-boot-starter"))
 
     api(platform(libs.spring.boot.dependencies))

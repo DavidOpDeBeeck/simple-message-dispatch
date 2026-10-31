@@ -21,7 +21,8 @@ Command, query, and event code intentionally stays symmetrical. Share code only 
 |------------------------------------------|--------------------------------------------------------------------|
 | `core/smd-api`                           | Messages, buses, handlers, channels, metadata, and framework ports |
 | `core/smd-serialization`                 | Event serialization, event type resolution, and Jackson support    |
-| `core/smd-event-store`                   | PostgreSQL storage, polling, ordering, retries, and tokens         |
+| `core/smd-event-store`                   | Aggregates, PostgreSQL event store, polling, retries, and tokens   |
+| `core/smd-event-store-test`              | Aggregate test fixture                                             |
 | `core/smd-test`                          | Framework-independent test support                                 |
 | `core/smd-opentelemetry`                 | OpenTelemetry instrumentation                                      |
 | `core/smd-durable-delivery`              | PostgreSQL durable event dispatcher                                |
@@ -95,7 +96,7 @@ Test caller-visible behavior and likely regressions, not private interactions.
 - Make async tests deterministic with latches, atomics, thread-safe collections, Awaitility, and bounded waits. Do not use arbitrary sleeps.
 - Reserve integration tests for Spring wiring, transactions, JDBC, PostgreSQL behavior, and Testcontainers concurrency.
 
-Treat `smd-test` as a public API: keep stubbing explicit, captured outcomes ordered, mutable state contained, and reset behavior reliable.
+Treat `smd-test` and `smd-event-store-test` as public APIs: keep stubbing explicit, captured outcomes ordered, mutable state contained, and reset behavior reliable.
 
 ## Change Workflow
 

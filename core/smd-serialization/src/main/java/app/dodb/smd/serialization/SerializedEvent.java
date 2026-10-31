@@ -1,5 +1,6 @@
 package app.dodb.smd.serialization;
 
+import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.message.MessageId;
 
 import java.time.Instant;
@@ -8,8 +9,7 @@ import java.util.Optional;
 import static java.util.Objects.requireNonNull;
 
 public record SerializedEvent(MessageId messageId,
-                              Long sequenceNumber,
-                              Optional<String> subjectId,
+                              Optional<Subject> subject,
                               String eventType,
                               byte[] serializedPayload,
                               byte[] serializedMetadata,
@@ -17,20 +17,10 @@ public record SerializedEvent(MessageId messageId,
 
     public SerializedEvent {
         requireNonNull(messageId);
-        // sequenceNumber can be null when serializing new events (before DB insert)
-        requireNonNull(subjectId);
+        requireNonNull(subject);
         requireNonNull(eventType);
         requireNonNull(serializedPayload);
         requireNonNull(serializedMetadata);
         requireNonNull(createdAt);
-    }
-
-    public SerializedEvent(MessageId messageId,
-                           Long sequenceNumber,
-                           String eventType,
-                           byte[] serializedPayload,
-                           byte[] serializedMetadata,
-                           Instant createdAt) {
-        this(messageId, sequenceNumber, Optional.empty(), eventType, serializedPayload, serializedMetadata, createdAt);
     }
 }

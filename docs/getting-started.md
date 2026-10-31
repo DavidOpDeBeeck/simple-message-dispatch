@@ -21,7 +21,7 @@ dependencies {
 }
 ```
 
-The starter already exposes the core API and event-store module. Do not add them separately unless you are managing modules manually.
+The starter already exposes the core API and event-sourcing module. Do not add them separately unless you are managing modules manually.
 
 ## 2. Define the Messages
 
@@ -56,7 +56,7 @@ public record TicketDTO(UUID ticketId, String title, String description) {
 ```
 
 ```java
-public record TicketOpenedEvent(@SubjectId UUID ticketId, String title, String description) implements Event {
+public record TicketOpenedEvent(@SubjectId("ticket") UUID ticketId, String title, String description) implements Event {
 
     public TicketOpenedEvent {
         requireNonNull(ticketId, "TicketOpenedEvent ticketId must not be null");
@@ -66,7 +66,7 @@ public record TicketOpenedEvent(@SubjectId UUID ticketId, String title, String d
 }
 ```
 
-The subject ID is used if this event is later routed through the event store. Events for the same ticket then retain their relative order.
+`@SubjectId("ticket")` makes the event's subject the ticket: the subject type `ticket` and the ticket ID. Durable delivery keeps the events of one subject in order.
 
 ## 3. Add the Ticket State and Repository
 
@@ -280,5 +280,5 @@ returned.
 - Event handlers return `void` and require `@ProcessingGroup` on the method or class.
 - Handler classes must be discoverable Spring beans.
 
-Next, add a focused handler-flow test with [Testing](testing.md), choose delivery and transaction behavior in [Spring Boot](spring-boot.md), or make events durable with [Event Store](event-store.md).
+Next, add a focused handler-flow test with [Testing](testing.md), choose delivery and transaction behavior in [Spring Boot](spring-boot.md), or make events durable with [Event Sourcing](event-store.md).
 The runnable [ticket service](../examples/ticket-service/README.md) demonstrates the complete lifecycle with JDBC, projections, metadata, and three delivery modes.

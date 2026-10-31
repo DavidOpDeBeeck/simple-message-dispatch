@@ -22,7 +22,7 @@ class AnnotatedEventHandlerTest {
 
         assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
             .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
-            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
+            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, EventHandlerBehaviour::processingGroup)
             .containsExactly(tuple(EventForTest.class, MIN_VALUE, "default"));
     }
 
@@ -32,7 +32,7 @@ class AnnotatedEventHandlerTest {
 
         assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
             .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
-            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
+            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, EventHandlerBehaviour::processingGroup)
             .containsExactly(tuple(EventForTest.class, MIN_VALUE, "processingGroupOnClass"));
     }
 
@@ -42,7 +42,7 @@ class AnnotatedEventHandlerTest {
 
         assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
             .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
-            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
+            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, EventHandlerBehaviour::processingGroup)
             .containsExactly(tuple(EventForTest.class, MIN_VALUE, "processingGroupOnMethod"));
     }
 
@@ -52,7 +52,7 @@ class AnnotatedEventHandlerTest {
 
         assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
             .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
-            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
+            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, EventHandlerBehaviour::processingGroup)
             .containsExactly(tuple(EventForTest.class, MIN_VALUE, "processingGroupOnMethod"));
     }
 
@@ -60,7 +60,7 @@ class AnnotatedEventHandlerTest {
     void handle_withReturnType() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new EventHandlersWithReturnType()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid event handler: return type mismatch");
+            .hasMessageStartingWith("Invalid handler: return type mismatch");
     }
 
     @Test
@@ -151,7 +151,9 @@ class AnnotatedEventHandlerTest {
     void handle_withMultipleHandlersForSameEventAndOrder() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new MultipleEventHandlersForSameEventAndOrder()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Event handlers with same order found");
+            .hasMessageContaining("Event handlers with same order found")
+            .hasMessageContaining("@EventHandler " + MultipleEventHandlersForSameEventAndOrder.class.getName() + "#handle(EventForTest)")
+            .hasMessageContaining("@EventHandler " + MultipleEventHandlersForSameEventAndOrder.class.getName() + "#handle2(EventForTest)");
     }
 
     @Test
@@ -160,7 +162,7 @@ class AnnotatedEventHandlerTest {
 
         assertThat(registry.eventHandlerRegistryByProcessingGroup().values())
             .flatExtracting(ProcessingGroupRegistry.EventHandlerRegistry::eventHandlers)
-            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, AnnotatedEventHandler::processingGroup)
+            .extracting(EventHandlerBehaviour::eventType, EventHandlerBehaviour::order, EventHandlerBehaviour::processingGroup)
             .containsExactlyInAnyOrder(
                 tuple(EventForTest.class, MIN_VALUE, "processingGroup1"),
                 tuple(EventForTest.class, MIN_VALUE, "processingGroup2")
@@ -171,7 +173,7 @@ class AnnotatedEventHandlerTest {
     void handle_withNonPublicAnnotatedMethod() {
         assertThatThrownBy(() -> AnnotatedEventHandler.from(new NonPublicAnnotatedEventHandler()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid event handler: method must be public.");
+            .hasMessageStartingWith("Invalid handler: method must be public.");
     }
 
     public record EventForTest() implements Event {

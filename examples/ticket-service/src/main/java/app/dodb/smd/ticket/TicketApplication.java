@@ -1,5 +1,6 @@
 package app.dodb.smd.ticket;
 
+import app.dodb.smd.ticket.domain.DomainConfiguration;
 import app.dodb.smd.ticket.drivenadapter.DrivenAdapterConfiguration;
 import app.dodb.smd.ticket.drivingadapter.DrivingAdapterConfiguration;
 import app.dodb.smd.ticket.infrastructure.InfrastructureConfiguration;
@@ -12,6 +13,7 @@ import org.springframework.context.annotation.Import;
 @SpringBootConfiguration
 @EnableAutoConfiguration
 @Import({
+    DomainConfiguration.class,
     DrivenAdapterConfiguration.class,
     DrivingAdapterConfiguration.class,
     InfrastructureConfiguration.class,

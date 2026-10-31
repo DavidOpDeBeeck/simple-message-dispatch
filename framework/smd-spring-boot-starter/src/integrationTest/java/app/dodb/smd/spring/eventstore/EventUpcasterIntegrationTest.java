@@ -2,6 +2,7 @@ package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.serialization.EventSerializer;
@@ -51,7 +52,7 @@ class EventUpcasterIntegrationTest {
                 // Then
                 assertThat(received).singleElement().satisfies(message -> {
                     assertThat(message.messageId()).isEqualTo(stored.messageId());
-                    assertThat(message.subjectId()).contains("ticket-1");
+                    assertThat(message.subject()).contains(new Subject("ticket", "ticket-1"));
                     assertThat(message.payload()).isEqualTo(new TicketOpenedEvent("ticket-1", "NORMAL"));
                 });
             }
@@ -81,15 +82,16 @@ class EventUpcasterIntegrationTest {
 
         try (var connection = fixture.bean(DataSource.class).getConnection();
              var statement = connection.prepareStatement("""
-                 INSERT INTO smd_event_store (message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?)
+                 INSERT INTO smd_event_store (event_id, subject_type, subject_id, event_type, payload, metadata, occurred_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
                  """)) {
             statement.setObject(1, current.messageId().value());
-            statement.setString(2, current.subjectId().orElseThrow());
-            statement.setString(3, eventType);
-            statement.setBytes(4, payload.getBytes(UTF_8));
-            statement.setBytes(5, current.serializedMetadata());
-            statement.setTimestamp(6, Timestamp.from(current.createdAt()));
+            statement.setString(2, current.subject().orElseThrow().type());
+            statement.setString(3, current.subject().orElseThrow().id());
+            statement.setString(4, eventType);
+            statement.setBytes(5, payload.getBytes(UTF_8));
+            statement.setBytes(6, current.serializedMetadata());
+            statement.setTimestamp(7, Timestamp.from(current.createdAt()));
             statement.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to store legacy event " + eventType, e);
@@ -97,7 +99,7 @@ class EventUpcasterIntegrationTest {
         return current;
     }
 
-    record TicketOpenedEvent(@SubjectId String ticketId, String priority) implements Event {
+    record TicketOpenedEvent(@SubjectId("ticket") String ticketId, String priority) implements Event {
     }
 
     @Configuration

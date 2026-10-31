@@ -6,37 +6,35 @@ import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.api.utils.MessageArgumentBinder;
-import app.dodb.smd.api.utils.parameterstrategy.AllowedParameterTypesStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.AtLeastOneParameterStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.AtMostOneAssignableParameterStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.ExactlyOneAssignableParameterStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.MetadataValueParameterStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.AllowedParameterTypesStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.AtLeastOneParameterStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.AtMostOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.ExactlyOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.HandlerValidationStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.MessageReturnTypeStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.MetadataValueParameterStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.PublicStrategy;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
-import java.lang.reflect.Type;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
-import static app.dodb.smd.api.utils.LoggingUtils.logClass;
 import static app.dodb.smd.api.utils.LoggingUtils.logMethod;
 import static app.dodb.smd.api.utils.MessageArgumentBinder.fromMethodParameters;
-import static app.dodb.smd.api.utils.TypeUtils.haveSameBounds;
-import static app.dodb.smd.api.utils.TypeUtils.resolveGenericType;
-import static app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy.validateParameters;
+import static app.dodb.smd.api.utils.handlerstrategy.HandlerValidationStrategy.validateHandler;
 import static java.util.Arrays.stream;
 import static java.util.Objects.requireNonNull;
 
 public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provider, Method method, Class<C> commandType, MessageArgumentBinder<C, CommandMessage<R, C>> argumentBinder)
     implements CommandHandlerBehaviour<R, C> {
 
-    private static final List<ParameterValidationStrategy> PARAMETER_VALIDATION_STRATEGIES = List.of(
+    private static final List<HandlerValidationStrategy> HANDLER_VALIDATION_STRATEGIES = List.of(
+        new PublicStrategy(),
         new AtLeastOneParameterStrategy(),
         new ExactlyOneAssignableParameterStrategy(Command.class),
         new AtMostOneAssignableParameterStrategy(MessageId.class),
@@ -46,7 +44,8 @@ public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provi
         new MetadataValueParameterStrategy(),
         new AllowedParameterTypesStrategy(
             Set.of(Command.class, MessageId.class, Metadata.class, Principal.class, Instant.class, String.class)
-        )
+        ),
+        new MessageReturnTypeStrategy(Command.class)
     );
 
     public static CommandHandlerRegistry from(Object object) {
@@ -54,7 +53,7 @@ public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provi
     }
 
     public static CommandHandlerRegistry from(Provider<?> provider) {
-        Set<AnnotatedCommandHandler<?, ?>> handlers = new HashSet<>();
+        Set<CommandHandlerBehaviour<?, ?>> handlers = new HashSet<>();
         Class<?> clazz = provider.getType();
 
         for (Method method : clazz.getDeclaredMethods()) {
@@ -69,39 +68,14 @@ public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provi
 
     @SuppressWarnings("unchecked")
     private static <R, C extends Command<R>> AnnotatedCommandHandler<R, C> mapToCommandHandler(Provider<?> provider, Method method) {
-        if (!Modifier.isPublic(method.getModifiers())) {
-            throw new IllegalArgumentException("""
-                Invalid command handler: method must be public.
-                
-                    Method:
-                    %s
-                """.formatted(logMethod(method)));
-        }
+        validateHandler(method, HANDLER_VALIDATION_STRATEGIES);
 
         var parameters = method.getParameters();
-        validateParameters(method, parameters, PARAMETER_VALIDATION_STRATEGIES);
-
         Class<C> commandType = (Class<C>) stream(parameters)
             .map(Parameter::getType)
             .filter(Command.class::isAssignableFrom)
             .findFirst()
             .orElseThrow();
-        Type commandReturnType = resolveGenericType(commandType, Command.class);
-        Type methodReturnType = method.getGenericReturnType();
-        if (!haveSameBounds(methodReturnType, commandReturnType)) {
-            throw new IllegalArgumentException("""
-                Invalid command handler: return type mismatch.
-                
-                    Method:
-                    %s
-                
-                    Expected:
-                    %s
-                
-                    Found:
-                    %s
-                """.formatted(logMethod(method), logClass(commandReturnType), logClass(methodReturnType)));
-        }
 
         return new AnnotatedCommandHandler<>(provider, method, commandType, fromMethodParameters(commandType, parameters));
     }
@@ -123,5 +97,10 @@ public record AnnotatedCommandHandler<R, C extends Command<R>>(Provider<?> provi
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return "@CommandHandler " + logMethod(method);
     }
 }

@@ -2,27 +2,28 @@
 
 > **EXPERIMENTAL**: SMD is still in early development and may introduce breaking changes while the project remains in the `0.0.x` line.
 
-Simple Message Dispatch (SMD) is a lightweight Java library for CQRS and event-driven applications. It provides framework-agnostic messaging primitives, optional event-store support, and Spring Boot
+Simple Message Dispatch (SMD) is a lightweight Java library for CQRS and event-driven applications. It provides framework-agnostic messaging primitives, optional event-sourcing support, and Spring Boot
 integration.
 
 ## Modules
 
-| Module                         | Purpose                                                   | Guide                                                                |
-|--------------------------------|-----------------------------------------------------------|----------------------------------------------------------------------|
-| `smd-api`                      | Core command, query, event, metadata, and bus APIs        | [Core API](docs/core-api.md)                                         |
-| `smd-serialization`            | Event serializers, type resolvers, and the Jackson module | [Event Store Guide](docs/event-store.md#use-stable-event-type-names) |
-| `smd-event-store`              | PostgreSQL 15+ event store, polling, sequencing           | [Event Store Guide](docs/event-store.md)                             |
-| `smd-test`                     | Test helpers and gateway/publisher stubs                  | [Testing Guide](docs/testing.md)                                     |
-| `smd-opentelemetry`            | OpenTelemetry spans for every bus invocation              | [OpenTelemetry](docs/opentelemetry.md)                               |
-| `smd-durable-delivery`         | PostgreSQL durable event dispatcher                       | [Durable Delivery](docs/durable-delivery.md)                         |
-| `smd-spring-boot-starter`      | Spring Boot autoconfiguration and event-store integration | [Spring Boot Guide](docs/spring-boot.md)                             |
-| `smd-spring-boot-starter-test` | Spring Boot test-scope stubs and lifecycle support        | [Testing Guide](docs/testing.md)                                     |
+| Module                         | Purpose                                                     | Guide                                                             |
+|--------------------------------|-------------------------------------------------------------|-------------------------------------------------------------------|
+| `smd-api`                      | Core command, query, event, metadata, and bus APIs          | [Core API](docs/core-api.md)                                      |
+| `smd-serialization`            | Event serializers, type resolvers, and the Jackson module   | [Event Sourcing](docs/event-store.md#use-stable-event-type-names) |
+| `smd-event-store`              | Event-sourced aggregates and the PostgreSQL 15+ event store | [Event Sourcing](docs/event-store.md)                             |
+| `smd-event-store-test`         | Given-when-then aggregate test fixture                      | [Event Sourcing](docs/event-store.md#test-aggregates)             |
+| `smd-test`                     | Test helpers and gateway/publisher stubs                    | [Testing Guide](docs/testing.md)                                  |
+| `smd-opentelemetry`            | OpenTelemetry spans for every bus invocation                | [OpenTelemetry](docs/opentelemetry.md)                            |
+| `smd-durable-delivery`         | PostgreSQL durable event dispatcher                         | [Durable Delivery](docs/durable-delivery.md)                      |
+| `smd-spring-boot-starter`      | Spring Boot autoconfiguration                               | [Spring Boot Guide](docs/spring-boot.md)                          |
+| `smd-spring-boot-starter-test` | Spring Boot test-scope stubs and lifecycle support          | [Testing Guide](docs/testing.md)                                  |
 
 ## Install
 
 Add `mavenCentral()` and choose one of these starting points.
 
-For Spring Boot, add the starter. It already exposes the core API, event-store, durable-delivery, and OpenTelemetry modules:
+For Spring Boot, add the starter. It already exposes the core API, event-sourcing, durable-delivery, and OpenTelemetry modules, and its test module exposes `smd-test` and `smd-event-store-test`:
 
 ```kotlin
 repositories {
@@ -40,10 +41,11 @@ Without Spring Boot, add the core API and opt into the event store only when dur
 ```kotlin
 dependencies {
     implementation("app.dodb:smd-api:0.0.12")
-    implementation("app.dodb:smd-event-store:0.0.12") // Optional
+    implementation("app.dodb:smd-event-store:0.0.xx") // Optional
     implementation("app.dodb:smd-opentelemetry:0.0.12") // Optional
     implementation("app.dodb:smd-durable-delivery:0.0.xx") // Optional
     testImplementation("app.dodb:smd-test:0.0.12")
+    testImplementation("app.dodb:smd-event-store-test:0.0.xx") // Optional
 }
 ```
 

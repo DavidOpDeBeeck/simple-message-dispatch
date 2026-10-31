@@ -116,13 +116,13 @@ public class SMDAutoConfiguration {
     @ConditionalOnMissingBean
     public CommandGateway commandGateway(TimeProvider timeProvider,
                                          PrincipalProvider principalProvider,
-                                         CommandHandlerLocator locator,
+                                         List<CommandHandlerLocator> locators,
                                          List<CommandBusInterceptor> interceptors,
                                          List<CommandBusSpecCustomizer> customizers) {
         var spec = CommandBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
-            .commandHandlers(locator)
+            .commandHandlers(CommandHandlerLocator.combine(locators))
             .interceptors(interceptors);
         customizers.forEach(customizer -> customizer.customize(spec));
         return spec.create();
@@ -132,7 +132,7 @@ public class SMDAutoConfiguration {
     @ConditionalOnMissingBean
     public EventPublisher eventPublisher(TimeProvider timeProvider,
                                          PrincipalProvider principalProvider,
-                                         ProcessingGroupLocator locator,
+                                         List<ProcessingGroupLocator> locators,
                                          List<ProcessingGroupsConfigurer> processingGroupsConfigurers,
                                          List<EventBusInterceptor> interceptors,
                                          List<EventSinkInterceptor> sinkInterceptors,
@@ -142,7 +142,7 @@ public class SMDAutoConfiguration {
         var spec = EventBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
-            .processingGroups(locator, multi(processingGroupsConfigurers))
+            .processingGroups(ProcessingGroupLocator.combine(locators), multi(processingGroupsConfigurers))
             .interceptors(interceptors)
             .sinkInterceptors(sinkInterceptors)
             .processingGroupInterceptors(processingGroupInterceptors)
@@ -155,13 +155,13 @@ public class SMDAutoConfiguration {
     @ConditionalOnMissingBean
     public QueryGateway queryGateway(TimeProvider timeProvider,
                                      PrincipalProvider principalProvider,
-                                     QueryHandlerLocator locator,
+                                     List<QueryHandlerLocator> locators,
                                      List<QueryBusInterceptor> interceptors,
                                      List<QueryBusSpecCustomizer> customizers) {
         var spec = QueryBusSpec.withoutDefaults()
             .time(timeProvider)
             .principal(principalProvider)
-            .queryHandlers(locator)
+            .queryHandlers(QueryHandlerLocator.combine(locators))
             .interceptors(interceptors);
         customizers.forEach(customizer -> customizer.customize(spec));
         return spec.create();

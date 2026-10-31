@@ -12,4 +12,6 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target({RECORD_COMPONENT, METHOD})
 @Retention(RUNTIME)
 public @interface SubjectId {
+
+    String value();
 }

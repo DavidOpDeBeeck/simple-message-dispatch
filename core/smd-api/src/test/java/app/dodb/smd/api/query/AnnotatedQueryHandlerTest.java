@@ -116,21 +116,23 @@ class AnnotatedQueryHandlerTest {
     void handle_withIncorrectReturnType() {
         assertThatThrownBy(() -> AnnotatedQueryHandler.from(new QueryHandlerWithIncorrectReturnType()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid query handler: return type mismatch.");
+            .hasMessageStartingWith("Invalid handler: return type mismatch.");
     }
 
     @Test
     void handle_withMultipleHandlersForSameQuery() {
         assertThatThrownBy(() -> AnnotatedQueryHandler.from(new MultipleQueryHandlersForSameQuery()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Ambiguous query handlers found");
+            .hasMessageContaining("Ambiguous query handlers found")
+            .hasMessageContaining("@QueryHandler " + MultipleQueryHandlersForSameQuery.class.getName() + "#handle(QueryForTest)")
+            .hasMessageContaining("@QueryHandler " + MultipleQueryHandlersForSameQuery.class.getName() + "#handle2(QueryForTest)");
     }
 
     @Test
     void handle_withNonPublicAnnotatedMethod() {
         assertThatThrownBy(() -> AnnotatedQueryHandler.from(new NonPublicAnnotatedQueryHandler()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid query handler: method must be public.");
+            .hasMessageStartingWith("Invalid handler: method must be public.");
     }
 
     public record QueryForTest() implements Query<String> {

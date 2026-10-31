@@ -2,32 +2,71 @@
 
 ## [Unreleased]
 
-- **Breaking:** `Metadata.properties()` returns `MetadataProperties` instead of `Map<String, String>`. It offers `find`, `get`, `contains`, `names`, `with`, `without`,
-  and `asMap()`; `MetadataProperties.builder()` builds properties and skips a `with` whose `Optional` value is empty. The JSON form of metadata is unchanged.
-- **Breaking:** `Metadata` adds `transientProperties()`, which are never serialized or inherited; `property(name)` reads them first. Create metadata with
-  `Metadata.at(timestamp)` and change it with the `with...` methods; the other constructors, the static factories, `Metadata.and(...)`, and `Message.andMetadata(...)` are removed.
-- The gateways accept `metadata -> ...` to change the metadata the bus generates, such as `publish(event, metadata -> metadata.withProperty("customerId", id))`.
-- **Breaking:** event-store and durable-delivery delivery metadata is now the transient properties `smd.processingId`, `smd.sequenceNumber`, `smd.subjectId`, and
-  `smd.errorCount` (constants in `ProcessingMetadata`). Messages a handler sends no longer inherit them; read them with `property(...)` or `@MetadataValue`.
-- **Breaking:** event serialization moved from `smd-event-store` to the new `smd-serialization` module. `EventSerializer`, `EventTypeResolver`, `ClassNameEventTypeResolver`,
-  `StaticEventTypeResolver`, and `SerializedEvent` (from `app.dodb.smd.eventstore.storage`) are in `app.dodb.smd.serialization`;
-  `JacksonEventSerializer` and `SMDJacksonModule` are in `app.dodb.smd.serialization.jackson`. `smd-event-store` exposes the module, so only imports change.
-- **Breaking:** `EventTypeResolver.eventTypeFor` and `eventClassFor` return `Optional` and are empty when the resolver does not know the event; `EventTypeResolutionException` is removed.
-- Added `EventUpcaster` to read events stored under an older type name: `rename(...)` maps the type name and `transform(...)` also rewrites the JSON payload. Upcasters chain by type
-  name and invalid ones fail when the serializer is created. Spring Boot passes every `EventUpcaster` bean to the default serializer.
-- **Breaking:** `ConnectionProvider` moved from `app.dodb.smd.eventstore.storage` to `app.dodb.smd.api.framework`, `RetryBackoffStrategy` from `app.dodb.smd.eventstore` to
-  `app.dodb.smd.api.event.delivery`, and `SpringConnectionProvider` from `app.dodb.smd.spring.eventstore` to `app.dodb.smd.spring`. Only imports change.
-- Added the `smd-durable-delivery` module. `DurableDelivery.dispatcher(name)` returns a `DurableEventDispatcher`, a medium that stores events in the publisher's transaction
-  and delivers them to each subscriber at least once and in order per subject, within one application or through routes to and from a broker. See
-  [Durable Delivery](docs/durable-delivery.md).
-- The Spring Boot starter creates a `DurableDelivery` bean when `smd.durable-delivery.enabled=true`, with the same default `JacksonEventSerializer` as the event store.
-- **Breaking:** `medium(medium)` on a processing group sends the medium only the events its groups handle instead of every published event, so a route reading the same
-  medium receives only those events too. A medium shared by several groups, such as the one `anyProcessingGroup()` configures, receives each such event once.
-- `EventSelector.eventType` accepts several event types, and `EventSelector.eventPackage(Package)` selects events in a package and its subpackages.
-- Added `EventRoute`, which moves events from a source into a sink. Declare routes with `route(name, source, sink)` or `routes(...)` on `EventBusSpec`, or as `EventRoute` beans in
-  Spring Boot. The bus subscribes them after its processing groups and sends through the sink interceptors; `EventSinkContext.route()` names the route, and
-  tracing records it as `messaging.smd.route`. A bus no longer needs processing groups. See [Route Between Media](docs/core-api.md#route-between-media).
-- **Breaking:** `EventSubscriber.processingGroup()` is now `EventSubscriber.name()`, because routes subscribe as well as processing groups.
+### Subjects
+
+- **Breaking:** a subject is now a type and an ID, so subjects of different types with the same ID are kept apart. `@SubjectId` requires the subject type, as in
+  `@SubjectId("invoice") UUID invoiceId`, and `EventMessage.subjectId()` is now `subject()`, an `Optional<Subject>`. See
+  [Identify Event Subjects](docs/event-store.md#identify-event-subjects).
+- **Breaking:** delivery metadata no longer carries the subject (`subjectId`); read it from `EventMessage.subject()` or the event. `smd_dispatcher_queue` adds a
+  `subject_type` column.
+
+### Event Sourcing
+
+- Added event-sourced aggregates to `smd-event-store` (`app.dodb.smd.eventstore.aggregate`). Annotate the class with `@Aggregate`, its identity with `@AggregateId`, its
+  command handlers with `@AggregateCommandHandler`, and its state changes with `@EventSourcingHandler`; later commands select their aggregate with `@TargetAggregateId`.
+  Each command replays the aggregate's stream and appends the events it applies with the next version; a concurrent change fails with `ConcurrentAggregateChangeException`.
+  An aggregate's events have the aggregate as their subject. Command handlers can take collaborators, resolved through the `ObjectCreator`.
+  See [Event-Sourced Aggregates](docs/event-store.md#event-sourced-aggregates).
+- The Spring Boot starter registers the aggregates in the `@EnableSMD` packages when `smd.event-store.enabled=true`. Without Spring, use `EventSourcedAggregates` and
+  `PackageBasedAggregateLocator`.
+- Added the `smd-event-store-test` module with `AggregateTestFixture` for given-when-then aggregate tests. `smd-spring-boot-starter-test` exposes it.
+  See [Test Aggregates](docs/event-store.md#test-aggregates).
+- **Breaking:** the event-store schema changed, with no upgrade script: events store `event_id`, `subject_type`, `subject_id`, `subject_version`, `payload`, `metadata`,
+  `occurred_at`, and `global_position`, and event sequences are keyed by subject type and ID. See [Store Model](docs/event-store.md#store-model). The Java API follows:
+    - `EventStorage` appends a `NewEvent` and loads `StoredEvent`s instead of `SerializedEvent`s, and adds `loadSubjectStream(subject)`.
+  - `EventSubjectSequenceStore`, `EventSubjectSequence`, and `EventSubjectSequenceStatus` are now `EventSequenceStore`, `EventSequence`, and `EventSequenceStatus`. Their
+    methods take a sealed `EventSequenceId` (`Global` or `OfSubject`) instead of separate global and subject variants.
+    - The sequence types, `TokenStore`, `TokenState`, `TokenStoreException`, and `EventStoreSource` (now public) moved to `app.dodb.smd.eventstore.processing`; the
+      `sequence` package is gone.
+  - `lastProcessedSequenceNumber()` is now `lastProcessedPosition()`, and `gapSequenceNumber()` is `gapPosition()`.
+
+### Metadata
+
+- **Breaking:** `Metadata.properties()` returns `MetadataProperties` instead of `Map<String, String>`; build them with `MetadataProperties.builder()`. The JSON form is unchanged.
+- **Breaking:** `Metadata` adds `transientProperties()`, which are never serialized or inherited; `property(name)` reads them first. Create metadata with `Metadata.at(timestamp)`
+  and the `with...` methods; the other constructors, the static factories, `Metadata.and(...)`, and `Message.andMetadata(...)` are removed.
+- The gateways accept `metadata -> ...` to change the generated metadata, such as `publish(event, metadata -> metadata.withProperty("customerId", id))`.
+- **Breaking:** delivery metadata is now transient, so messages a handler sends no longer inherit it: `smd.processingId` and `smd.errorCount` (constants in
+  `ProcessingMetadata`), and the event store's `smd.globalPosition`, which replaces `sequenceNumber` (constant in `EventStoreMetadata`).
+
+### Serialization
+
+- **Breaking:** event serialization moved from `smd-event-store` to the new `smd-serialization` module, in `app.dodb.smd.serialization` and its `jackson` subpackage.
+  `smd-event-store` exposes the module, so only imports change.
+- **Breaking:** `SerializedEvent` drops its `sequenceNumber` and its constructor without a subject, and its `subjectId` is now `subject`. `EventTypeResolver` returns `Optional` instead of throwing
+  `EventTypeResolutionException`, which is removed.
+- Added `EventUpcaster` to read events stored under an older type name. Spring Boot passes every `EventUpcaster` bean to the default serializer.
+  See [Evolve Stored Events](docs/event-store.md#evolve-stored-events).
+
+### Event Delivery
+
+- Added the `smd-durable-delivery` module: a dispatcher that stores events in the publisher's transaction and delivers them at least once and in order per subject, within one
+  application or through a broker. Spring Boot creates it when `smd.durable-delivery.enabled=true`. See [Durable Delivery](docs/durable-delivery.md).
+- Added `EventRoute`, which moves events from a source into a sink. Declare routes on `EventBusSpec` or as Spring beans. A bus no longer needs processing groups.
+  See [Route Between Media](docs/core-api.md#route-between-media).
+- **Breaking:** `medium(medium)` on a processing group sends the medium only the events its groups handle, instead of every published event.
+- **Breaking:** `EventSubscriber.processingGroup()` is now `name()`.
+- `EventSelector.eventType` accepts several event types, and `EventSelector.eventPackage(Package)` selects a package and its subpackages.
+- **Breaking:** `ConnectionProvider` moved to `app.dodb.smd.api.framework`, `RetryBackoffStrategy` to `app.dodb.smd.api.event.delivery`, and `SpringConnectionProvider` to
+  `app.dodb.smd.spring`. Only imports change.
+
+### Handlers
+
+- Command, query, and processing-group registries hold any handler behaviour and name ambiguous handlers in their errors. The locators add `combine(locators)`, and Spring Boot
+  combines every locator bean of each kind.
+- **Breaking:** `ProcessingGroupRegistry.combine(...)` and `EventHandlerRegistry.combine(...)` are now `and(...)`.
+- **Breaking:** `app.dodb.smd.api.utils.parameterstrategy` is now `app.dodb.smd.api.utils.handlerstrategy`, and validates the whole handler. Public and return type errors
+  now start with `Invalid handler:`.
 
 ## [0.0.12] - 2026-10-19
 

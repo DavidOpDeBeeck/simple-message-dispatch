@@ -2,25 +2,30 @@ package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
-import app.dodb.smd.eventstore.sequence.EventSequenceState;
-import app.dodb.smd.eventstore.sequence.EventSubjectSequenceStore;
+import app.dodb.smd.eventstore.processing.EventSequenceId;
+import app.dodb.smd.eventstore.processing.EventSequenceState;
+import app.dodb.smd.eventstore.processing.EventSequenceStore;
+import app.dodb.smd.eventstore.processing.TokenState;
+import app.dodb.smd.eventstore.processing.TokenStore;
 import app.dodb.smd.eventstore.storage.EventStorage;
-import app.dodb.smd.eventstore.storage.TokenState;
-import app.dodb.smd.eventstore.storage.TokenStore;
+import app.dodb.smd.eventstore.storage.StoredEvent;
 import app.dodb.smd.serialization.EventSerializer;
-import app.dodb.smd.serialization.SerializedEvent;
 import app.dodb.smd.spring.eventstore.processing.EventStoreProcessingTestConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
+import javax.sql.DataSource;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -29,7 +34,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
-import javax.sql.DataSource;
 
 import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.fixed;
 import static java.time.Duration.ZERO;
@@ -73,7 +77,7 @@ final class EventStoreTestFixture implements AutoCloseable {
             .eventStorage(bean(EventStorage.class))
             .eventSerializer(bean(EventSerializer.class))
             .tokenStore(bean(TokenStore.class))
-            .eventSequenceStore(bean(EventSubjectSequenceStore.class))
+            .eventSequenceStore(bean(EventSequenceStore.class))
             .schedulingConfig(EventStoreConfig.SchedulingConfig.withoutDefaults()
                 .enabled(true)
                 .scheduler(scheduler)
@@ -86,12 +90,12 @@ final class EventStoreTestFixture implements AutoCloseable {
 
     @SafeVarargs
     final void storeEvents(SequencedEvent<? extends Event>... sequencedEvents) {
-        long highestSequenceNumber = 0L;
+        long highestGlobalPosition = 0L;
         for (var sequencedEvent : sequencedEvents) {
             storeEvent(sequencedEvent);
-            highestSequenceNumber = Math.max(highestSequenceNumber, sequencedEvent.sequenceNumber());
+            highestGlobalPosition = Math.max(highestGlobalPosition, sequencedEvent.globalPosition());
         }
-        advanceEventStoreSequenceTo(highestSequenceNumber);
+        advanceGlobalPositionTo(highestGlobalPosition);
     }
 
     private <E extends Event> void storeEvent(SequencedEvent<E> sequencedEvent) {
@@ -100,57 +104,64 @@ final class EventStoreTestFixture implements AutoCloseable {
         try (var connection = bean(DataSource.class).getConnection();
              var statement = connection.prepareStatement("""
                  INSERT INTO smd_event_store
-                     (message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at, sequence_number)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                     (event_id, subject_type, subject_id, subject_version, event_type, payload, metadata, occurred_at, global_position)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                  """)) {
             statement.setObject(1, serializedEvent.messageId().value());
-            statement.setString(2, serializedEvent.subjectId().orElse(null));
-            statement.setString(3, serializedEvent.eventType());
-            statement.setBytes(4, serializedEvent.serializedPayload());
-            statement.setBytes(5, serializedEvent.serializedMetadata());
-            statement.setTimestamp(6, Timestamp.from(serializedEvent.createdAt()));
-            statement.setLong(7, sequencedEvent.sequenceNumber());
+            statement.setString(2, serializedEvent.subject().map(Subject::type).orElse(null));
+            statement.setString(3, serializedEvent.subject().map(Subject::id).orElse(null));
+            statement.setObject(4, sequencedEvent.subjectVersion().orElse(null), Types.BIGINT);
+            statement.setString(5, serializedEvent.eventType());
+            statement.setBytes(6, serializedEvent.serializedPayload());
+            statement.setBytes(7, serializedEvent.serializedMetadata());
+            statement.setTimestamp(8, Timestamp.from(serializedEvent.createdAt()));
+            statement.setLong(9, sequencedEvent.globalPosition());
             statement.executeUpdate();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to store event at sequence number " + sequencedEvent.sequenceNumber(), e);
+            throw new RuntimeException("Failed to store event at global position " + sequencedEvent.globalPosition(), e);
         }
     }
 
-    record SequencedEvent<E extends Event>(long sequenceNumber, EventMessage<E> eventMessage) {
+    record SequencedEvent<E extends Event>(long globalPosition, EventMessage<E> eventMessage, Optional<Long> subjectVersion) {
 
-        SequencedEvent(long sequenceNumber, E event) {
-            this(sequenceNumber, EventMessage.from(event, Metadata.at(Instant.now())));
+        SequencedEvent(long globalPosition, E event) {
+            this(globalPosition, EventMessage.from(event, Metadata.at(Instant.now())), Optional.empty());
+        }
+
+        SequencedEvent(long globalPosition, Subject subject, long subjectVersion, E event) {
+            this(globalPosition, new EventMessage<>(MessageId.generate(), Optional.of(subject), event, Metadata.at(Instant.now())), Optional.of(subjectVersion));
         }
     }
 
-    void advanceEventStoreSequenceTo(long sequenceNumber) {
+    void advanceGlobalPositionTo(long globalPosition) {
         try (var connection = bean(DataSource.class).getConnection();
-             var statement = connection.prepareStatement("SELECT setval('smd_event_store_sequence_number_seq', ?, true)")) {
-            statement.setLong(1, sequenceNumber);
+             var statement = connection.prepareStatement("SELECT setval('smd_event_store_global_position_seq', ?, true)")) {
+            statement.setLong(1, globalPosition);
             statement.execute();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to advance the event store sequence to " + sequenceNumber, e);
+            throw new RuntimeException("Failed to advance the event store global position to " + globalPosition, e);
         }
     }
 
-    List<SerializedEvent> storedEvents() {
+    List<StoredEvent> storedEvents() {
         try (var connection = bean(DataSource.class).getConnection();
              var statement = connection.prepareStatement("""
-                 SELECT message_id, subject_id, event_type, serialized_payload, serialized_metadata, created_at, sequence_number
+                 SELECT global_position, event_id, subject_type, subject_id, subject_version, event_type, payload, metadata, occurred_at
                  FROM smd_event_store
-                 ORDER BY sequence_number
+                 ORDER BY global_position
                  """);
              var resultSet = statement.executeQuery()) {
-            var events = new ArrayList<SerializedEvent>();
+            var events = new ArrayList<StoredEvent>();
             while (resultSet.next()) {
-                events.add(new SerializedEvent(
-                    new MessageId((UUID) resultSet.getObject("message_id")),
-                    resultSet.getLong("sequence_number"),
-                    Optional.ofNullable(resultSet.getString("subject_id")),
+                events.add(new StoredEvent(
+                    resultSet.getLong("global_position"),
+                    new MessageId((UUID) resultSet.getObject("event_id")),
+                    subject(resultSet),
+                    subjectVersion(resultSet),
                     resultSet.getString("event_type"),
-                    resultSet.getBytes("serialized_payload"),
-                    resultSet.getBytes("serialized_metadata"),
-                    resultSet.getTimestamp("created_at").toInstant()
+                    resultSet.getBytes("payload"),
+                    resultSet.getBytes("metadata"),
+                    resultSet.getTimestamp("occurred_at").toInstant()
                 ));
             }
             return List.copyOf(events);
@@ -159,12 +170,26 @@ final class EventStoreTestFixture implements AutoCloseable {
         }
     }
 
+    private static Optional<Subject> subject(ResultSet resultSet) throws SQLException {
+        var subjectId = resultSet.getString("subject_id");
+        return subjectId == null ? Optional.empty() : Optional.of(new Subject(resultSet.getString("subject_type"), subjectId));
+    }
+
+    private static Optional<Long> subjectVersion(ResultSet resultSet) throws SQLException {
+        var subjectVersion = resultSet.getLong("subject_version");
+        return resultSet.wasNull() ? Optional.empty() : Optional.of(subjectVersion);
+    }
+
+    <E extends Event> EventMessage<E> deserialize(StoredEvent storedEvent) {
+        return bean(EventSerializer.class).deserialize(storedEvent.serializedEvent());
+    }
+
     Optional<TokenState> tokenState(String processingGroup) {
         return bean(TokenStore.class).tokenState(processingGroup);
     }
 
-    Optional<EventSequenceState> eventSequenceState(String processingGroup, String subjectId) {
-        return bean(EventSubjectSequenceStore.class).eventSequenceState(processingGroup, subjectId);
+    Optional<EventSequenceState> eventSequenceState(String processingGroup, EventSequenceId sequenceId) {
+        return bean(EventSequenceStore.class).eventSequenceState(processingGroup, sequenceId);
     }
 
     @Override

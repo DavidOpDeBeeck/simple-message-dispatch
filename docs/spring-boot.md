@@ -74,7 +74,7 @@ Use `.source(eventSource)` to attach an input to a group, or `.medium(eventMediu
 [Event Delivery](core-api.md#event-delivery) for the underlying contracts.
 
 Enabling the event store automatically registers `eventStore.inlet()` as a sink with the default publisher. Route durable groups explicitly through `.source(eventStore.outlet())` as shown in
-[Event Store](event-store.md); enabling storage does not select processing groups.
+[Event Sourcing](event-store.md); enabling storage does not select processing groups.
 
 ## Customize Bus Specs
 
@@ -189,7 +189,7 @@ complete parameter list.
 
 ## Next Steps
 
-- [Event Store](event-store.md) for durable PostgreSQL-backed event processing
+- [Event Sourcing](event-store.md) for durable PostgreSQL-backed event processing
 - [Durable Delivery](durable-delivery.md) for delivering events durably, within one application or between applications through a broker
 - [Testing](testing.md) for Spring test-scope stubs
 - [Core API](core-api.md) for manual construction and event delivery

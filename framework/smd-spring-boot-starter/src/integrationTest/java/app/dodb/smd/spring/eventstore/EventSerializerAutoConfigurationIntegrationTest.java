@@ -142,7 +142,7 @@ class EventSerializerAutoConfigurationIntegrationTest {
         return EventMessage.from(new SerializerTestEvent("value"), Metadata.at(TIMESTAMP));
     }
 
-    record SerializerTestEvent(@SubjectId String value) implements Event {
+    record SerializerTestEvent(@SubjectId("serializer-test") String value) implements Event {
     }
 
     @Configuration

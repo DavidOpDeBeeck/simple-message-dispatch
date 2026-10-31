@@ -2,6 +2,7 @@ package app.dodb.smd.serialization.jackson;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
@@ -39,8 +40,7 @@ class JacksonEventSerializerTest {
         assertThat(serialized).usingRecursiveComparison()
             .isEqualTo(new SerializedEvent(
                 eventMessage.messageId(),
-                null,
-                Optional.of("subjectId"),
+                Optional.of(new Subject("test", "subjectId")),
                 TestEvent.class.getName(),
                 json("""
                     {
@@ -90,7 +90,7 @@ class JacksonEventSerializerTest {
     void deserialize_eventTypeNotResolved_throwsExceptionWithContext() {
         var serializer = new JacksonEventSerializer(JsonMapper.builder().build(), new ClassNameEventTypeResolver(), List.of());
         var serialized = serializer.serialize(EventMessage.from(new TestEvent("value"), metadata()));
-        var stored = new SerializedEvent(serialized.messageId(), 1L, serialized.subjectId(), String.class.getName(),
+        var stored = new SerializedEvent(serialized.messageId(), serialized.subject(), String.class.getName(),
             serialized.serializedPayload(), serialized.serializedMetadata(), serialized.createdAt());
 
         assertThatThrownBy(() -> serializer.deserialize(stored))
@@ -112,8 +112,7 @@ class JacksonEventSerializerTest {
         assertThat(serialized).usingRecursiveComparison()
             .isEqualTo(new SerializedEvent(
                 eventMessage.messageId(),
-                null,
-                Optional.of("subjectId"),
+                Optional.of(new Subject("test", "subjectId")),
                 TestEvent.class.getName(),
                 json("""
                     {
@@ -160,14 +159,14 @@ class JacksonEventSerializerTest {
             .build(), new ClassNameEventTypeResolver(), List.of());
         var eventMessage = new EventMessage<>(
             MessageId.generate(),
-            Optional.of("captured-subjectId"),
+            Optional.of(new Subject("test", "captured-subjectId")),
             new TestEvent("value"),
             metadata()
         );
 
         var deserialized = serializer.deserialize(serializer.serialize(eventMessage));
 
-        assertThat(deserialized.subjectId()).contains("captured-subjectId");
+        assertThat(deserialized.subject()).contains(new Subject("test", "captured-subjectId"));
     }
 
     private Metadata metadata() {
@@ -180,7 +179,7 @@ class JacksonEventSerializerTest {
 
     record TestEvent(String value) implements Event {
 
-        @SubjectId
+        @SubjectId("test")
         public String subjectId() {
             return "subjectId";
         }

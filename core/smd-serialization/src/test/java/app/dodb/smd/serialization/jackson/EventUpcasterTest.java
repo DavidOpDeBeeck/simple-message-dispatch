@@ -2,6 +2,7 @@ package app.dodb.smd.serialization.jackson;
 
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
@@ -177,7 +178,7 @@ class EventUpcasterTest {
 
         assertThat(deserialized).isEqualTo(new EventMessage<>(
             stored.messageId(),
-            Optional.of("stored-subject"),
+            Optional.of(new Subject("ticket", "stored-subject")),
             new TicketOpenedEvent("ticket-1", "Cannot sign in", "NORMAL"),
             METADATA
         ));
@@ -216,8 +217,7 @@ class EventUpcasterTest {
     private static SerializedEvent stored(String eventType, String payload) {
         return new SerializedEvent(
             MessageId.generate(),
-            1L,
-            Optional.of("stored-subject"),
+            Optional.of(new Subject("ticket", "stored-subject")),
             eventType,
             payload.getBytes(UTF_8),
             MAPPER.writeValueAsBytes(JacksonEventSerializer.MetadataJson.from(METADATA)),
@@ -225,9 +225,9 @@ class EventUpcasterTest {
         );
     }
 
-    record TicketOpenedEvent(@SubjectId String ticketId, String title, String priority) implements Event {
+    record TicketOpenedEvent(@SubjectId("ticket") String ticketId, String title, String priority) implements Event {
     }
 
-    record TicketAssignedEvent(@SubjectId String ticketId, String assignee) implements Event {
+    record TicketAssignedEvent(@SubjectId("ticket") String ticketId, String assignee) implements Event {
     }
 }

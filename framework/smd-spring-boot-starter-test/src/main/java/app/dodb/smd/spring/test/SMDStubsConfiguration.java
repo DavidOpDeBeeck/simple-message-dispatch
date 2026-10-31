@@ -55,31 +55,31 @@ public class SMDStubsConfiguration {
 
     @Bean
     @SMDTestScope
-    public CommandBusTestConfigurer commandBusTestConfigurer(CommandHandlerLocator locator, List<CommandBusInterceptor> interceptors) {
+    public CommandBusTestConfigurer commandBusTestConfigurer(List<CommandHandlerLocator> locators, List<CommandBusInterceptor> interceptors) {
         return spec -> spec
-            .commandHandlers(locator)
+            .commandHandlers(CommandHandlerLocator.combine(locators))
             .interceptors(interceptors)
             .create();
     }
 
     @Bean
     @SMDTestScope
-    public QueryBusTestConfigurer queryBusTestConfigurer(QueryHandlerLocator locator, List<QueryBusInterceptor> interceptors) {
+    public QueryBusTestConfigurer queryBusTestConfigurer(List<QueryHandlerLocator> locators, List<QueryBusInterceptor> interceptors) {
         return spec -> spec
-            .queryHandlers(locator)
+            .queryHandlers(QueryHandlerLocator.combine(locators))
             .interceptors(interceptors)
             .create();
     }
 
     @Bean
     @SMDTestScope
-    public EventBusTestConfigurer eventBusTestConfigurer(ProcessingGroupLocator locator,
+    public EventBusTestConfigurer eventBusTestConfigurer(List<ProcessingGroupLocator> locators,
                                                          ProcessingGroupsConfigurer processingGroupsConfigurer,
                                                          List<EventBusInterceptor> interceptors,
                                                          List<EventSinkInterceptor> sinkInterceptors,
                                                          List<ProcessingGroupInterceptor> processingGroupInterceptors) {
         return spec -> spec
-            .processingGroups(locator, processingGroupsConfigurer)
+            .processingGroups(ProcessingGroupLocator.combine(locators), processingGroupsConfigurer)
             .interceptors(interceptors)
             .sinkInterceptors(sinkInterceptors)
             .processingGroupInterceptors(processingGroupInterceptors)

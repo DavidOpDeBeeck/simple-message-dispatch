@@ -6,7 +6,7 @@ import java.util.UUID;
 
 import static java.util.Objects.requireNonNull;
 
-public record TicketOpenedEvent(@SubjectId UUID ticketId, String title, String description) implements TicketEvent {
+public record TicketOpenedEvent(@SubjectId("ticket") UUID ticketId, String title, String description) implements TicketEvent {
 
     public TicketOpenedEvent {
         requireNonNull(ticketId);

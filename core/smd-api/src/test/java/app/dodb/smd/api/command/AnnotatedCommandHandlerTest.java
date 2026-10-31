@@ -116,7 +116,7 @@ class AnnotatedCommandHandlerTest {
     void handle_withIncorrectReturnType() {
         assertThatThrownBy(() -> AnnotatedCommandHandler.from(new CommandHandlerWithIncorrectReturnType()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid command handler: return type mismatch.");
+            .hasMessageStartingWith("Invalid handler: return type mismatch.");
     }
 
     @Test
@@ -130,14 +130,16 @@ class AnnotatedCommandHandlerTest {
     void handle_withMultipleHandlersForSameCommand() {
         assertThatThrownBy(() -> AnnotatedCommandHandler.from(new MultipleCommandHandlersForSameCommand()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Ambiguous command handlers found");
+            .hasMessageContaining("Ambiguous command handlers found")
+            .hasMessageContaining("@CommandHandler " + MultipleCommandHandlersForSameCommand.class.getName() + "#handle(CommandForTest)")
+            .hasMessageContaining("@CommandHandler " + MultipleCommandHandlersForSameCommand.class.getName() + "#handle2(CommandForTest)");
     }
 
     @Test
     void handle_withNonPublicAnnotatedMethod() {
         assertThatThrownBy(() -> AnnotatedCommandHandler.from(new NonPublicAnnotatedCommandHandler()))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageStartingWith("Invalid command handler: method must be public.");
+            .hasMessageStartingWith("Invalid handler: method must be public.");
     }
 
     public record CommandForTest() implements Command<String> {

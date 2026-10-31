@@ -1,7 +1,7 @@
 package app.dodb.smd.ticket.drivenadapter;
 
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
-import app.dodb.smd.durable.DurableDelivery;
+import app.dodb.smd.durabledelivery.DurableDelivery;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.serialization.EventTypeResolver;
 import app.dodb.smd.serialization.StaticEventTypeResolver;

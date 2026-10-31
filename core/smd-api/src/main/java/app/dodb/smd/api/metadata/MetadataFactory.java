@@ -80,5 +80,9 @@ public class MetadataFactory {
                     return ScopedValue.where(PARENT_MESSAGE_ID, message.messageId()).call(() -> function.apply(message));
                 });
         }
+
+        public Metadata metadata() {
+            return metadataSupplier.get();
+        }
     }
 }

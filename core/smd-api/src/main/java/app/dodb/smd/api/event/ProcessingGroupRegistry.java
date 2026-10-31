@@ -1,7 +1,6 @@
 package app.dodb.smd.api.event;
 
 import app.dodb.smd.api.utils.CollectionUtils;
-import app.dodb.smd.api.utils.LoggingUtils;
 
 import java.util.Comparator;
 import java.util.HashMap;
@@ -23,7 +22,7 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
         return new ProcessingGroupRegistry(new HashMap<>());
     }
 
-    public static ProcessingGroupRegistry from(Set<AnnotatedEventHandler<?>> eventHandlers) {
+    public static ProcessingGroupRegistry from(Set<EventHandlerBehaviour<?>> eventHandlers) {
         var eventHandlerRegistryByProcessingGroup = eventHandlers.stream()
             .collect(groupingBy(EventHandlerBehaviour::processingGroup, toList()))
             .entrySet().stream()
@@ -43,17 +42,17 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
         return eventHandlerRegistryByProcessingGroup.getOrDefault(processingGroup, EventHandlerRegistry.empty(processingGroup));
     }
 
-    public ProcessingGroupRegistry combine(ProcessingGroupRegistry other) {
+    public ProcessingGroupRegistry and(ProcessingGroupRegistry other) {
         var combined = Stream.of(eventHandlerRegistryByProcessingGroup, other.eventHandlerRegistryByProcessingGroup)
             .flatMap(map -> map.entrySet().stream())
-            .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, EventHandlerRegistry::combine));
+            .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, EventHandlerRegistry::and));
 
         return new ProcessingGroupRegistry(combined);
     }
 
     private void validateUniqueOrder(Map<String, EventHandlerRegistry> eventHandlerRegistryByProcessingGroup) {
         eventHandlerRegistryByProcessingGroup.forEach((processingGroup, registry) -> {
-            for (AnnotatedEventHandler<?> eventHandler : registry.eventHandlers()) {
+            for (EventHandlerBehaviour<?> eventHandler : registry.eventHandlers()) {
                 var overlappingHandlersWithSameOrder = registry.eventHandlers().stream()
                     .filter(handler -> eventHandler.eventType().isAssignableFrom(handler.eventType()))
                     .filter(handler -> eventHandler.order() == handler.order())
@@ -62,28 +61,27 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
                 if (overlappingHandlersWithSameOrder.size() > 1) {
                     throw new IllegalArgumentException("""
                         Event handlers with same order found:
-                        
+
                         Processing group:
                         %s
-                        
+
                         Event:
                         %s
-                        
-                        Methods:
+
+                        Handlers:
                         %s
                         """.formatted(
                         processingGroup,
                         eventHandler.eventType().getName(),
                         overlappingHandlersWithSameOrder.stream()
-                            .map(AnnotatedEventHandler::method)
-                            .map(LoggingUtils::logMethod)
+                            .map(Object::toString)
                             .collect(joining("\n"))));
                 }
             }
         });
     }
 
-    public record EventHandlerRegistry(String processingGroup, List<AnnotatedEventHandler<?>> eventHandlers) {
+    public record EventHandlerRegistry(String processingGroup, List<EventHandlerBehaviour<?>> eventHandlers) {
 
         public static EventHandlerRegistry empty(String processingGroup) {
             return new EventHandlerRegistry(processingGroup, emptyList());
@@ -105,8 +103,8 @@ public record ProcessingGroupRegistry(Map<String, EventHandlerRegistry> eventHan
             return eventHandlers.stream().anyMatch(eventHandler -> eventHandler.eventType().isAssignableFrom(payload.getClass()));
         }
 
-        public EventHandlerRegistry combine(EventHandlerRegistry registry) {
-            var combined = CollectionUtils.combine(eventHandlers, registry.eventHandlers);
+        public EventHandlerRegistry and(EventHandlerRegistry other) {
+            var combined = CollectionUtils.combine(eventHandlers, other.eventHandlers);
             return new EventHandlerRegistry(processingGroup, combined);
         }
     }

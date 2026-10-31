@@ -47,7 +47,7 @@ public class PackageBasedProcessingGroupLocator implements ProcessingGroupLocato
             .distinct()
             .map(objectCreator::create)
             .map(AnnotatedEventHandler::from)
-            .reduce(ProcessingGroupRegistry.empty(), ProcessingGroupRegistry::combine);
+            .reduce(ProcessingGroupRegistry.empty(), ProcessingGroupRegistry::and);
 
         stopwatch.stop();
 

@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS smd_dispatcher_queue
     subscriber          VARCHAR(255)             NOT NULL,
     lane                INTEGER                  NOT NULL,
     message_id          UUID                     NOT NULL,
+    subject_type        VARCHAR(255),
     subject_id          VARCHAR(500),
     event_type          VARCHAR(500)             NOT NULL,
     serialized_payload  BYTEA                    NOT NULL,

@@ -53,8 +53,7 @@ final class EventUpcasterChain {
 
         return new SerializedEvent(
             serializedEvent.messageId(),
-            serializedEvent.sequenceNumber(),
-            serializedEvent.subjectId(),
+            serializedEvent.subject(),
             upcastedEventType,
             // This is not optimal because we parse the payload twice and should be improved in the future, but it is acceptable for now because upcasting is not expected to be a performance bottleneck
             objectMapper.writeValueAsBytes(upcastedPayload),

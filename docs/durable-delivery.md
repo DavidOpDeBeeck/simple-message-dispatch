@@ -16,7 +16,7 @@ events stored after it first subscribed.
 |--------------|----------------------------------------------------------------------------------------------------------------|
 | Storing      | An event is stored only if the publisher's transaction commits; a failure to store fails the publisher         |
 | Delivery     | At least once per subscriber; a duplicate from a broker is dropped while the original still waits for delivery |
-| Order        | Per [`@SubjectId`](event-store.md#identify-event-subjects), in the order the events were stored                |
+| Order        | Per [subject](event-store.md#identify-event-subjects), in the order the events were stored                     |
 | Failures     | Retried with backoff, never abandoned; only events that share the failed event's lane wait                     |
 | Transactions | A subscriber's handlers and the removal of the handled events commit together                                  |
 
@@ -147,7 +147,7 @@ A dispatcher is identified by its name in the database, and every instance that 
 
 A subscriber is identified by its processing group or route name and stays registered across restarts. From its first subscription on, every stored event is queued for it.
 
-Delivery metadata holds the transient properties `smd.processingId`, `smd.errorCount`, and `smd.subjectId`, as in the event store. Messages a handler sends do not inherit them, and routes do not forward them.
+Delivery metadata holds the transient properties `smd.processingId` and `smd.errorCount`, as in the event store. Messages a handler sends do not inherit them, and routes do not forward them.
 
 ## Without Spring
 

@@ -41,8 +41,7 @@ public class JacksonEventSerializer implements EventSerializer {
 
             return new SerializedEvent(
                 eventMessage.messageId(),
-                null, // sequence number is assigned by database
-                eventMessage.subjectId(),
+                eventMessage.subject(),
                 eventType,
                 payloadBytes,
                 metadataBytes,
@@ -60,7 +59,7 @@ public class JacksonEventSerializer implements EventSerializer {
             var payload = (E) readPayload(serializedEvent);
             var metadata = objectMapper.readValue(serializedEvent.serializedMetadata(), MetadataJson.class).toMetadata();
 
-            return new EventMessage<>(serializedEvent.messageId(), serializedEvent.subjectId(), payload, metadata);
+            return new EventMessage<>(serializedEvent.messageId(), serializedEvent.subject(), payload, metadata);
         } catch (JacksonException e) {
             throw new EventSerializationException("Failed to deserialize event: " + serializedEvent.messageId(), e);
         }

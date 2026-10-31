@@ -1,100 +1,72 @@
 package app.dodb.smd.ticket.domain;
 
+import app.dodb.smd.eventstore.aggregate.Aggregate;
+import app.dodb.smd.eventstore.aggregate.AggregateCommandHandler;
+import app.dodb.smd.eventstore.aggregate.AggregateEvents;
+import app.dodb.smd.eventstore.aggregate.AggregateId;
+import app.dodb.smd.eventstore.aggregate.EventSourcingHandler;
+import app.dodb.smd.ticket.drivingport.command.AssignTicketCommand;
+import app.dodb.smd.ticket.drivingport.command.OpenTicketCommand;
+import app.dodb.smd.ticket.drivingport.command.ResolveTicketCommand;
 import app.dodb.smd.ticket.drivingport.event.TicketAssignedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketOpenedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketResolvedEvent;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
-import static java.util.Objects.requireNonNull;
+import static app.dodb.smd.ticket.domain.TicketStatus.ASSIGNED;
+import static app.dodb.smd.ticket.domain.TicketStatus.OPEN;
+import static app.dodb.smd.ticket.domain.TicketStatus.RESOLVED;
 
+@Aggregate("ticket")
 public class Ticket {
 
-    private final UUID ticketId;
-    private final String title;
-    private final String description;
+    @AggregateId
+    private UUID ticketId;
     private TicketStatus status;
-    private String assignee;
-    private String resolution;
-    private int version;
 
-    private final List<TicketEvent> uncommittedEvents = new ArrayList<>();
-
-    public Ticket(UUID ticketId, String title, String description) {
-        this(ticketId, title, description, TicketStatus.OPEN, null, null, 0);
-        uncommittedEvents.add(new TicketOpenedEvent(ticketId, title, description));
+    private Ticket() {
     }
 
-    public Ticket(UUID ticketId,
-                  String title,
-                  String description,
-                  TicketStatus status,
-                  String assignee,
-                  String resolution,
-                  int version) {
-        this.ticketId = requireNonNull(ticketId);
-        this.title = requireNonNull(title);
-        this.description = requireNonNull(description);
-        this.status = requireNonNull(status);
-        this.assignee = assignee;
-        this.resolution = resolution;
-        this.version = version;
+    @AggregateCommandHandler
+    public Ticket(OpenTicketCommand command, AggregateEvents<TicketEvent> events) {
+        events.apply(new TicketOpenedEvent(UUID.randomUUID(), command.title(), command.description()));
     }
 
-    public void assign(String assignee) {
-        if (status != TicketStatus.OPEN) {
-            throw new InvalidTicketTransitionException(ticketId, status, "assign", TicketStatus.OPEN);
-        }
-        this.assignee = requireNonNull(assignee);
-        status = TicketStatus.ASSIGNED;
-        version++;
-        uncommittedEvents.add(new TicketAssignedEvent(ticketId, assignee));
-    }
-
-    public void resolve(String resolution) {
-        if (status != TicketStatus.ASSIGNED) {
-            throw new InvalidTicketTransitionException(ticketId, status, "resolve", TicketStatus.ASSIGNED);
-        }
-        this.resolution = requireNonNull(resolution);
-        status = TicketStatus.RESOLVED;
-        version++;
-        uncommittedEvents.add(new TicketResolvedEvent(ticketId, resolution));
-    }
-
-    public UUID ticketId() {
+    @AggregateCommandHandler
+    public UUID handle(AssignTicketCommand command, AggregateEvents<TicketEvent> events) {
+        requireStatus(OPEN, "assign");
+        events.apply(new TicketAssignedEvent(ticketId, command.assignee()));
         return ticketId;
     }
 
-    public String title() {
-        return title;
+    @AggregateCommandHandler
+    public UUID handle(ResolveTicketCommand command, AggregateEvents<TicketEvent> events) {
+        requireStatus(ASSIGNED, "resolve");
+        events.apply(new TicketResolvedEvent(ticketId, command.resolution()));
+        return ticketId;
     }
 
-    public String description() {
-        return description;
+    @EventSourcingHandler
+    void on(TicketOpenedEvent event) {
+        ticketId = event.ticketId();
+        status = OPEN;
     }
 
-    public TicketStatus status() {
-        return status;
+    @EventSourcingHandler
+    void on(TicketAssignedEvent event) {
+        status = ASSIGNED;
     }
 
-    public String assignee() {
-        return assignee;
+    @EventSourcingHandler
+    void on(TicketResolvedEvent event) {
+        status = RESOLVED;
     }
 
-    public String resolution() {
-        return resolution;
-    }
-
-    public int version() {
-        return version;
-    }
-
-    public List<TicketEvent> consumeEvents() {
-        var copy = new ArrayList<>(uncommittedEvents);
-        uncommittedEvents.clear();
-        return copy;
+    private void requireStatus(TicketStatus expected, String operation) {
+        if (status != expected) {
+            throw new InvalidTicketTransitionException(ticketId, status, operation, expected);
+        }
     }
 }

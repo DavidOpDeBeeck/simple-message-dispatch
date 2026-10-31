@@ -6,16 +6,17 @@ import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.principal.Principal;
 import app.dodb.smd.api.utils.MessageArgumentBinder;
-import app.dodb.smd.api.utils.parameterstrategy.AllowedParameterTypesStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.AtLeastOneParameterStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.AtMostOneAssignableParameterStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.ExactlyOneAssignableParameterStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.MetadataValueParameterStrategy;
-import app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.AllowedParameterTypesStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.AtLeastOneParameterStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.AtMostOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.ExactlyOneAssignableParameterStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.HandlerValidationStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.MetadataValueParameterStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.PublicStrategy;
+import app.dodb.smd.api.utils.handlerstrategy.ReturnTypeStrategy;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.time.Instant;
 import java.util.HashSet;
@@ -24,10 +25,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import static app.dodb.smd.api.utils.ExceptionUtils.rethrow;
-import static app.dodb.smd.api.utils.LoggingUtils.logClass;
 import static app.dodb.smd.api.utils.LoggingUtils.logMethod;
 import static app.dodb.smd.api.utils.TypeUtils.getAnnotationOnMethodOrClass;
-import static app.dodb.smd.api.utils.parameterstrategy.ParameterValidationStrategy.validateParameters;
+import static app.dodb.smd.api.utils.handlerstrategy.HandlerValidationStrategy.validateHandler;
 import static java.util.Arrays.stream;
 import static java.util.Objects.requireNonNull;
 
@@ -35,7 +35,8 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
                                                      MessageArgumentBinder<E, EventMessage<E>> argumentBinder)
     implements EventHandlerBehaviour<E> {
 
-    private static final List<ParameterValidationStrategy> PARAMETER_VALIDATION_STRATEGIES = List.of(
+    private static final List<HandlerValidationStrategy> HANDLER_VALIDATION_STRATEGIES = List.of(
+        new PublicStrategy(),
         new AtLeastOneParameterStrategy(),
         new ExactlyOneAssignableParameterStrategy(Event.class),
         new AtMostOneAssignableParameterStrategy(MessageId.class),
@@ -45,7 +46,8 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
         new MetadataValueParameterStrategy(),
         new AllowedParameterTypesStrategy(
             Set.of(Event.class, MessageId.class, Metadata.class, Principal.class, Instant.class, String.class)
-        )
+        ),
+        new ReturnTypeStrategy(void.class)
     );
 
     public static ProcessingGroupRegistry from(Object object) {
@@ -53,7 +55,7 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
     }
 
     public static ProcessingGroupRegistry from(Provider<?> provider) {
-        Set<AnnotatedEventHandler<?>> handlers = new HashSet<>();
+        Set<EventHandlerBehaviour<?>> handlers = new HashSet<>();
         Class<?> clazz = provider.getType();
 
         for (Method method : clazz.getDeclaredMethods()) {
@@ -68,33 +70,7 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
 
     @SuppressWarnings("unchecked")
     private static <E extends Event> AnnotatedEventHandler<E> mapToEventHandler(Provider<?> provider, Method method) {
-        if (!Modifier.isPublic(method.getModifiers())) {
-            throw new IllegalArgumentException("""
-                Invalid event handler: method must be public.
-                
-                    Method:
-                    %s
-                """.formatted(logMethod(method)));
-        }
-
-        var parameters = method.getParameters();
-        validateParameters(method, parameters, PARAMETER_VALIDATION_STRATEGIES);
-
-        Class<?> methodReturnType = method.getReturnType();
-        if (!Void.TYPE.equals(methodReturnType)) {
-            throw new IllegalArgumentException("""
-                Invalid event handler: return type mismatch.
-                
-                    Method:
-                    %s
-                
-                    Expected:
-                    %s
-                
-                    Found:
-                    %s
-                """.formatted(logMethod(method), logClass(Void.TYPE), logClass(methodReturnType)));
-        }
+        validateHandler(method, HANDLER_VALIDATION_STRATEGIES);
 
         Optional<String> processingGroupOpt = getAnnotationOnMethodOrClass(method, ProcessingGroup.class).map(ProcessingGroup::value);
         if (processingGroupOpt.isEmpty()) {
@@ -106,6 +82,7 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
                 """.formatted(logMethod(method)));
         }
 
+        var parameters = method.getParameters();
         var eventType = (Class<E>) stream(parameters)
             .map(Parameter::getType)
             .filter(Event.class::isAssignableFrom)
@@ -133,5 +110,10 @@ public record AnnotatedEventHandler<E extends Event>(Provider<?> provider, Metho
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return "@EventHandler " + logMethod(method);
     }
 }

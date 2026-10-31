@@ -1,7 +1,7 @@
 package app.dodb.smd.spring.eventstore;
 
-import app.dodb.smd.api.event.delivery.ProcessingMetadata;
-import app.dodb.smd.eventstore.storage.TokenState;
+import app.dodb.smd.eventstore.EventStoreMetadata;
+import app.dodb.smd.eventstore.processing.TokenState;
 import app.dodb.smd.spring.ManualPollingScheduler;
 import app.dodb.smd.spring.eventstore.EventStoreTestFixture.SequencedEvent;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
@@ -28,7 +28,7 @@ class EventStoreSubscriptionIntegrationTest {
             var processingGroup = "duplicate-subscription";
             var received = new CopyOnWriteArrayList<String>();
             var subscriber = new EventSubscriberStub(processingGroup, message ->
-                received.add(message.metadata().transientProperties().get(ProcessingMetadata.SEQUENCE_NUMBER)));
+                received.add(message.metadata().transientProperties().get(EventStoreMetadata.GLOBAL_POSITION)));
 
             try (var first = eventStore.subscribe(subscriber);
                  var second = eventStore.subscribe(subscriber)) {
@@ -41,7 +41,7 @@ class EventStoreSubscriptionIntegrationTest {
                 // Then
                 assertThat(received).containsExactly("1");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
 
                 // When
                 second.close();
@@ -51,7 +51,7 @@ class EventStoreSubscriptionIntegrationTest {
                 // Then
                 assertThat(received).containsExactly("1");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
             }
         }
     }
@@ -78,7 +78,7 @@ class EventStoreSubscriptionIntegrationTest {
                     Thread.currentThread().interrupt();
                     throw new IllegalStateException("Handler interrupted while subscription was closing", e);
                 }
-                received.add(message.metadata().transientProperties().get(ProcessingMetadata.SEQUENCE_NUMBER));
+                received.add(message.metadata().transientProperties().get(EventStoreMetadata.GLOBAL_POSITION));
             });
 
             try (var subscription = eventStore.subscribe(subscriber)) {
@@ -98,7 +98,7 @@ class EventStoreSubscriptionIntegrationTest {
                 assertThat(interrupted).isFalse();
                 assertThat(received).containsExactly("1");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
 
                 // When
                 fixture.storeEvents(new SequencedEvent<>(2L, new TestEventWithSubjectId("subscription")));
@@ -109,10 +109,10 @@ class EventStoreSubscriptionIntegrationTest {
 
                     // Then
                     assertThat(fixture.tokenState("other-subscription")
-                        .flatMap(TokenState::lastProcessedSequenceNumber)).contains(2L);
+                        .flatMap(TokenState::lastProcessedPosition)).contains(2L);
                     assertThat(received).containsExactly("1");
                     assertThat(fixture.tokenState(processingGroup)
-                        .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                        .flatMap(TokenState::lastProcessedPosition)).contains(1L);
                 }
             }
         }

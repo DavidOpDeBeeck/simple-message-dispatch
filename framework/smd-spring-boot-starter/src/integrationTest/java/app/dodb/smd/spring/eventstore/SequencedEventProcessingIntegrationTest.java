@@ -3,15 +3,17 @@ package app.dodb.smd.spring.eventstore;
 import app.dodb.smd.api.event.Event;
 import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.ProcessingGroup;
+import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.event.SubjectId;
 import app.dodb.smd.api.event.bus.EventBus;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
-import app.dodb.smd.api.event.delivery.ProcessingMetadata;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
-import app.dodb.smd.eventstore.sequence.EventSequenceState;
-import app.dodb.smd.eventstore.storage.TokenState;
+import app.dodb.smd.eventstore.EventStoreMetadata;
+import app.dodb.smd.eventstore.processing.EventSequenceId;
+import app.dodb.smd.eventstore.processing.EventSequenceState;
+import app.dodb.smd.eventstore.processing.TokenState;
 import app.dodb.smd.spring.EnableSMD;
 import app.dodb.smd.spring.ManualPollingScheduler;
 import app.dodb.smd.spring.eventstore.processing.TestEventWithSubjectId;
@@ -25,8 +27,9 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.fixed;
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
+import static app.dodb.smd.eventstore.processing.EventSequenceStatus.ABANDONED;
+import static app.dodb.smd.eventstore.processing.EventSequenceStatus.ACTIVE;
+import static app.dodb.smd.eventstore.processing.EventSequenceStatus.FAILED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SCHEDULING_DISABLED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SequencedEvent;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.eventStoreTestFixture;
@@ -38,8 +41,7 @@ class SequencedEventProcessingIntegrationTest {
 
     private static final String TYPED_SEQUENCE_PROCESSING_GROUP = "typed-sequence-processing-group";
     private static final int BATCH_SIZE = 10;
-    private static final String SUBJECT = ProcessingMetadata.SUBJECT_ID;
-    private static final String SEQUENCE_NUMBER = ProcessingMetadata.SEQUENCE_NUMBER;
+    private static final String GLOBAL_POSITION = EventStoreMetadata.GLOBAL_POSITION;
 
     @Test
     void poll_withSubjectlessFailure_blocksGlobalSequenceButNotSubjectSequence() throws Exception {
@@ -57,11 +59,11 @@ class SequencedEventProcessingIntegrationTest {
             );
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
-                var sequenceNumber = eventMessage.metadata().transientProperties().get(SEQUENCE_NUMBER);
-                if ("1".equals(sequenceNumber)) {
+                var globalPosition = eventMessage.metadata().transientProperties().get(GLOBAL_POSITION);
+                if ("1".equals(globalPosition)) {
                     throw new IllegalStateException("global sequence is stuck");
                 }
-                handled.add(sequenceNumber);
+                handled.add(globalPosition);
             });
 
             var processingConfig = ProcessingConfig.withoutDefaults()
@@ -81,7 +83,55 @@ class SequencedEventProcessingIntegrationTest {
                 // Then
                 assertThat(handled).containsExactly("3");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
+            }
+        }
+    }
+
+    @Test
+    void poll_withAbandonedAggregate_processesOtherAggregateTypeWithSameId() throws Exception {
+        // Given
+        var scheduler = new ManualPollingScheduler();
+        try (var fixture = eventStoreTestFixture()
+            .properties(SCHEDULING_DISABLED)
+            .start()) {
+            var processingGroup = "aggregate-type-sequence-processing-group";
+            var handled = new CopyOnWriteArrayList<String>();
+            fixture.storeEvents(
+                new SequencedEvent<>(1L, new Subject("ticket", "42"), 1L, new SubjectlessTestEvent()),
+                new SequencedEvent<>(2L, new Subject("account", "42"), 1L, new SubjectlessTestEvent()),
+                new SequencedEvent<>(3L, new Subject("ticket", "42"), 2L, new SubjectlessTestEvent()),
+                new SequencedEvent<>(4L, new Subject("account", "42"), 2L, new SubjectlessTestEvent())
+            );
+
+            var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
+                var globalPosition = eventMessage.metadata().transientProperties().get(GLOBAL_POSITION);
+                if ("1".equals(globalPosition)) {
+                    throw new IllegalStateException("ticket 42 is stuck");
+                }
+                handled.add(globalPosition);
+            });
+
+            var processingConfig = ProcessingConfig.withoutDefaults()
+                .maxRetries(0)
+                .batchSize(BATCH_SIZE)
+                .retryBackoffStrategy(fixed(Duration.ZERO))
+                .gapTimeout(ofSeconds(1))
+                .build();
+
+            try (var eventStore = fixture.createEventStore(processingConfig, scheduler);
+                 var _ = eventStore.subscribe(subscriber)) {
+                scheduler.poll();
+
+                // When
+                scheduler.poll();
+
+                // Then
+                assertThat(handled).containsExactly("2", "4");
+                assertThat(fixture.eventSequenceState(processingGroup, new EventSequenceId.OfSubject(new Subject("ticket", "42")))
+                    .map(EventSequenceState::status)).contains(ABANDONED);
+                assertThat(fixture.eventSequenceState(processingGroup, new EventSequenceId.OfSubject(new Subject("account", "42")))
+                    .map(EventSequenceState::status)).contains(ACTIVE);
             }
         }
     }
@@ -103,8 +153,8 @@ class SequencedEventProcessingIntegrationTest {
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
                 var metadata = eventMessage.metadata().transientProperties();
-                invoked.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
-                if ("subjectId-1".equals(metadata.get(SUBJECT))) {
+                invoked.add(eventMessage.subject().orElseThrow().id() + ":" + metadata.get(GLOBAL_POSITION));
+                if ("subjectId-1".equals(eventMessage.subject().orElseThrow().id())) {
                     throw new IllegalStateException("subjectId 1 is stuck");
                 }
             });
@@ -119,7 +169,7 @@ class SequencedEventProcessingIntegrationTest {
             try (var eventStore = fixture.createEventStore(processingConfig, scheduler);
                  var _ = eventStore.subscribe(subscriber)) {
                 scheduler.poll();
-                assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                assertThat(fixture.eventSequenceState(processingGroup, new EventSequenceId.OfSubject(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, "subjectId-1")))
                     .map(EventSequenceState::status)).contains(ABANDONED);
 
                 // When
@@ -128,7 +178,7 @@ class SequencedEventProcessingIntegrationTest {
                 // Then
                 assertThat(invoked).containsExactly("subjectId-1:1", "subjectId-2:2");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
             }
         }
     }
@@ -150,10 +200,10 @@ class SequencedEventProcessingIntegrationTest {
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
                 var metadata = eventMessage.metadata().transientProperties();
-                if ("subjectId-1".equals(metadata.get(SUBJECT))) {
+                if ("subjectId-1".equals(eventMessage.subject().orElseThrow().id())) {
                     throw new IllegalStateException("subjectId 1 is in backoff");
                 }
-                handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
+                handled.add(eventMessage.subject().orElseThrow().id() + ":" + metadata.get(GLOBAL_POSITION));
             });
 
             var processingConfig = ProcessingConfig.withoutDefaults()
@@ -172,12 +222,12 @@ class SequencedEventProcessingIntegrationTest {
 
                 // Then
                 assertThat(handled).containsExactly("subjectId-2:2");
-                assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                assertThat(fixture.eventSequenceState(processingGroup, new EventSequenceId.OfSubject(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, "subjectId-1")))
                     .map(EventSequenceState::status)).contains(FAILED);
-                assertThat(fixture.eventSequenceState(processingGroup, "subjectId-1")
+                assertThat(fixture.eventSequenceState(processingGroup, new EventSequenceId.OfSubject(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, "subjectId-1")))
                     .map(EventSequenceState::errorCount)).contains(1);
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).isEmpty();
+                    .flatMap(TokenState::lastProcessedPosition)).isEmpty();
             }
         }
     }
@@ -199,7 +249,7 @@ class SequencedEventProcessingIntegrationTest {
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
                 var metadata = eventMessage.metadata().transientProperties();
-                handled.add(metadata.get(SUBJECT) + ":" + metadata.get(SEQUENCE_NUMBER));
+                handled.add(eventMessage.subject().orElseThrow().id() + ":" + metadata.get(GLOBAL_POSITION));
             });
 
             try (var eventStore = fixture.createEventStore(scheduler);
@@ -210,7 +260,7 @@ class SequencedEventProcessingIntegrationTest {
                 // Then
                 assertThat(handled).containsExactly("subjectId-1:1", "subjectId-2:2", "subjectId-1:3");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
             }
         }
     }
@@ -232,11 +282,11 @@ class SequencedEventProcessingIntegrationTest {
             // Then
             await().untilAsserted(() -> {
                 assertThat(handler.handledSubjects()).containsExactly("subjectId-2");
-                assertThat(handler.invokedSequenceNumbers()).contains("1", "2").doesNotContain("3");
-                assertThat(fixture.eventSequenceState(TYPED_SEQUENCE_PROCESSING_GROUP, "subjectId-1")
+                assertThat(handler.invokedGlobalPositions()).contains("1", "2").doesNotContain("3");
+                assertThat(fixture.eventSequenceState(TYPED_SEQUENCE_PROCESSING_GROUP, new EventSequenceId.OfSubject(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, "subjectId-1")))
                     .map(EventSequenceState::status)).contains(ABANDONED);
                 assertThat(fixture.tokenState(TYPED_SEQUENCE_PROCESSING_GROUP)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
             });
         }
     }
@@ -261,12 +311,12 @@ class SequencedEventProcessingIntegrationTest {
     public static class TypedSequenceEventHandler {
 
         private final List<String> handledSubjects = new CopyOnWriteArrayList<>();
-        private final List<String> invokedSequenceNumbers = new CopyOnWriteArrayList<>();
+        private final List<String> invokedGlobalPositions = new CopyOnWriteArrayList<>();
 
         @EventHandler
         public void on(TestEventWithSubjectId event, Metadata metadata) {
-            var subject = metadata.transientProperties().get(SUBJECT);
-            invokedSequenceNumbers.add(metadata.transientProperties().get(SEQUENCE_NUMBER));
+            var subject = event.subjectId();
+            invokedGlobalPositions.add(metadata.transientProperties().get(GLOBAL_POSITION));
             if ("subjectId-1".equals(subject)) {
                 throw new IllegalStateException("subjectId 1 is stuck");
             }
@@ -277,12 +327,12 @@ class SequencedEventProcessingIntegrationTest {
             return List.copyOf(handledSubjects);
         }
 
-        List<String> invokedSequenceNumbers() {
-            return List.copyOf(invokedSequenceNumbers);
+        List<String> invokedGlobalPositions() {
+            return List.copyOf(invokedGlobalPositions);
         }
     }
 
-    private record DifferentTestEvent(@SubjectId String subjectId) implements Event {
+    private record DifferentTestEvent(@SubjectId(TestEventWithSubjectId.SUBJECT_TYPE) String subjectId) implements Event {
     }
 
     private record SubjectlessTestEvent() implements Event {

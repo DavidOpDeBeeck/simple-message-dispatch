@@ -1,8 +1,8 @@
 package app.dodb.smd.ticket.drivingadapter;
 
+import app.dodb.smd.eventstore.aggregate.AggregateNotFoundException;
+import app.dodb.smd.eventstore.aggregate.ConcurrentAggregateChangeException;
 import app.dodb.smd.ticket.domain.InvalidTicketTransitionException;
-import app.dodb.smd.ticket.drivenadapter.ConcurrentTicketChangeException;
-import app.dodb.smd.ticket.usecase.TicketNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,12 +12,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class TicketExceptionHandler {
 
-    @ExceptionHandler(TicketNotFoundException.class)
-    public ProblemDetail notFound(TicketNotFoundException exception) {
+    @ExceptionHandler(AggregateNotFoundException.class)
+    public ProblemDetail notFound(AggregateNotFoundException exception) {
         return problem(HttpStatus.NOT_FOUND, exception);
     }
 
-    @ExceptionHandler({InvalidTicketTransitionException.class, ConcurrentTicketChangeException.class})
+    @ExceptionHandler({InvalidTicketTransitionException.class, ConcurrentAggregateChangeException.class})
     public ProblemDetail conflict(RuntimeException exception) {
         return problem(HttpStatus.CONFLICT, exception);
     }

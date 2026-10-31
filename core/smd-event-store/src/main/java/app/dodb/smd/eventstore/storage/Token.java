@@ -1,15 +1,15 @@
-package app.dodb.smd.eventstore.storage;
+package app.dodb.smd.eventstore.processing;
 
 import java.time.Instant;
 import java.util.Optional;
 
 public interface Token {
 
-    Optional<Long> lastProcessedSequenceNumber();
+    Optional<Long> lastProcessedPosition();
 
     Optional<Instant> lastGapDetectedAt();
 
-    void markProcessed(long sequenceNumber);
+    void markProcessed(long globalPosition);
 
-    void markGapDetected(long sequenceNumber);
+    void markGapDetected(long globalPosition);
 }

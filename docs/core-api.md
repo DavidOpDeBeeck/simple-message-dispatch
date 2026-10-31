@@ -77,8 +77,8 @@ When a handler sends another message, SMD preserves the principal and the inheri
 asynchronous dispatchers. The current message is the one the handler received: when a bus or processing group interceptor proceeds with changed metadata, the messages its handlers send
 inherit that metadata.
 
-SMD itself uses transient properties for per-delivery details, such as `smd.processingId`. Use them for values that describe this handling only and must not be
-stored or forwarded.
+SMD itself uses transient properties for per-delivery details, such as `smd.processingId`, and for an aggregate event's revision. Use them for values that describe this handling only
+and must not be stored or forwarded.
 
 ### Read and Change Metadata
 
@@ -348,4 +348,4 @@ They run each dispatch in a transaction on the dispatching thread. Handlers on a
 
 With Spring, declare interceptors as beans instead; see [Add Interceptors](spring-boot.md#add-interceptors).
 
-See [Event Store](event-store.md) to attach durable event delivery without Spring.
+See [Event Sourcing](event-store.md) to attach durable event delivery without Spring.

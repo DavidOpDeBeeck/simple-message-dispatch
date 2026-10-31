@@ -1,12 +1,15 @@
 package app.dodb.smd.spring.eventstore;
 
 import app.dodb.smd.api.event.ProcessingGroup;
+import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.event.bus.EventBus;
 import app.dodb.smd.api.event.delivery.ProcessingMetadata;
 import app.dodb.smd.eventstore.EventStoreConfig.ProcessingConfig;
-import app.dodb.smd.eventstore.sequence.EventSequenceState;
-import app.dodb.smd.eventstore.storage.TokenState;
-import app.dodb.smd.serialization.SerializedEvent;
+import app.dodb.smd.eventstore.EventStoreMetadata;
+import app.dodb.smd.eventstore.processing.EventSequenceId;
+import app.dodb.smd.eventstore.processing.EventSequenceState;
+import app.dodb.smd.eventstore.processing.TokenState;
+import app.dodb.smd.eventstore.storage.StoredEvent;
 import app.dodb.smd.spring.ManualPollingScheduler;
 import app.dodb.smd.spring.eventstore.EventStoreTestFixture.SequencedEvent;
 import app.dodb.smd.spring.eventstore.processing.FailableTestEventHandler;
@@ -26,8 +29,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static app.dodb.smd.api.event.delivery.RetryBackoffStrategy.fixed;
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.ABANDONED;
-import static app.dodb.smd.eventstore.sequence.EventSubjectSequenceStatus.FAILED;
+import static app.dodb.smd.eventstore.processing.EventSequenceStatus.ABANDONED;
+import static app.dodb.smd.eventstore.processing.EventSequenceStatus.FAILED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.SCHEDULING_DISABLED;
 import static app.dodb.smd.spring.eventstore.EventStoreTestFixture.eventStoreTestFixture;
 import static java.lang.Integer.MAX_VALUE;
@@ -43,7 +46,7 @@ class EventStoreProcessingIntegrationTest {
     private static final String TEST_SUBJECT_ID = "testSubjectId";
     private static final String SIDE_EFFECT_TEST_SUBJECT_ID = "sideEffectTestSubjectId";
     private static final String PROCESSING_ID = ProcessingMetadata.PROCESSING_ID;
-    private static final String SEQUENCE_NUMBER = ProcessingMetadata.SEQUENCE_NUMBER;
+    private static final String GLOBAL_POSITION = EventStoreMetadata.GLOBAL_POSITION;
 
     @Test
     void publish_withScheduledDelivery_storesEventHandlesItAndMarksTokenProcessed() {
@@ -59,10 +62,10 @@ class EventStoreProcessingIntegrationTest {
             await().untilAsserted(() -> {
                 assertThat(handler.getHandledEvents()).hasSize(1);
                 assertThat(fixture.tokenState(ProcessingGroup.DEFAULT)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
                 assertThat(fixture.storedEvents())
-                    .extracting(SerializedEvent::eventType, SerializedEvent::subjectId)
-                    .containsExactly(tuple(TestEventWithSubjectId.class.getName(), Optional.of(TEST_SUBJECT_ID)));
+                    .extracting(StoredEvent::eventType, StoredEvent::subject, StoredEvent::subjectVersion)
+                    .containsExactly(tuple(TestEventWithSubjectId.class.getName(), Optional.of(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, TEST_SUBJECT_ID)), Optional.empty()));
             });
         }
     }
@@ -76,7 +79,7 @@ class EventStoreProcessingIntegrationTest {
             .start()) {
             var processingGroup = "manual-batch-processing-group";
             var processingIds = new CopyOnWriteArraySet<String>();
-            var processedSequences = new CopyOnWriteArrayList<String>();
+            var processedGlobalPositions = new CopyOnWriteArrayList<String>();
 
             fixture.storeEvents(
                 new SequencedEvent<>(1L, new TestEventWithSubjectId(TEST_SUBJECT_ID)),
@@ -87,7 +90,7 @@ class EventStoreProcessingIntegrationTest {
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
                 var metadata = eventMessage.metadata().transientProperties();
                 processingIds.add(metadata.get(PROCESSING_ID));
-                processedSequences.add(metadata.get(SEQUENCE_NUMBER));
+                processedGlobalPositions.add(metadata.get(GLOBAL_POSITION));
             });
 
             try (var eventStore = fixture.createEventStore(scheduler);
@@ -97,9 +100,9 @@ class EventStoreProcessingIntegrationTest {
 
                 // Then
                 assertThat(processingIds).hasSize(3).doesNotContainNull();
-                assertThat(processedSequences).containsExactly("1", "2", "3");
+                assertThat(processedGlobalPositions).containsExactly("1", "2", "3");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
             }
         }
     }
@@ -111,9 +114,9 @@ class EventStoreProcessingIntegrationTest {
             .properties(SCHEDULING_DISABLED)
             .start()) {
             var processingGroup = "restart-processing-group";
-            var processedSequences = new CopyOnWriteArrayList<String>();
+            var processedGlobalPositions = new CopyOnWriteArrayList<String>();
             var listener = new EventSubscriberStub(processingGroup, eventMessage ->
-                processedSequences.add(eventMessage.metadata().transientProperties().get(SEQUENCE_NUMBER))
+                processedGlobalPositions.add(eventMessage.metadata().transientProperties().get(GLOBAL_POSITION))
             );
 
             fixture.storeEvents(new SequencedEvent<>(1L, new TestEventWithSubjectId(TEST_SUBJECT_ID)));
@@ -122,7 +125,7 @@ class EventStoreProcessingIntegrationTest {
                  var _ = eventStore.subscribe(listener)) {
                 firstScheduler.poll();
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
             }
 
             fixture.storeEvents(new SequencedEvent<>(2L, new TestEventWithSubjectId(TEST_SUBJECT_ID)));
@@ -133,9 +136,9 @@ class EventStoreProcessingIntegrationTest {
                 restartedScheduler.poll();
 
                 // Then
-                assertThat(processedSequences).containsExactly("1", "2");
+                assertThat(processedGlobalPositions).containsExactly("1", "2");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(2L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(2L);
             }
         }
     }
@@ -164,11 +167,11 @@ class EventStoreProcessingIntegrationTest {
                 .build();
 
             var subscriber = new EventSubscriberStub(processingGroup, eventMessage -> {
-                var sequenceNumber = eventMessage.metadata().transientProperties().get(SEQUENCE_NUMBER);
-                if ("1".equals(sequenceNumber)) {
+                var globalPosition = eventMessage.metadata().transientProperties().get(GLOBAL_POSITION);
+                if ("1".equals(globalPosition)) {
                     assertThat(jdbc.update("INSERT INTO event_handler_side_effects (description) VALUES (?)",
                         "event 1 committed")).isOne();
-                } else if ("2".equals(sequenceNumber)) {
+                } else if ("2".equals(globalPosition)) {
                     throw new IllegalStateException("event 2 fails");
                 }
             });
@@ -178,7 +181,7 @@ class EventStoreProcessingIntegrationTest {
                 scheduler.poll();
                 assertThat(sideEffects(jdbc)).containsExactly("event 1 committed");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
 
                 // When
                 scheduler.poll();
@@ -186,8 +189,8 @@ class EventStoreProcessingIntegrationTest {
                 // Then
                 assertThat(sideEffects(jdbc)).containsExactly("event 1 committed");
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
-                assertThat(fixture.eventSequenceState(processingGroup, TEST_SUBJECT_ID))
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
+                assertThat(fixture.eventSequenceState(processingGroup, new EventSequenceId.OfSubject(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, TEST_SUBJECT_ID))))
                     .hasValueSatisfying(state -> {
                         assertThat(state.status()).isEqualTo(FAILED);
                         assertThat(state.errorCount()).isOne();
@@ -211,14 +214,14 @@ class EventStoreProcessingIntegrationTest {
             // Then
             await().untilAsserted(() ->
                 assertThat(fixture.tokenState(ProcessingGroup.DEFAULT)
-                    .flatMap(TokenState::gapSequenceNumber)).contains(2L)
+                    .flatMap(TokenState::gapPosition)).contains(2L)
             );
 
             await().untilAsserted(() -> {
                 assertThat(fixture.tokenState(ProcessingGroup.DEFAULT)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(3L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(3L);
                 assertThat(fixture.tokenState(ProcessingGroup.DEFAULT)
-                    .flatMap(TokenState::gapSequenceNumber)).isEmpty();
+                    .flatMap(TokenState::gapPosition)).isEmpty();
             });
 
             assertThat(handler.getHandledEvents()).hasSize(2);
@@ -241,10 +244,10 @@ class EventStoreProcessingIntegrationTest {
             await().untilAsserted(() -> {
                 assertThat(handler.getHandledEvents()).hasSize(1);
                 assertThat(handler.getAttemptedErrorCounts()).containsExactly("0", "1");
-                assertThat(fixture.eventSequenceState(ProcessingGroup.DEFAULT, TEST_SUBJECT_ID)
+                assertThat(fixture.eventSequenceState(ProcessingGroup.DEFAULT, new EventSequenceId.OfSubject(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, TEST_SUBJECT_ID)))
                     .map(EventSequenceState::errorCount)).contains(0);
                 assertThat(fixture.tokenState(ProcessingGroup.DEFAULT)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
             });
         }
     }
@@ -262,7 +265,7 @@ class EventStoreProcessingIntegrationTest {
 
             // Then
             await().untilAsserted(() -> {
-                assertThat(fixture.eventSequenceState(ProcessingGroup.DEFAULT, SIDE_EFFECT_TEST_SUBJECT_ID)
+                assertThat(fixture.eventSequenceState(ProcessingGroup.DEFAULT, new EventSequenceId.OfSubject(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, SIDE_EFFECT_TEST_SUBJECT_ID)))
                     .flatMap(EventSequenceState::lastErrorMessage))
                     .hasValueSatisfying(error -> assertThat(error).contains("Simulated failure after side effect"));
                 assertThat(sideEffects(jdbc)).isEmpty();
@@ -284,10 +287,10 @@ class EventStoreProcessingIntegrationTest {
 
             // Then
             await().untilAsserted(() -> {
-                assertThat(fixture.eventSequenceState(ProcessingGroup.DEFAULT, TEST_SUBJECT_ID)
+                assertThat(fixture.eventSequenceState(ProcessingGroup.DEFAULT, new EventSequenceId.OfSubject(new Subject(TestEventWithSubjectId.SUBJECT_TYPE, TEST_SUBJECT_ID)))
                     .map(EventSequenceState::status)).contains(ABANDONED);
                 assertThat(fixture.tokenState(ProcessingGroup.DEFAULT)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
             });
 
             assertThat(handler.getHandledEvents()).isEmpty();
@@ -346,7 +349,7 @@ class EventStoreProcessingIntegrationTest {
                 // Then
                 assertThat(handledCount).hasValue(1);
                 assertThat(fixture.tokenState(processingGroup)
-                    .flatMap(TokenState::lastProcessedSequenceNumber)).contains(1L);
+                    .flatMap(TokenState::lastProcessedPosition)).contains(1L);
             }
         }
     }

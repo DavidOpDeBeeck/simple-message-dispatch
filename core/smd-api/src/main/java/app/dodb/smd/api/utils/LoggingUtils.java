@@ -1,6 +1,7 @@
 package app.dodb.smd.api.utils;
 
-import java.lang.reflect.Method;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
 import java.lang.reflect.Type;
 import java.util.Collection;
 
@@ -22,7 +23,7 @@ public class LoggingUtils {
         return type.getTypeName();
     }
 
-    public static String logMethods(Collection<Method> methods) {
+    public static String logMethods(Collection<? extends Executable> methods) {
         if (methods.isEmpty()) {
             return "empty";
         }
@@ -31,13 +32,14 @@ public class LoggingUtils {
             .collect(joining(", "));
     }
 
-    public static String logMethod(Method method) {
-        return "%s#%s(%s)".formatted(
-            method.getDeclaringClass().getName(),
-            method.getName(),
-            stream(method.getParameterTypes())
-                .map(Class::getSimpleName)
-                .collect(joining(", "))
-        );
+    public static String logMethod(Executable executable) {
+        var className = executable.getDeclaringClass().getName();
+        var parameterTypes = stream(executable.getParameterTypes())
+            .map(Class::getSimpleName)
+            .collect(joining(", "));
+        if (executable instanceof Constructor<?>) {
+            return "%s(%s)".formatted(className, parameterTypes);
+        }
+        return "%s#%s(%s)".formatted(className, executable.getName(), parameterTypes);
     }
 }

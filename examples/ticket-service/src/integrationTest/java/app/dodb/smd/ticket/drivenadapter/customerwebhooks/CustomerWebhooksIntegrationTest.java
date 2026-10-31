@@ -4,7 +4,7 @@ import app.dodb.smd.api.event.EventMessage;
 import app.dodb.smd.api.event.EventPublisher;
 import app.dodb.smd.api.event.bus.ProcessingGroupsConfigurer;
 import app.dodb.smd.api.metadata.Metadata;
-import app.dodb.smd.durable.DurableDelivery;
+import app.dodb.smd.durabledelivery.DurableDelivery;
 import app.dodb.smd.ticket.drivenadapter.IntegrationTest;
 import app.dodb.smd.ticket.drivingport.event.TicketAssignedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketEvent;
