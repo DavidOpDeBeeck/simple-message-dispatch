@@ -14,7 +14,7 @@ Add the module next to `smd-api`:
 
 ```kotlin
 dependencies {
-    implementation("app.dodb:smd-opentelemetry:0.0.12")
+    implementation("app.dodb:smd-opentelemetry:0.0.13")
 }
 ```
 

@@ -192,7 +192,7 @@ otherwise add it:
 
 ```kotlin
 dependencies {
-    testImplementation("app.dodb:smd-event-store-test:0.0.xx")
+    testImplementation("app.dodb:smd-event-store-test:0.0.13")
 }
 ```
 
@@ -508,7 +508,7 @@ Without Spring Boot, add the module directly:
 
 ```kotlin
 dependencies {
-    implementation("app.dodb:smd-event-store:0.0.xx")
+    implementation("app.dodb:smd-event-store:0.0.13")
     implementation("tools.jackson.core:jackson-databind:3.0.4")
     runtimeOnly("org.postgresql:postgresql:42.7.10")
 }

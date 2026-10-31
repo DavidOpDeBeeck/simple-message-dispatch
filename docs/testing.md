@@ -9,7 +9,7 @@ Add the Spring test module alongside Spring Boot's test starter:
 ```kotlin
 dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.12")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.13")
 }
 ```
 
@@ -100,7 +100,7 @@ Use `smd-test` when package discovery, interceptors, and the Spring context are 
 
 ```kotlin
 dependencies {
-    testImplementation("app.dodb:smd-test:0.0.12")
+    testImplementation("app.dodb:smd-test:0.0.13")
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
     testImplementation("org.assertj:assertj-core:3.27.7")
 }
