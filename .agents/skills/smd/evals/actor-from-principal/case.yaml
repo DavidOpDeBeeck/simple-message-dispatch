@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: actor-from-principal
+expected_outcome: |
+  Takes the actor from the Principal, never from a field on ResolveTicketCommand, and evolves the stored event
+  safely if its shape changes.

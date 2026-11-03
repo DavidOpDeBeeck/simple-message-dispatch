@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Import;
 
 import java.util.UUID;
 
+import static app.dodb.smd.ticket.drivenadapter.DrivenAdapterConfiguration.TICKET_ACTIVITY;
 import static app.dodb.smd.ticket.drivenadapter.ticketactivity.TicketActivityIntegrationTest.TestConfig;
 import static app.dodb.smd.ticket.test.TicketTestConstants.CUSTOMER_ID;
 import static app.dodb.smd.ticket.test.TicketTestConstants.TICKET_ASSIGNEE;
@@ -34,9 +35,9 @@ class TicketActivityIntegrationTest {
     static class TestConfig {
 
         @Bean
-        ProcessingGroupsConfigurer ticketProcessingGroups(EventStore eventStore) {
+        ProcessingGroupsConfigurer drivenAdapterProcessingGroups(EventStore eventStore) {
             return spec -> spec
-                .processingGroup("ticket-activity").source(eventStore.outlet())
+                .processingGroup(TICKET_ACTIVITY).source(eventStore.outlet())
                 .anyProcessingGroup().disabled();
         }
     }

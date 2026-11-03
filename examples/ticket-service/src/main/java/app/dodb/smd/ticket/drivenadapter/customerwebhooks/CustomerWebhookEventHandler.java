@@ -4,11 +4,12 @@ import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.MetadataValue;
+import app.dodb.smd.ticket.drivenadapter.DrivenAdapterConfiguration;
 import app.dodb.smd.ticket.drivingport.event.TicketEvent;
 import org.springframework.stereotype.Component;
 
 @Component
-@ProcessingGroup("customer-webhooks")
+@ProcessingGroup(DrivenAdapterConfiguration.CUSTOMER_WEBHOOKS)
 public class CustomerWebhookEventHandler {
 
     private final CustomerWebhookSender webhookSender;

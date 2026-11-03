@@ -21,14 +21,19 @@ import java.util.Map;
 @ComponentScan
 public class DrivenAdapterConfiguration {
 
+    public static final String TICKET_VIEW = "ticket-view";
+    public static final String TICKET_LOG = "ticket-log";
+    public static final String TICKET_ACTIVITY = "ticket-activity";
+    public static final String CUSTOMER_WEBHOOKS = "customer-webhooks";
+
     @Bean
-    @ConditionalOnMissingBean(name = "ticketProcessingGroups")
-    public ProcessingGroupsConfigurer ticketProcessingGroups(DurableDelivery durableDelivery, EventStore eventStore) {
+    @ConditionalOnMissingBean(name = "drivenAdapterProcessingGroups")
+    public ProcessingGroupsConfigurer drivenAdapterProcessingGroups(DurableDelivery durableDelivery, EventStore eventStore) {
         return spec -> spec
-            .processingGroup("ticket-view").sync()
-            .processingGroup("notifications").async().await()
-            .processingGroup("ticket-activity").source(eventStore.outlet())
-            .processingGroup("customer-webhooks").medium(durableDelivery.dispatcher("ticket-service.customer-webhooks"));
+            .processingGroup(TICKET_VIEW).sync()
+            .processingGroup(TICKET_LOG).async().await()
+            .processingGroup(TICKET_ACTIVITY).source(eventStore.outlet())
+            .processingGroup(CUSTOMER_WEBHOOKS).medium(durableDelivery.dispatcher("ticket-service." + CUSTOMER_WEBHOOKS));
     }
 
     @Bean

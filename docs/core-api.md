@@ -169,7 +169,7 @@ The default `processingGroups(locator)` configuration is synchronous. Configure 
 ```java
 var eventBus = EventBusSpec.withDefaults()
         .processingGroups(locator, groups -> {
-            groups.processingGroup("notifications").async().await();
+            groups.processingGroup("ticket-log").async().await();
             groups.processingGroup("ticket-view").sync();
             groups.anyProcessingGroup().sync();
         })

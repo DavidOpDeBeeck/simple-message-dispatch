@@ -51,7 +51,7 @@ Without a `ProcessingGroupsConfigurer`, every group uses synchronous delivery. A
 @Bean
 ProcessingGroupsConfigurer processingGroupsConfigurer() {
     return groups -> {
-        groups.processingGroup("notifications").async().await();
+        groups.processingGroup("ticket-log").async().await();
         groups.processingGroup("ticket-view").sync();
         groups.anyProcessingGroup().sync();
     };

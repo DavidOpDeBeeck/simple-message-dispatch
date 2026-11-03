@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: external-call-on-durable-dispatcher
+expected_outcome: |
+  Sends the email from a new processing group on its own durable dispatcher, never from a command handler or a
+  sync() group, with an idempotent handler and an integration test.

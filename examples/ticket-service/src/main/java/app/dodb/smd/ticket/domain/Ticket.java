@@ -12,12 +12,13 @@ import app.dodb.smd.ticket.drivingport.event.TicketAssignedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketOpenedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketResolvedEvent;
+import app.dodb.smd.ticket.drivingport.transferobject.TicketStatus;
 
 import java.util.UUID;
 
-import static app.dodb.smd.ticket.domain.TicketStatus.ASSIGNED;
-import static app.dodb.smd.ticket.domain.TicketStatus.OPEN;
-import static app.dodb.smd.ticket.domain.TicketStatus.RESOLVED;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.ASSIGNED;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.OPEN;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.RESOLVED;
 
 @Aggregate("ticket")
 public class Ticket {

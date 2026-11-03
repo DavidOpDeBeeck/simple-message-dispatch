@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: interpret-missing-group-configuration
+expected_outcome: |
+  Explains that a ProcessingGroupsConfigurer exists but no configurer names the group, and fixes it by naming
+  the group with an explicit delivery in the configurer of the layer that holds its handlers.

@@ -1,5 +1,7 @@
 package app.dodb.smd.ticket.domain;
 
+import app.dodb.smd.ticket.drivingport.transferobject.TicketStatus;
+
 import java.util.UUID;
 
 public class InvalidTicketTransitionException extends RuntimeException {

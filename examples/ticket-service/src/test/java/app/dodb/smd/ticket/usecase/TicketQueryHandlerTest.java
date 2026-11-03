@@ -2,7 +2,7 @@ package app.dodb.smd.ticket.usecase;
 
 import app.dodb.smd.spring.test.EnableSMDStubs;
 import app.dodb.smd.test.SMDTestExtension;
-import app.dodb.smd.ticket.domain.TicketStatus;
+import app.dodb.smd.ticket.drivingport.transferobject.TicketStatus;
 import app.dodb.smd.ticket.drivingport.query.GetTicketActivityQuery;
 import app.dodb.smd.ticket.drivingport.query.GetTicketQuery;
 import app.dodb.smd.ticket.drivingport.transferobject.TicketActivityDTO;

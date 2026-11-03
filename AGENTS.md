@@ -104,6 +104,15 @@ Before coding, identify the owning module, smallest public contract, safe defaul
 
 Implement one semantic slice. Check parallel command/query/event paths, add focused tests, and update documentation when public behavior or configuration changes.
 
+## Agent Skill
+
+`.agents/skills/smd` teaches agents to build Spring Boot applications with SMD. Applications copy it from the tag of the SMD version they use, so it must describe the code
+of the commit it is in.
+
+- Update the skill in the same change as the public API, configuration, behavior, or error messages it describes.
+- Its examples follow `examples/ticket-service`; when a change alters a pattern both show, update both.
+- When releasing, set the version in its `SKILL.md`.
+
 ## Commands
 
 ```bash
