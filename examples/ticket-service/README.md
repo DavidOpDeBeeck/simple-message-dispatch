@@ -19,7 +19,7 @@ HTTP -> CommandGateway -> Ticket (replayed from its stream)
                                       |
                                       `-> applied events -> smd_event_store (subject_type = ticket, subject_id = ticket ID, subject_version = n)
                                             |-> ticket-view
-                                            |-> notifications
+                                            |-> ticket-log
                                             |-> ticket-activity
                                             `-> dispatcher => customer-webhooks
 ```
@@ -27,19 +27,20 @@ HTTP -> CommandGateway -> Ticket (replayed from its stream)
 `OpenTicketCommand` creates a ticket; `AssignTicketCommand` and `ResolveTicketCommand` target an existing one. An unknown ticket returns 404
 (`AggregateNotFoundException`) and a concurrent change 409 (`ConcurrentAggregateChangeException`).
 
-The controller adds the required `X-Customer-Id` header to message metadata. Nested events inherit that property and receive a parent message ID. `MessageLoggingInterceptor` logs the message type,
+The controller adds the required `X-Customer-Id` header to message metadata. `RequestPrincipalProvider` makes the optional `X-User-Id` header the principal of
+every message a request starts, a `TicketUser`, or `anonymous` without it. Nested events inherit that property and principal and receive a parent message ID. `MessageLoggingInterceptor` logs the message type,
 message ID, parent ID, customer ID, and duration, while the durable activity projection stores the customer ID with each event.
 
 ## Event delivery
 
 [`DrivenAdapterConfiguration`](src/main/java/app/dodb/smd/ticket/drivenadapter/DrivenAdapterConfiguration.java) assigns a different delivery policy to each processing group:
 
-| Processing group    | Delivery               | Observable behavior                                                                                   |
-|---------------------|------------------------|-------------------------------------------------------------------------------------------------------|
-| `ticket-view`       | Synchronous            | Updates the queryable ticket view on the publishing thread before the command returns                 |
-| `notifications`     | Async-await            | Logs notifications on virtual threads and waits for every matching handler                            |
-| `ticket-activity`   | PostgreSQL event store | Persists events in the command transaction, then builds the ordered activity timeline through polling |
-| `customer-webhooks` | Durable dispatcher     | Stores events in the command transaction, then sends each customer webhook until it succeeds          |
+| Processing group    | Delivery               | Observable behavior                                                                                     |
+|---------------------|------------------------|---------------------------------------------------------------------------------------------------------|
+| `ticket-view`       | Synchronous            | Updates the queryable ticket view on the publishing thread before the command returns                   |
+| `ticket-log`        | Async-await            | Logs each ticket change with its customer and principal on a virtual thread; the publisher waits for it |
+| `ticket-activity`   | PostgreSQL event store | Persists events in the command transaction, then builds the ordered activity timeline through polling   |
+| `customer-webhooks` | Durable dispatcher     | Stores events in the command transaction, then sends each customer webhook until it succeeds            |
 
 The appended events, synchronous ticket view, and dispatcher entry are committed together with the command. An invalid state transition rolls them back.
 Activity processing uses the event message ID as an idempotency key, and the explicit event-type mapping keeps stored names stable across Java class changes.
@@ -54,15 +55,15 @@ delivery ID, which lets the customer drop duplicates. `LoggingCustomerWebhookSen
 
 ## Project layout
 
-| Package          | Responsibility                                                     |
-|------------------|--------------------------------------------------------------------|
-| `domain`         | The event-sourced `Ticket` aggregate and its lifecycle transitions |
-| `drivingport`    | Commands, queries, events, and API transfer objects                |
-| `usecase`        | Query handlers                                                     |
-| `drivenport`     | Repository contracts used by the handlers                          |
-| `drivenadapter`  | JDBC repositories, projections, and processing-group configuration |
-| `drivingadapter` | REST endpoints                                                     |
-| `infrastructure` | Cross-cutting message logging                                      |
+| Package          | Responsibility                                                          |
+|------------------|-------------------------------------------------------------------------|
+| `domain`         | The event-sourced `Ticket` aggregate and its lifecycle transitions      |
+| `drivingport`    | Commands, queries, events, API transfer objects, and the principal      |
+| `usecase`        | Query handlers                                                          |
+| `drivenport`     | Repository contracts used by the handlers                               |
+| `drivenadapter`  | JDBC repositories, projections, the ticket log, and group configuration |
+| `drivingadapter` | REST endpoints                                                          |
+| `infrastructure` | Cross-cutting message logging and the request principal                 |
 
 This keeps the domain and use cases independent of the REST and JDBC adapters while leaving the SMD wiring explicit.
 
@@ -85,7 +86,7 @@ docker compose up -d
 
 ## Complete API flow
 
-Every endpoint requires `X-Customer-Id`. IntelliJ users can run the same lifecycle from [`tickets.http`](tickets.http).
+Every endpoint requires `X-Customer-Id` and accepts an optional `X-User-Id`. IntelliJ users can run the same lifecycle from [`tickets.http`](tickets.http).
 
 Open a ticket:
 
@@ -94,6 +95,7 @@ curl --fail-with-body -sS \
   -X POST http://localhost:8080/tickets \
   -H 'Content-Type: application/json' \
   -H 'X-Customer-Id: customer-42' \
+  -H 'X-User-Id: agent-7' \
   -d '{"title":"Cannot sign in","description":"Password reset does not arrive"}'
 ```
 
@@ -106,12 +108,14 @@ curl --fail-with-body -sS \
   -X POST "http://localhost:8080/tickets/${TICKET_ID}/assign" \
   -H 'Content-Type: application/json' \
   -H 'X-Customer-Id: customer-42' \
+  -H 'X-User-Id: agent-7' \
   -d '{"assignee":"agent-7"}'
 
 curl --fail-with-body -sS \
   -X POST "http://localhost:8080/tickets/${TICKET_ID}/resolve" \
   -H 'Content-Type: application/json' \
   -H 'X-Customer-Id: customer-42' \
+  -H 'X-User-Id: agent-7' \
   -d '{"resolution":"Reset mail was unblocked"}'
 ```
 
@@ -120,7 +124,8 @@ Read the current ticket view:
 ```bash
 curl --fail-with-body -sS \
   "http://localhost:8080/tickets/${TICKET_ID}" \
-  -H 'X-Customer-Id: customer-42'
+  -H 'X-Customer-Id: customer-42' \
+  -H 'X-User-Id: agent-7'
 ```
 
 Read the eventual activity projection:
@@ -128,7 +133,8 @@ Read the eventual activity projection:
 ```bash
 curl --fail-with-body -sS \
   "http://localhost:8080/tickets/${TICKET_ID}/activity" \
-  -H 'X-Customer-Id: customer-42'
+  -H 'X-Customer-Id: customer-42' \
+  -H 'X-User-Id: agent-7'
 ```
 
 After the complete lifecycle, activity contains `TicketOpened`, `TicketAssigned`, and `TicketResolved` entries in order.
@@ -145,6 +151,6 @@ The verification tasks can also be run separately:
 
 | Task              | Coverage                                                                                               |
 |-------------------|--------------------------------------------------------------------------------------------------------|
-| `test`            | Ticket aggregate with `AggregateTestFixture`; query handlers with `@EnableSMDStubs`                     |
+| `test`            | Ticket aggregate with `AggregateTestFixture`; query handlers with `@EnableSMDStubs`; request principal |
 | `integrationTest` | JDBC adapters and all four processing groups against PostgreSQL 18 with Testcontainers                 |
 | `acceptanceTest`  | Complete REST lifecycle, immediate ticket view, and metadata-backed activity                           |

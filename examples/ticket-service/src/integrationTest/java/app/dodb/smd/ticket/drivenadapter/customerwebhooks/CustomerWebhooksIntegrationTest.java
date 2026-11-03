@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Primary;
 
 import java.util.UUID;
 
+import static app.dodb.smd.ticket.drivenadapter.DrivenAdapterConfiguration.CUSTOMER_WEBHOOKS;
 import static app.dodb.smd.ticket.drivenadapter.customerwebhooks.CustomerWebhooksIntegrationTest.TestConfig;
 import static app.dodb.smd.ticket.test.TicketTestConstants.CUSTOMER_ID;
 import static app.dodb.smd.ticket.test.TicketTestConstants.TICKET_ASSIGNEE;
@@ -35,9 +36,9 @@ class CustomerWebhooksIntegrationTest {
     static class TestConfig {
 
         @Bean
-        ProcessingGroupsConfigurer ticketProcessingGroups(DurableDelivery durableDelivery) {
+        ProcessingGroupsConfigurer drivenAdapterProcessingGroups(DurableDelivery durableDelivery) {
             return spec -> spec
-                .processingGroup("customer-webhooks").medium(durableDelivery.dispatcher("ticket-service.customer-webhooks"))
+                .processingGroup(CUSTOMER_WEBHOOKS).medium(durableDelivery.dispatcher("ticket-service." + CUSTOMER_WEBHOOKS))
                 .anyProcessingGroup().disabled();
         }
 

@@ -188,14 +188,14 @@ Every event handler belongs to a processing group. An event can have matching ha
 
 ```java
 @Component
-@ProcessingGroup("notifications")
-public class TicketNotificationEventHandler {
+@ProcessingGroup("ticket-log")
+public class TicketLogEventHandler {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TicketNotificationEventHandler.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(TicketLogEventHandler.class);
 
     @EventHandler
     public void handle(TicketOpenedEvent event) {
-        LOGGER.info("Ticket opened notification: ticketId={}, title={}", event.ticketId(), event.title());
+        LOGGER.info("Ticket opened: ticketId={}, title={}", event.ticketId(), event.title());
     }
 }
 ```
@@ -269,7 +269,7 @@ curl --fail-with-body -sS \
   -d '{"title":"Cannot sign in","description":"Password reset does not arrive"}'
 ```
 
-The response contains the generated `ticketId`, title, and description. The application also logs `Ticket opened notification`, proving that the event handler completed before the response was
+The response contains the generated `ticketId`, title, and description. The application also logs `Ticket opened`, proving that the event handler completed before the response was
 returned.
 
 ## Important Handler Rules
@@ -281,4 +281,4 @@ returned.
 - Handler classes must be discoverable Spring beans.
 
 Next, add a focused handler-flow test with [Testing](testing.md), choose delivery and transaction behavior in [Spring Boot](spring-boot.md), or make events durable with [Event Sourcing](event-store.md).
-The runnable [ticket service](../examples/ticket-service/README.md) demonstrates the complete lifecycle with JDBC, projections, metadata, and three delivery modes.
+The runnable [ticket service](../examples/ticket-service/README.md) demonstrates the complete lifecycle with JDBC, projections, metadata, and four delivery modes.

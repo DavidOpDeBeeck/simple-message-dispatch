@@ -51,11 +51,14 @@ dependencies {
 
 Start with [Getting Started](docs/getting-started.md), or browse the [documentation index](docs/README.md).
 
+To let a coding agent build with SMD, copy [`.agents/skills/smd`](.agents/skills/smd/SKILL.md) from the tag of your SMD version into your application's skills
+directory, such as `.agents/skills/` or `.claude/skills/`. Leave out its `evals/`: they test the skill against the ticket service.
+
 To watch an application's commands, queries, and events live, see [SMD Monitor](https://github.com/DavidOpDeBeeck/smd-monitor), an optional monitor built on `smd-opentelemetry`.
 
 ## Examples
 
-The [ticket service](examples/ticket-service/README.md) demonstrates a complete lifecycle with REST, JDBC projections, three event delivery modes, metadata lineage, and PostgreSQL event-store
+The [ticket service](examples/ticket-service/README.md) demonstrates a complete lifecycle with REST, JDBC projections, four event delivery modes, metadata lineage, and PostgreSQL event-store
 processing.
 
 ## Changelog

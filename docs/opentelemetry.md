@@ -56,7 +56,7 @@ POST /tickets
 └─ send app.dodb.tickets.OpenTicket                  command
    └─ publish app.dodb.tickets.TicketOpened          event                          → links to send OpenTicket
       ├─ send app.dodb.tickets.TicketOpened          delivery sync                  → links to publish
-      │  └─ process app.dodb.tickets.TicketOpened    group notifications, sync      → links to publish
+      │  └─ process app.dodb.tickets.TicketOpened    group ticket-log, sync         → links to publish
       ├─ send app.dodb.tickets.TicketOpened          delivery event-store           → links to publish
       └─ process app.dodb.tickets.TicketOpened       group projections, event-store → links to publish
 ```

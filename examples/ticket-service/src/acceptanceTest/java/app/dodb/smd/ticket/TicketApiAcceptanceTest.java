@@ -13,9 +13,9 @@ import org.springframework.web.client.RestClient;
 
 import java.util.List;
 
-import static app.dodb.smd.ticket.domain.TicketStatus.ASSIGNED;
-import static app.dodb.smd.ticket.domain.TicketStatus.OPEN;
-import static app.dodb.smd.ticket.domain.TicketStatus.RESOLVED;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.ASSIGNED;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.OPEN;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.RESOLVED;
 import static app.dodb.smd.ticket.test.TicketTestConstants.CUSTOMER_ID;
 import static app.dodb.smd.ticket.test.TicketTestConstants.TICKET_ASSIGNEE;
 import static app.dodb.smd.ticket.test.TicketTestConstants.TICKET_DESCRIPTION;

@@ -1,10 +1,12 @@
 @host = http://localhost:8080
 @customerId = customer-42
+@userId = agent-7
 
 ### Open a ticket and capture its ID
 POST {{host}}/tickets
 Content-Type: application/json
 X-Customer-Id: {{customerId}}
+X-User-Id: {{userId}}
 
 {
     "title": "Cannot sign in",
@@ -19,6 +21,7 @@ X-Customer-Id: {{customerId}}
 POST {{host}}/tickets/{{ticketId}}/assign
 Content-Type: application/json
 X-Customer-Id: {{customerId}}
+X-User-Id: {{userId}}
 
 {
     "assignee": "agent-7"
@@ -28,6 +31,7 @@ X-Customer-Id: {{customerId}}
 POST {{host}}/tickets/{{ticketId}}/resolve
 Content-Type: application/json
 X-Customer-Id: {{customerId}}
+X-User-Id: {{userId}}
 
 {
     "resolution": "Reset mail was unblocked"
@@ -36,7 +40,9 @@ X-Customer-Id: {{customerId}}
 ### Get the immediately updated ticket view
 GET {{host}}/tickets/{{ticketId}}
 X-Customer-Id: {{customerId}}
+X-User-Id: {{userId}}
 
 ### Get the eventual durable activity timeline
 GET {{host}}/tickets/{{ticketId}}/activity
 X-Customer-Id: {{customerId}}
+X-User-Id: {{userId}}

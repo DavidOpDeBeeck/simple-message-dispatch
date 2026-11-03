@@ -2,7 +2,8 @@ package app.dodb.smd.ticket.drivenadapter.ticketview;
 
 import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.ProcessingGroup;
-import app.dodb.smd.ticket.domain.TicketStatus;
+import app.dodb.smd.ticket.drivingport.transferobject.TicketStatus;
+import app.dodb.smd.ticket.drivenadapter.DrivenAdapterConfiguration;
 import app.dodb.smd.ticket.drivenport.TicketViewRepository;
 import app.dodb.smd.ticket.drivingport.event.TicketAssignedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketOpenedEvent;
@@ -17,7 +18,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-@ProcessingGroup("ticket-view")
+@ProcessingGroup(DrivenAdapterConfiguration.TICKET_VIEW)
 public class JdbcTicketViewRepository implements TicketViewRepository {
 
     private final JdbcTemplate jdbc;

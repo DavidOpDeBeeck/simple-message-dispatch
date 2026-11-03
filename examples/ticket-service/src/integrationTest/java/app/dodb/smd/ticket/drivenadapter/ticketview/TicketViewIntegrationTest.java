@@ -16,10 +16,11 @@ import org.springframework.context.annotation.Import;
 import java.time.Instant;
 import java.util.UUID;
 
-import static app.dodb.smd.ticket.domain.TicketStatus.ASSIGNED;
-import static app.dodb.smd.ticket.domain.TicketStatus.OPEN;
-import static app.dodb.smd.ticket.domain.TicketStatus.RESOLVED;
+import static app.dodb.smd.ticket.drivenadapter.DrivenAdapterConfiguration.TICKET_VIEW;
 import static app.dodb.smd.ticket.drivenadapter.ticketview.TicketViewIntegrationTest.TestConfig;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.ASSIGNED;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.OPEN;
+import static app.dodb.smd.ticket.drivingport.transferobject.TicketStatus.RESOLVED;
 import static app.dodb.smd.ticket.test.TicketTestConstants.CUSTOMER_ID;
 import static app.dodb.smd.ticket.test.TicketTestConstants.TICKET_ASSIGNEE;
 import static app.dodb.smd.ticket.test.TicketTestConstants.TICKET_DESCRIPTION;
@@ -35,9 +36,9 @@ class TicketViewIntegrationTest {
     static class TestConfig {
 
         @Bean
-        ProcessingGroupsConfigurer ticketProcessingGroups() {
+        ProcessingGroupsConfigurer drivenAdapterProcessingGroups() {
             return spec -> spec
-                .processingGroup("ticket-view").sync()
+                .processingGroup(TICKET_VIEW).sync()
                 .anyProcessingGroup().disabled();
         }
     }

@@ -4,6 +4,7 @@ import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.MetadataValue;
+import app.dodb.smd.ticket.drivenadapter.DrivenAdapterConfiguration;
 import app.dodb.smd.ticket.drivenport.TicketActivityRepository;
 import app.dodb.smd.ticket.drivingport.event.TicketAssignedEvent;
 import app.dodb.smd.ticket.drivingport.event.TicketOpenedEvent;
@@ -18,7 +19,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-@ProcessingGroup("ticket-activity")
+@ProcessingGroup(DrivenAdapterConfiguration.TICKET_ACTIVITY)
 public class JdbcTicketActivityRepository implements TicketActivityRepository {
 
     private final JdbcTemplate jdbc;

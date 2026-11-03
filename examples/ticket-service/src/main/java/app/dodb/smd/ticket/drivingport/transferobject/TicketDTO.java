@@ -1,7 +1,5 @@
 package app.dodb.smd.ticket.drivingport.transferobject;
 
-import app.dodb.smd.ticket.domain.TicketStatus;
-
 import java.time.Instant;
 import java.util.UUID;
 

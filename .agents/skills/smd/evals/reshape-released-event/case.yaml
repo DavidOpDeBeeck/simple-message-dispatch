@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: reshape-released-event
+expected_outcome: |
+  Treats TicketOpenedEvent as released: maps it under a new versioned type name, removes the old name from the
+  resolver, and adds an EventUpcaster that sets NORMAL on old events, with a test that reads an old stored
+  event.
