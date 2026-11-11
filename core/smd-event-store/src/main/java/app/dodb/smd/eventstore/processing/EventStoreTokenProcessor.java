@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.HashSet;
 
 import static java.time.Duration.between;
 import static java.util.Objects.requireNonNull;
@@ -81,6 +82,7 @@ class EventStoreTokenProcessor {
         long lastInspectedPosition = initialPosition;
         int indexInBatch = 0;
         int lastProcessedIndexInBatch = 0;
+        var waitingSequences = new HashSet<EventSequenceId>();
 
         try (var events = eventStorage.load(initialPosition, batchSize)) {
             if (!events.hasNext()) {
@@ -115,9 +117,17 @@ class EventStoreTokenProcessor {
                     }
                 }
 
+                var sequenceId = EventSequenceProcessor.sequenceId(storedEvent);
+                if (waitingSequences.contains(sequenceId)) {
+                    continue;
+                }
+
                 var result = eventSequenceProcessor.process(listener, storedEvent);
                 if (result instanceof Failure failure) {
                     throw new BatchProcessingFailure(failure, lastProcessedIndexInBatch);
+                }
+                if (!result.advancesToken()) {
+                    waitingSequences.add(sequenceId);
                 }
                 if (result instanceof Processed) {
                     lastProcessedIndexInBatch = indexInBatch;

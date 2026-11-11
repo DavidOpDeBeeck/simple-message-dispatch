@@ -94,7 +94,7 @@ class EventSequenceProcessor {
         return new Processed();
     }
 
-    private static EventSequenceId sequenceId(StoredEvent storedEvent) {
+    static EventSequenceId sequenceId(StoredEvent storedEvent) {
         return storedEvent.subject()
             .<EventSequenceId>map(EventSequenceId.OfSubject::new)
             .orElseGet(EventSequenceId.Global::new);
