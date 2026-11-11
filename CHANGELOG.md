@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.0.14] - 2026-11-11
 
 - An aggregate command now sees changes made to its aggregate earlier in the same transaction, so several commands to one aggregate in one transaction succeed.
 - Custom `TransactionProvider`s must implement the new `resource(key, initial)`. Event store serialization errors now surface at `publish`.

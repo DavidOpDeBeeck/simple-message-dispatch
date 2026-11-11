@@ -8,9 +8,9 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-spring-boot-starter:0.0.13")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.14")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.13")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.14")
 }
 ```
 
@@ -34,7 +34,7 @@ Copy each schema into a versioned Flyway migration. SMD never applies them:
 | Event store      | https://github.com/DavidOpDeBeeck/simple-message-dispatch/blob/main/core/smd-event-store/src/main/resources/db/smd/event-store-schema.sql             |
 | Durable delivery | https://github.com/DavidOpDeBeeck/simple-message-dispatch/blob/main/core/smd-durable-delivery/src/main/resources/db/smd/durable-delivery-schema.sql |
 
-Use the schema of the tag that matches the SMD version, for example `blob/0.0.13/...`, when `main` has moved on. Then enable the features:
+Use the schema of the tag that matches the SMD version, for example `blob/0.0.14/...`, when `main` has moved on. Then enable the features:
 
 ```yaml
 smd:

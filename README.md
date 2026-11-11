@@ -31,8 +31,8 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-spring-boot-starter:0.0.13")
-    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.13")
+    implementation("app.dodb:smd-spring-boot-starter:0.0.14")
+    testImplementation("app.dodb:smd-spring-boot-starter-test:0.0.14")
 }
 ```
 
@@ -40,12 +40,12 @@ Without Spring Boot, add the core API and opt into the event store for event sou
 
 ```kotlin
 dependencies {
-    implementation("app.dodb:smd-api:0.0.13")
-    implementation("app.dodb:smd-event-store:0.0.13") // Optional
-    implementation("app.dodb:smd-opentelemetry:0.0.13") // Optional
-    implementation("app.dodb:smd-durable-delivery:0.0.13") // Optional
-    testImplementation("app.dodb:smd-test:0.0.13")
-    testImplementation("app.dodb:smd-event-store-test:0.0.13") // Optional
+    implementation("app.dodb:smd-api:0.0.14")
+    implementation("app.dodb:smd-event-store:0.0.14") // Optional
+    implementation("app.dodb:smd-opentelemetry:0.0.14") // Optional
+    implementation("app.dodb:smd-durable-delivery:0.0.14") // Optional
+    testImplementation("app.dodb:smd-test:0.0.14")
+    testImplementation("app.dodb:smd-event-store-test:0.0.14") // Optional
 }
 ```
 

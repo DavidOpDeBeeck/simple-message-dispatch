@@ -10,7 +10,7 @@ repositories {
 }
 
 dependencies {
-    implementation("app.dodb:smd-api:0.0.13")
+    implementation("app.dodb:smd-api:0.0.14")
 }
 ```
 
