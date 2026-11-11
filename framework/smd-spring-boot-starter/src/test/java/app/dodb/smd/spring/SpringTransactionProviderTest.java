@@ -2,7 +2,10 @@ package app.dodb.smd.spring;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -133,6 +136,20 @@ class SpringTransactionProviderTest {
     }
 
     @Test
+    void defer_onOtherThreadWithinScope_runsCallbackImmediately() {
+        var provider = new SpringTransactionProvider();
+        var steps = new CopyOnWriteArrayList<String>();
+
+        provider.doInTransaction(() -> {
+            var otherThread = Thread.ofVirtual().start(() -> provider.defer(() -> steps.add("other-thread-callback")));
+            join(otherThread);
+            steps.add("root-transaction-body");
+        });
+
+        assertThat(steps).containsExactly("other-thread-callback", "root-transaction-body");
+    }
+
+    @Test
     void defer_callbacksRunInOrder() {
         var provider = new SpringTransactionProvider();
         var callbackOrder = new ArrayList<Integer>();
@@ -160,6 +177,80 @@ class SpringTransactionProviderTest {
             .hasMessage("boom");
 
         assertThat(secondCallbackExecuted).isFalse();
+    }
+
+    @Test
+    void resource_withinScopeAndJoinedTransaction_sharesValue() {
+        var provider = new SpringTransactionProvider();
+        var key = new Object();
+
+        provider.doInTransaction(() -> {
+            List<String> resource = provider.resource(key, ArrayList::new);
+            resource.add("root");
+            provider.doInTransaction(() -> provider.<List<String>>resource(key, ArrayList::new).add("joined"));
+
+            assertThat(provider.<List<String>>resource(key, ArrayList::new)).isSameAs(resource).containsExactly("root", "joined");
+        });
+    }
+
+    @Test
+    void resource_acrossScopes_returnsSeparateValues() {
+        var provider = new SpringTransactionProvider();
+        var key = new Object();
+
+        var first = provider.doInTransaction(() -> provider.resource(key, Object::new));
+        var second = provider.doInTransaction(() -> provider.resource(key, Object::new));
+
+        assertThat(first).isNotSameAs(second);
+    }
+
+    @Test
+    void resource_inNewTransaction_returnsSeparateValue() {
+        var provider = new SpringTransactionProvider();
+        var key = new Object();
+
+        provider.doInTransaction(() -> {
+            var outer = provider.resource(key, Object::new);
+            var inner = provider.doInNewTransaction(() -> provider.resource(key, Object::new));
+
+            assertThat(inner).isNotSameAs(outer);
+            assertThat(provider.resource(key, Object::new)).isSameAs(outer);
+        });
+    }
+
+    @Test
+    void resource_afterFailedScope_returnsFreshValue() {
+        var provider = new SpringTransactionProvider();
+        var key = new Object();
+        var failedScopeResource = new ArrayList<Object>();
+
+        handleSimulatedFailure(() -> provider.doInTransaction(() -> {
+            failedScopeResource.add(provider.resource(key, Object::new));
+            throw new IllegalStateException();
+        }));
+        var resource = provider.doInTransaction(() -> provider.resource(key, Object::new));
+
+        assertThat(resource).isNotSameAs(failedScopeResource.getFirst());
+    }
+
+    @Test
+    void resource_outsideScope_returnsFreshValue() {
+        var provider = new SpringTransactionProvider();
+        var key = new Object();
+
+        var first = provider.resource(key, Object::new);
+        var second = provider.resource(key, Object::new);
+
+        assertThat(first).isNotSameAs(second);
+    }
+
+    private static void join(Thread thread) {
+        try {
+            thread.join(Duration.ofSeconds(5));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
     }
 
     private static void handleSimulatedFailure(Runnable runnable) {

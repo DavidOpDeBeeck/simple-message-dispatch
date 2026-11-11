@@ -111,6 +111,8 @@ Each rule ends with its reason.
   durable dispatcher inlets join it. Everything commits or rolls back together.
 - The event store and durable dispatchers write when the outermost transaction commits, after the handlers and `sync()` groups ran. Their failures, such as an unmapped
   event type or `ConcurrentAggregateChangeException`, therefore surface at the end of `send(...)` or `publish(...)`, and a nested `send(...)` cannot catch them.
+  The event store serializes when the event is published, so its serialization errors surface at `publish`.
+- A command sees the changes made to its aggregate earlier in the same transaction, such as by a `sync()` policy reacting to the creation event.
 - Durable groups handle events later, in batches, each batch in its own transaction together with the group's progress.
 - Never start your own transaction around a gateway call to bundle several commands. One command is one unit of work.
 

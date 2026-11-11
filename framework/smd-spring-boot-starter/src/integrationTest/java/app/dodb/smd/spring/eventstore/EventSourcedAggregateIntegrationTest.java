@@ -3,6 +3,7 @@ package app.dodb.smd.spring.eventstore;
 import app.dodb.smd.api.command.CommandGateway;
 import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.framework.TransactionProvider;
+import app.dodb.smd.eventstore.aggregate.AggregateNotFoundException;
 import app.dodb.smd.eventstore.aggregate.ConcurrentAggregateChangeException;
 import app.dodb.smd.eventstore.storage.StoredEvent;
 import app.dodb.smd.spring.ManualPollingScheduler;
@@ -139,6 +140,111 @@ class EventSourcedAggregateIntegrationTest {
                     assertThat(exception.expectedVersion()).isEqualTo(1L);
                 });
             assertThat(fixture.storedEvents()).hasSize(2);
+        }
+    }
+
+    @Test
+    void send_withCreatingAndChangingCommandsInOneTransaction_storesVersionsOneAndTwo() {
+        // Given
+        try (var fixture = eventStoreTestFixture()
+            .configuration(AggregateTestConfiguration.class)
+            .properties(SCHEDULING_DISABLED)
+            .start()) {
+            var commandGateway = fixture.bean(CommandGateway.class);
+            var transactions = fixture.bean(TransactionProvider.class);
+
+            // When
+            transactions.doInTransaction(() -> {
+                commandGateway.send(new OpenBankAccountCommand(ACCOUNT_ID));
+                commandGateway.send(new DepositMoneyCommand(ACCOUNT_ID, 40));
+            });
+
+            // Then
+            assertThat(fixture.storedEvents())
+                .extracting(StoredEvent::subjectVersion, stored -> fixture.deserialize(stored).payload())
+                .containsExactly(
+                    tuple(Optional.of(1L), new BankAccountOpenedEvent(ACCOUNT_ID)),
+                    tuple(Optional.of(2L), new MoneyDepositedEvent(ACCOUNT_ID, 40))
+                );
+        }
+    }
+
+    @Test
+    void send_withTwoChangingCommandsInOneTransaction_secondSeesFirstAndStoresVersionsTwoAndThree() {
+        // Given
+        try (var fixture = eventStoreTestFixture()
+            .configuration(AggregateTestConfiguration.class)
+            .properties(SCHEDULING_DISABLED)
+            .start()) {
+            var commandGateway = fixture.bean(CommandGateway.class);
+            var transactions = fixture.bean(TransactionProvider.class);
+            commandGateway.send(new OpenBankAccountCommand(ACCOUNT_ID));
+
+            // When
+            long balance = transactions.doInTransaction(() -> {
+                commandGateway.send(new DepositMoneyCommand(ACCOUNT_ID, 40));
+                return commandGateway.send(new DepositMoneyCommand(ACCOUNT_ID, 2));
+            });
+
+            // Then
+            assertThat(balance).isEqualTo(42L);
+            assertThat(fixture.storedEvents())
+                .extracting(StoredEvent::subjectVersion, stored -> fixture.deserialize(stored).payload())
+                .containsExactly(
+                    tuple(Optional.of(1L), new BankAccountOpenedEvent(ACCOUNT_ID)),
+                    tuple(Optional.of(2L), new MoneyDepositedEvent(ACCOUNT_ID, 40)),
+                    tuple(Optional.of(3L), new MoneyDepositedEvent(ACCOUNT_ID, 2))
+                );
+        }
+    }
+
+    @Test
+    void send_withTransactionRolledBackAfterCommands_storesNothing() {
+        // Given
+        try (var fixture = eventStoreTestFixture()
+            .configuration(AggregateTestConfiguration.class)
+            .properties(SCHEDULING_DISABLED)
+            .start()) {
+            var commandGateway = fixture.bean(CommandGateway.class);
+            var transactions = fixture.bean(TransactionProvider.class);
+            var failure = new IllegalStateException("Transaction failed after the commands");
+
+            // When
+            assertThatThrownBy(() -> transactions.doInTransaction(() -> {
+                commandGateway.send(new OpenBankAccountCommand(ACCOUNT_ID));
+                commandGateway.send(new DepositMoneyCommand(ACCOUNT_ID, 40));
+                throw failure;
+            })).isSameAs(failure);
+
+            // Then
+            assertThat(fixture.storedEvents()).isEmpty();
+            assertThatThrownBy(() -> commandGateway.send(new DepositMoneyCommand(ACCOUNT_ID, 2)))
+                .isInstanceOf(AggregateNotFoundException.class);
+        }
+    }
+
+    @Test
+    void send_inNewTransactionForAggregateCreatedInOuterTransaction_throwsAggregateNotFound() {
+        // Given
+        try (var fixture = eventStoreTestFixture()
+            .configuration(AggregateTestConfiguration.class)
+            .properties(SCHEDULING_DISABLED)
+            .start()) {
+            var commandGateway = fixture.bean(CommandGateway.class);
+            var transactions = fixture.bean(TransactionProvider.class);
+
+            // When
+            transactions.doInTransaction(() -> {
+                commandGateway.send(new OpenBankAccountCommand(ACCOUNT_ID));
+
+                assertThatThrownBy(() -> transactions.doInNewTransaction(() -> commandGateway.send(new DepositMoneyCommand(ACCOUNT_ID, 40))))
+                    .isInstanceOf(AggregateNotFoundException.class);
+            });
+
+            // Then
+            assertThat(fixture.storedEvents())
+                .extracting(StoredEvent::subjectVersion, stored -> fixture.deserialize(stored).payload())
+                .containsExactly(tuple(Optional.of(1L), new BankAccountOpenedEvent(ACCOUNT_ID)));
         }
     }
 

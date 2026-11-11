@@ -8,27 +8,31 @@ import app.dodb.smd.api.command.bus.CommandBus;
 import app.dodb.smd.api.command.bus.CommandBusSpec;
 import app.dodb.smd.api.event.AnnotatedEventHandler;
 import app.dodb.smd.api.event.Event;
+import app.dodb.smd.api.event.EventHandler;
 import app.dodb.smd.api.event.EventMessage;
+import app.dodb.smd.api.event.ProcessingGroup;
 import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.event.bus.EventBus;
 import app.dodb.smd.api.event.bus.EventBusSpec;
 import app.dodb.smd.api.framework.ObjectCreator;
 import app.dodb.smd.api.framework.Provider;
 import app.dodb.smd.api.framework.SingletonProvider;
-import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.message.MessageId;
 import app.dodb.smd.api.metadata.Metadata;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 import app.dodb.smd.api.metadata.time.SystemTimeProvider;
+import app.dodb.smd.eventstore.DeferringTransactionProvider;
 import app.dodb.smd.eventstore.EventStore;
 import app.dodb.smd.eventstore.EventStoreConfig;
+import app.dodb.smd.eventstore.storage.StoredEvent;
 import app.dodb.smd.eventstore.storage.inmemory.InMemoryEventSequenceStore;
 import app.dodb.smd.eventstore.storage.inmemory.InMemoryEventStorage;
 import app.dodb.smd.eventstore.storage.inmemory.InMemoryTokenStore;
 import app.dodb.smd.serialization.ClassNameEventTypeResolver;
 import app.dodb.smd.serialization.EventSerializer;
 import app.dodb.smd.serialization.jackson.JacksonEventSerializer;
+import app.dodb.smd.serialization.jackson.JacksonEventSerializer.EventSerializationException;
 import app.dodb.smd.serialization.jackson.SMDJacksonModule;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -40,22 +44,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Supplier;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static app.dodb.smd.eventstore.EventStoreMetadata.SUBJECT_VERSION;
 import static app.dodb.smd.eventstore.EventStoreMetadata.subjectVersion;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 class AggregateCommandHandlingTest {
 
     private static final UUID TICKET_ID = UUID.fromString("5b0c1f9e-8e07-4a40-9d2b-0f6f3b7f1c11");
     private static final UUID OTHER_TICKET_ID = UUID.fromString("0d7f6a52-3c3a-4a8e-a5e4-8f0f5e8f9a22");
+    private static final UUID ORDER_ID = UUID.fromString("3e9a7c41-6b2d-4f80-9c15-7d4e2a8b6f33");
 
     private final InMemoryEventStorage eventStorage = new InMemoryEventStorage();
     private final EventSerializer eventSerializer = new JacksonEventSerializer(JsonMapper.builder().addModule(new SMDJacksonModule()).build(), new ClassNameEventTypeResolver(), List.of());
     private final DeferringTransactionProvider transactionProvider = new DeferringTransactionProvider();
     private final TestTicketProjection projection = new TestTicketProjection();
+    private final ConfirmPlacedOrderPolicy policy = new ConfirmPlacedOrderPolicy();
     private final EventStore eventStore = new EventStore(EventStoreConfig.withDefaults()
         .transactionProvider(transactionProvider)
         .eventStorage(eventStorage)
@@ -212,24 +219,75 @@ class AggregateCommandHandlingTest {
     }
 
     @Test
-    void send_staleAggregateVersion_throwsConcurrentAggregateChange() {
+    void send_twoChangingCommandsInSameTransaction_secondSeesFirstAndStoresVersionsTwoAndThree() {
         commandBus.send(new OpenTestTicketCommand(TICKET_ID, "Cannot sign in"));
 
-        // Both commands load version 1 because event storage is deferred until the shared transaction completes.
-        assertThatThrownBy(() -> transactionProvider.doInTransaction(() -> {
+        UUID result = transactionProvider.doInTransaction(() -> {
             commandBus.send(new AssignTestTicketCommand(TICKET_ID, "alice"));
-            commandBus.send(new AssignTestTicketCommand(TICKET_ID, "bob"));
-        }))
-            .isInstanceOfSatisfying(ConcurrentAggregateChangeException.class, exception -> {
-                assertThat(exception.aggregateType()).isEqualTo("test-ticket");
-                assertThat(exception.aggregateId()).isEqualTo(TICKET_ID.toString());
-                assertThat(exception.expectedVersion()).isEqualTo(1L);
-            });
+            return commandBus.send(new ResolveTestTicketCommand(TICKET_ID, "Reset mail resent"));
+        });
+
+        assertThat(result).isEqualTo(TICKET_ID);
+        assertThat(eventStorage.loadSubjectStream(new Subject("test-ticket", TICKET_ID.toString())))
+            .extracting(StoredEvent::subjectVersion, stored -> eventSerializer.deserialize(stored.serializedEvent()).payload())
+            .containsExactly(
+                tuple(Optional.of(1L), new TestTicketOpenedEvent(TICKET_ID, "Cannot sign in")),
+                tuple(Optional.of(2L), new TestTicketAssignedEvent(TICKET_ID, "alice")),
+                tuple(Optional.of(3L), new TestTicketResolvedEvent(TICKET_ID, "Reset mail resent"))
+            );
+    }
+
+    @Test
+    void send_changingCommandAfterFailedTransactionCreatedAggregate_throwsAggregateNotFound() {
+        var failure = new IllegalStateException("Transaction failed after creating the ticket");
+        assertThatThrownBy(() -> transactionProvider.doInTransaction(() -> {
+            commandBus.send(new OpenTestTicketCommand(TICKET_ID, "Cannot sign in"));
+            throw failure;
+        })).isSameAs(failure);
+
+        assertThatThrownBy(() -> commandBus.send(new AssignTestTicketCommand(TICKET_ID, "alice")))
+            .isInstanceOf(AggregateNotFoundException.class);
+
+        assertThat(eventStorage.events()).isEmpty();
+    }
+
+    @Test
+    void send_changingCommandAfterCreatingCommandInSameTransaction_changesCreatedAggregate() {
+        transactionProvider.doInTransaction(() -> {
+            commandBus.send(new OpenTestTicketCommand(TICKET_ID, "Cannot sign in"));
+            commandBus.send(new AssignTestTicketCommand(TICKET_ID, "alice"));
+        });
 
         assertThat(stream(TICKET_ID)).containsExactly(
             new TestTicketOpenedEvent(TICKET_ID, "Cannot sign in"),
             new TestTicketAssignedEvent(TICKET_ID, "alice")
         );
+    }
+
+    @Test
+    void loadSubjectStream_afterDeferredAppendInSameTransaction_returnsEachEventOnce() {
+        var loaded = new ArrayList<EventMessage<?>>();
+
+        transactionProvider.doInTransaction(() -> {
+            commandBus.send(new OpenTestTicketCommand(TICKET_ID, "Cannot sign in"));
+            transactionProvider.defer(() -> loaded.addAll(eventStore.loadSubjectStream(new Subject("test-ticket", TICKET_ID.toString()))));
+        });
+
+        assertThat(loaded).<Event>extracting(EventMessage::payload)
+            .containsExactly(new TestTicketOpenedEvent(TICKET_ID, "Cannot sign in"));
+    }
+
+    @Test
+    void send_syncPolicyChangingAggregateOnItsCreationEvent_changesCreatedAggregate() {
+        var orderCommandBus = commandBus(TestOrder.class);
+        policy.setCommandBus(orderCommandBus);
+
+        UUID result = orderCommandBus.send(new PlaceTestOrderCommand(ORDER_ID));
+
+        assertThat(result).isEqualTo(ORDER_ID);
+        assertThat(eventStorage.loadSubjectStream(new Subject("test-order", ORDER_ID.toString())))
+            .extracting(stored -> eventSerializer.deserialize(stored.serializedEvent()).payload())
+            .containsExactly(new TestOrderPlacedEvent(ORDER_ID), new TestOrderConfirmedEvent(ORDER_ID));
     }
 
     @Test
@@ -294,6 +352,23 @@ class AggregateCommandHandlingTest {
             .hasMessageContaining("a subject version requires a subject")
             .hasMessageContaining(eventMessage.messageId().value().toString());
 
+        assertThat(eventStorage.events()).isEmpty();
+    }
+
+    @Test
+    void publish_unserializableEventInsideTransaction_failsAtPublish() {
+        var eventMessage = EventMessage.from(new UnserializableTestTicketEvent(TICKET_ID), Metadata.at(Instant.now()));
+        var reachedAfterPublish = new AtomicBoolean(false);
+
+        assertThatThrownBy(() -> transactionProvider.doInTransaction(() -> {
+            eventBus().publish(eventMessage);
+            reachedAfterPublish.set(true);
+        }))
+            .isInstanceOf(EventSerializationException.class)
+            .hasMessageContaining(eventMessage.messageId().value().toString())
+            .hasRootCauseMessage("Ticket ID cannot be serialized");
+
+        assertThat(reachedAfterPublish).isFalse();
         assertThat(eventStorage.events()).isEmpty();
     }
 
@@ -477,14 +552,18 @@ class AggregateCommandHandlingTest {
 
     private EventBus eventBus() {
         return EventBusSpec.withDefaults()
-            .processingGroups(() -> AnnotatedEventHandler.from(projection))
+            .processingGroups(() -> {
+                var projectionGroup = AnnotatedEventHandler.from(projection);
+                var policyGroup = AnnotatedEventHandler.from(policy);
+                return projectionGroup.and(policyGroup);
+            })
             .sinks(eventStore.inlet())
             .create();
     }
 
     private List<Event> stream(UUID ticketId) {
         return storedMessages(ticketId).stream()
-            .<Event>map(EventMessage::payload)
+            .map(EventMessage::payload)
             .toList();
     }
 
@@ -529,6 +608,64 @@ class AggregateCommandHandlingTest {
         void on(TestTicketAssignedEvent event, MessageId messageId, Instant timestamp) {
             lastApplied = messageId + "@" + timestamp;
         }
+    }
+
+    @ProcessingGroup("test-order-confirmation")
+    public static class ConfirmPlacedOrderPolicy {
+
+        private CommandBus commandBus;
+
+        public void setCommandBus(CommandBus commandBus) {
+            this.commandBus = commandBus;
+        }
+
+        @EventHandler
+        public void on(TestOrderPlacedEvent event) {
+            commandBus.send(new ConfirmTestOrderCommand(event.orderId()));
+        }
+    }
+
+    @Aggregate("test-order")
+    public static class TestOrder {
+
+        @AggregateId
+        private UUID orderId;
+        private boolean placed;
+
+        private TestOrder() {
+        }
+
+        @AggregateCommandHandler
+        public TestOrder(PlaceTestOrderCommand command, AggregateEvents<Event> events) {
+            events.apply(new TestOrderPlacedEvent(command.orderId()));
+        }
+
+        @AggregateCommandHandler
+        public UUID handle(ConfirmTestOrderCommand command, AggregateEvents<Event> events) {
+            if (!placed) {
+                throw new IllegalStateException("Order cannot be confirmed before it is placed");
+            }
+            events.apply(new TestOrderConfirmedEvent(orderId));
+            return orderId;
+        }
+
+        @EventSourcingHandler
+        void on(TestOrderPlacedEvent event) {
+            orderId = event.orderId();
+            placed = true;
+        }
+    }
+
+    public record PlaceTestOrderCommand(UUID orderId) implements Command<UUID> {
+    }
+
+    public record ConfirmTestOrderCommand(@TargetAggregateId UUID orderId) implements Command<UUID> {
+    }
+
+    public record TestOrderPlacedEvent(UUID orderId) implements Event {
+    }
+
+    public record TestOrderConfirmedEvent(UUID orderId) implements Event {
     }
 
     public static class PlainOpenTestTicketHandler {
@@ -875,57 +1012,11 @@ class AggregateCommandHandlingTest {
     public record ReopenTestTicketByNameCommand(@TargetAggregateId String ticketId) implements Command<UUID> {
     }
 
-    // Joins an outer transaction and runs deferred work when the outermost transaction completes, like SpringTransactionProvider.
-    private static class DeferringTransactionProvider implements TransactionProvider {
-
-        private List<Runnable> deferredWork;
+    public record UnserializableTestTicketEvent(UUID ticketId) implements Event {
 
         @Override
-        public void defer(Runnable runnable) {
-            if (deferredWork == null) {
-                runnable.run();
-                return;
-            }
-            deferredWork.add(runnable);
-        }
-
-        @Override
-        public <T> T doInTransaction(Supplier<T> supplier) {
-            if (deferredWork != null) {
-                return supplier.get();
-            }
-
-            deferredWork = new ArrayList<>();
-            try {
-                var result = supplier.get();
-                deferredWork.forEach(Runnable::run);
-                return result;
-            } finally {
-                deferredWork = null;
-            }
-        }
-
-        @Override
-        public void doInTransaction(Runnable runnable) {
-            doInTransaction(() -> {
-                runnable.run();
-                return null;
-            });
-        }
-
-        @Override
-        public <T> T doInNewTransaction(Supplier<T> supplier) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void doInNewTransaction(Runnable runnable) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public <T> T doInReadOnlyTransaction(Supplier<T> supplier) {
-            throw new UnsupportedOperationException();
+        public UUID ticketId() {
+            throw new IllegalStateException("Ticket ID cannot be serialized");
         }
     }
 }

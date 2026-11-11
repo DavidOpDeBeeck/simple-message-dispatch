@@ -6,6 +6,8 @@ public interface TransactionProvider {
 
     void defer(Runnable runnable);
 
+    <T> T resource(Object key, Supplier<T> initial);
+
     <T> T doInTransaction(Supplier<T> supplier);
 
     void doInTransaction(Runnable runnable);

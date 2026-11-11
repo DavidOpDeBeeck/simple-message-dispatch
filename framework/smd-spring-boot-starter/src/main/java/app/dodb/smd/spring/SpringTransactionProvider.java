@@ -4,45 +4,53 @@ import app.dodb.smd.api.framework.TransactionProvider;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
-import static java.lang.ScopedValue.newInstance;
-import static java.lang.ScopedValue.where;
 import static org.springframework.transaction.annotation.Propagation.REQUIRES_NEW;
 
 public class SpringTransactionProvider implements TransactionProvider {
 
-    private static final ScopedValue<TransactionContext> TRANSACTION_CONTEXT = newInstance();
+    private static final ThreadLocal<TransactionContext> TRANSACTION_CONTEXT = new ThreadLocal<>();
 
     @Override
     @Transactional
     public void defer(Runnable runnable) {
-        if (TRANSACTION_CONTEXT.isBound()) {
-            TRANSACTION_CONTEXT.get().addDeferredWork(runnable);
+        var context = TRANSACTION_CONTEXT.get();
+        if (context != null) {
+            context.addDeferredWork(runnable);
             return;
         }
         runnable.run();
     }
 
     @Override
+    public <T> T resource(Object key, Supplier<T> initial) {
+        var context = TRANSACTION_CONTEXT.get();
+        if (context != null) {
+            return context.resource(key, initial);
+        }
+        return initial.get();
+    }
+
+    @Override
     @Transactional
     public <T> T doInTransaction(Supplier<T> supplier) {
-        if (TRANSACTION_CONTEXT.isBound()) {
+        if (TRANSACTION_CONTEXT.get() != null) {
             return supplier.get();
         }
-
         return callInNewContext(supplier);
     }
 
     @Override
     @Transactional
     public void doInTransaction(Runnable runnable) {
-        if (TRANSACTION_CONTEXT.isBound()) {
+        if (TRANSACTION_CONTEXT.get() != null) {
             runnable.run();
             return;
         }
-
         runInNewContext(runnable);
     }
 
@@ -65,26 +73,41 @@ public class SpringTransactionProvider implements TransactionProvider {
     }
 
     private <T> T callInNewContext(Supplier<T> supplier) {
-        return where(TRANSACTION_CONTEXT, new TransactionContext()).call(() -> {
+        var outerContext = TRANSACTION_CONTEXT.get();
+        var context = new TransactionContext();
+        TRANSACTION_CONTEXT.set(context);
+        try {
             var result = supplier.get();
-            TRANSACTION_CONTEXT.get().runDeferredWork();
+            context.runDeferredWork();
             return result;
-        });
+        } finally {
+            if (outerContext == null) {
+                TRANSACTION_CONTEXT.remove();
+            } else {
+                TRANSACTION_CONTEXT.set(outerContext);
+            }
+        }
     }
 
     private void runInNewContext(Runnable runnable) {
-        where(TRANSACTION_CONTEXT, new TransactionContext()).run(() -> {
+        callInNewContext(() -> {
             runnable.run();
-            TRANSACTION_CONTEXT.get().runDeferredWork();
+            return null;
         });
     }
 
     private static class TransactionContext {
 
         private final List<Runnable> deferredWork = new ArrayList<>();
+        private final Map<Object, Object> resources = new HashMap<>();
 
         void addDeferredWork(Runnable work) {
             deferredWork.add(work);
+        }
+
+        @SuppressWarnings("unchecked")
+        <T> T resource(Object key, Supplier<T> initial) {
+            return (T) resources.computeIfAbsent(key, _ -> initial.get());
         }
 
         void runDeferredWork() {

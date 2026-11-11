@@ -154,7 +154,11 @@ Each command runs in one transaction. The applied events are published with the 
 processing groups like any other event. If the handler throws, nothing is appended.
 
 A unique index on the aggregate type, ID, and version guards concurrent changes: when another transaction stored the same version first, the command fails with
-`ConcurrentAggregateChangeException` and rolls back. SMD does not retry; send the command again. Handle at most one command per aggregate in a transaction.
+`ConcurrentAggregateChangeException` and rolls back. SMD does not retry; send the command again.
+
+A command sees the changes made to its aggregate earlier in the same transaction, such as by a `sync()` policy reacting to the creation event or by an earlier command in
+a shared transaction. Their events are stored at commit with consecutive versions; a rollback discards them. A transaction started with `doInNewTransaction` does not see
+the outer transaction's uncommitted events.
 
 An aggregate's events have the aggregate as their [subject](#identify-event-subjects): its `@Aggregate` name as the type and its ID. Every medium, such as a
 [durable event dispatcher](durable-delivery.md), keeps them in order, with no `@SubjectId` needed. An aggregate event that declares a different `@SubjectId` fails publication.

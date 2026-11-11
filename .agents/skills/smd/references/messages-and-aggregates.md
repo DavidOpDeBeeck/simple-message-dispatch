@@ -120,7 +120,9 @@ Rules:
 - Use `@AggregateCommandHandler`, never `@CommandHandler`, inside an aggregate.
 - Command handlers may take collaborators as extra parameters, resolved as Spring beans, such as a driven port that checks something. Never write through a collaborator:
   the aggregate's events are its only output.
-- A concurrent change fails with `ConcurrentAggregateChangeException` and rolls back. SMD does not retry it; map it to `409 Conflict` or send the command again.
+- A command sees the changes made to its aggregate earlier in the same transaction, such as by a `sync()` policy reacting to the creation event.
+- A concurrent change by another transaction fails with `ConcurrentAggregateChangeException` and rolls back. SMD does not retry it; map it to `409 Conflict` or send the
+  command again.
 - The ID can come from the command instead of `UUID.randomUUID()` when a retried caller must create the aggregate only once, such as a policy on a durable dispatcher.
   A second creation with the same ID fails with `ConcurrentAggregateChangeException` at commit, so the caller checks first whether the aggregate exists, for example
   in a read model, and skips the command. Otherwise a durable delivery retries the failing creation forever.

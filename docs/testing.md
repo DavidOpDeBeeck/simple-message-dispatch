@@ -157,7 +157,7 @@ queries.stubQuery(query, Optional.of(ticket));
 assertThat(queries.send(query)).contains(ticket);
 ```
 
-`NoOpTransactionProvider` executes transactions and deferred work immediately. Use it only when real transaction boundaries are irrelevant to the test.
+`NoOpTransactionProvider` executes transactions and deferred work immediately, and returns a fresh transaction resource on each call. Use it only when real transaction boundaries are irrelevant to the test.
 
 ## Choose the Test Boundary
 

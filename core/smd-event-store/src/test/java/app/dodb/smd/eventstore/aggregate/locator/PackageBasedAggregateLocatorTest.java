@@ -3,7 +3,6 @@ package app.dodb.smd.eventstore.aggregate.locator;
 import app.dodb.smd.api.command.CommandHandlerBehaviour;
 import app.dodb.smd.api.event.bus.EventBusSpec;
 import app.dodb.smd.api.framework.ConstructorBasedObjectCreator;
-import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.api.metadata.principal.SimplePrincipalProvider;
 import app.dodb.smd.api.metadata.time.SystemTimeProvider;
@@ -22,12 +21,12 @@ import app.dodb.smd.eventstore.storage.inmemory.InMemoryTokenStore;
 import app.dodb.smd.serialization.ClassNameEventTypeResolver;
 import app.dodb.smd.serialization.jackson.JacksonEventSerializer;
 import app.dodb.smd.serialization.jackson.SMDJacksonModule;
+import app.dodb.smd.test.NoOpTransactionProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -35,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PackageBasedAggregateLocatorTest {
 
     private final EventStore eventStore = new EventStore(EventStoreConfig.withDefaults()
-        .transactionProvider(new ImmediateTransactionProvider())
+        .transactionProvider(new NoOpTransactionProvider())
         .eventStorage(new InMemoryEventStorage())
         .eventSerializer(new JacksonEventSerializer(JsonMapper.builder().addModule(new SMDJacksonModule()).build(), new ClassNameEventTypeResolver(), List.of()))
         .tokenStore(new InMemoryTokenStore())
@@ -82,38 +81,5 @@ class PackageBasedAggregateLocatorTest {
             .hasMessageContaining("Duplicate aggregate type name: duplicate-ticket")
             .hasMessageContaining(FirstDuplicateTicket.class.getName())
             .hasMessageContaining(SecondDuplicateTicket.class.getName());
-    }
-
-    private static class ImmediateTransactionProvider implements TransactionProvider {
-
-        @Override
-        public void defer(Runnable runnable) {
-            runnable.run();
-        }
-
-        @Override
-        public <T> T doInTransaction(Supplier<T> supplier) {
-            return supplier.get();
-        }
-
-        @Override
-        public void doInTransaction(Runnable runnable) {
-            runnable.run();
-        }
-
-        @Override
-        public <T> T doInNewTransaction(Supplier<T> supplier) {
-            return supplier.get();
-        }
-
-        @Override
-        public void doInNewTransaction(Runnable runnable) {
-            runnable.run();
-        }
-
-        @Override
-        public <T> T doInReadOnlyTransaction(Supplier<T> supplier) {
-            return supplier.get();
-        }
     }
 }

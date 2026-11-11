@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- An aggregate command now sees changes made to its aggregate earlier in the same transaction, so several commands to one aggregate in one transaction succeed.
+- Custom `TransactionProvider`s must implement the new `resource(key, initial)`. Event store serialization errors now surface at `publish`.
+- With Spring, threads forked with `StructuredTaskScope` no longer join the SMD transaction of the thread that forked them; like other threads, they use their own transaction.
+
 ## [0.0.13] - 2026-10-31
 
 Upgrading requires the new event-store schema; SMD provides no upgrade script.

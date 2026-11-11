@@ -12,6 +12,11 @@ public class NoOpTransactionProvider implements TransactionProvider {
     }
 
     @Override
+    public <T> T resource(Object key, Supplier<T> initial) {
+        return initial.get();
+    }
+
+    @Override
     public <T> T doInTransaction(Supplier<T> supplier) {
         return supplier.get();
     }

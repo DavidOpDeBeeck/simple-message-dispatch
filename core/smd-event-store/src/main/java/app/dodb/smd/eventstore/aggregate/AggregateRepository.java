@@ -7,8 +7,6 @@ import app.dodb.smd.api.event.Subject;
 import app.dodb.smd.api.framework.TransactionProvider;
 import app.dodb.smd.api.metadata.MetadataFactory;
 import app.dodb.smd.eventstore.EventStore;
-import app.dodb.smd.eventstore.storage.EventStorage;
-import app.dodb.smd.serialization.EventSerializer;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,18 +20,15 @@ import static java.util.Objects.requireNonNull;
 public class AggregateRepository<A> {
 
     private final AggregateModel<A> model;
+    private final EventStore eventStore;
     private final TransactionProvider transactionProvider;
-    private final EventStorage eventStorage;
-    private final EventSerializer eventSerializer;
     private final EventPublisher eventPublisher;
     private final MetadataFactory metadataFactory;
 
     AggregateRepository(AggregateModel<A> model, EventStore eventStore, EventPublisher eventPublisher, MetadataFactory metadataFactory) {
         this.model = requireNonNull(model);
-        requireNonNull(eventStore);
+        this.eventStore = requireNonNull(eventStore);
         this.transactionProvider = eventStore.config().getTransactionProvider();
-        this.eventStorage = eventStore.config().getEventStorage();
-        this.eventSerializer = eventStore.config().getEventSerializer();
         this.eventPublisher = requireNonNull(eventPublisher);
         this.metadataFactory = requireNonNull(metadataFactory);
     }
@@ -67,7 +62,7 @@ public class AggregateRepository<A> {
     public <R, E extends Event> R update(Object aggregateId, BiFunction<A, AggregateEvents<E>, R> updating) {
         var subject = subject(aggregateId);
         return transactionProvider.doInTransaction(() -> {
-            var history = load(subject);
+            var history = eventStore.loadSubjectStream(subject);
             if (history.isEmpty()) {
                 throw new AggregateNotFoundException(subject.type(), subject.id());
             }
@@ -86,12 +81,6 @@ public class AggregateRepository<A> {
 
     private Subject subject(Object aggregateId) {
         return new Subject(model.aggregateType(), aggregateId.toString());
-    }
-
-    private List<EventMessage<?>> load(Subject subject) {
-        return eventStorage.loadSubjectStream(subject).stream()
-            .<EventMessage<?>>map(storedEvent -> eventSerializer.deserialize(storedEvent.serializedEvent()))
-            .toList();
     }
 
     void publish(Subject subject, long loadedVersion, List<EventMessage<?>> eventMessages) {

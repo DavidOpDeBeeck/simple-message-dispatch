@@ -6,5 +6,6 @@ dependencies {
     implementation(libs.reflections)
     implementation(libs.slf4j)
 
+    testImplementation(project(":smd-test"))
     testImplementation(libs.jackson.databind)
 }
