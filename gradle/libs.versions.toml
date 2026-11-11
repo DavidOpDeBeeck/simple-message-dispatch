@@ -1,5 +1,5 @@
 [versions]
-smd = "0.0.14"
+smd = "0.0.15-SNAPSHOT"
 
 # Core libraries
 guava = "33.5.0-jre"
