@@ -24,6 +24,7 @@ CHANGEVIZ_OUT=smd.json path/to/tools/smd-artifact-export/extract-smd.sh \
 | `--project` | The Gradle project of the application in a multi-project build. Default `:`. |
 | `--property` | A Spring property for the boot, `key=value`, repeatable. Use it for what the tests set in `@SpringBootTest(properties = ...)`. |
 | `--config-class` | An extra configuration class to boot with, repeatable. Use it for what the tests `@Import`. |
+| `--gradle-arg` | An extra argument for the application's Gradle run, repeatable, for example `--gradle-arg --offline` or `--gradle-arg -PsomeFlag=true`. |
 | `--app` | The Artifact's `app`. Default `spring.application.name`, else the main class's name. |
 | `--out` | The file to write. Default `$CHANGEVIZ_OUT`. |
 
